@@ -1,26 +1,47 @@
 {
   "expo": {
-    "name": "physiobuddies-therapist",
+    "name": "Physiobuddies Therapist",
     "slug": "physiobuddies-therapist",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "physiobuddiestherapist",
     "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "ios": {
-      "icon": "./assets/expo.icon"
+      "supportsTablet": true,
+      "bundleIdentifier": "in.physiobuddies.therapist",
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Physiobuddies needs camera access to capture session photos and document scans.",
+        "NSLocationWhenInUseUsageDescription": "Physiobuddies uses your location to navigate to patient home visits and calculate ETA.",
+        "NSFaceIDUsageDescription": "Physiobuddies uses Face ID to securely unlock the app.",
+        "NSPhotoLibraryUsageDescription": "Physiobuddies needs photo library access to upload session photos and documents."
+      }
     },
     "android": {
+      "package": "in.physiobuddies.therapist",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#003554",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
+      "bundler": "metro",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -28,17 +49,48 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#003554",
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76
           }
         }
-      ]
+      ],
+      "expo-sqlite",
+      "expo-secure-store",
+      "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Physiobuddies to access your camera for session photos and document scans.",
+          "microphonePermission": "Allow Physiobuddies to access your microphone for video calls.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Physiobuddies to use your location for patient visit navigation."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#004060"
+        }
+      ],
+      "expo-local-authentication"
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": ""
+      }
     }
   }
 }

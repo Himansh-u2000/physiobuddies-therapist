@@ -1,0 +1,9 @@
+Starting project at C:\Users\sagar\Work\Physiobuddies\physiobuddies-app\physiobuddies-therapist
+Error: GetEnv.NoBoolean: 1  is not a boolean.
+Error: GetEnv.NoBoolean: 1  is not a boolean.
+    at Object.boolish (C:\Users\sagar\Work\Physiobuddies\physiobuddies-app\physiobuddies-therapist\node_modules\getenv\index.js:70:15)
+    at C:\Users\sagar\Work\Physiobuddies\physiobuddies-app\physiobuddies-therapist\node_modules\getenv\index.js:84:27
+    at get CI (C:\Users\sagar\Work\Physiobuddies\physiobuddies-app\physiobuddies-therapist\node_modules\expo\node_modules\@expo\cli\build\src\utils\env.js:70:38)
+    at isInteractive (C:\Users\sagar\Work\Physiobuddies\physiobuddies-app\physiobuddies-therapist\node_modules\expo\node_modules\@expo\cli\build\src\utils\interactive.js:14:58)
+    at startAsync (C:\Users\sagar\Work\Physiobuddies\physiobuddies-app\physiobuddies-therapist\node_modules\expo\node_modules\@expo\cli\build\src\start\startAsync.js:133:45)
+    at expoStart (C:\Users\sagar\Work\Physiobuddies\physiobuddies-app\physiobuddies-therapist\node_modules\expo\node_modules\@expo\cli\build\src\start\index.js:148:12)
