@@ -65,6 +65,8 @@ export interface Appointment {
   amount: number;
   condition: string;
   address?: string;
+  latitude?: number;
+  longitude?: number;
   distanceKm?: number;
   etaMin?: number;
   notes?: string;

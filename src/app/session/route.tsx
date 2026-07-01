@@ -1,11 +1,9 @@
 import { View, Text, Pressable, ScrollView, Linking } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Phone, MessageSquare, Navigation, Lock, ChevronLeft } from "lucide-react-native";
-import { TopBar } from "@/components/shared/TopBar";
+import { Phone, MessageSquare, Lock, ChevronLeft } from "lucide-react-native";
 import { Avatar, Chip, Button } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
-import { useAuthStore } from "@/lib/stores/auth.store";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useLocation } from "@/lib/hooks/useLocation";
 import { COLORS } from "@/constants/config";
@@ -13,9 +11,8 @@ import { COLORS } from "@/constants/config";
 export default function RouteScreen() {
   const router = useRouter();
   const { appointmentId } = useLocalSearchParams<{ appointmentId: string }>();
-  const therapist = useAuthStore((s) => s.therapist);
   const showToast = useAppStore((s) => s.showToast);
-  const { getCurrentLocation } = useLocation();
+  const { getCurrentLocation, openInMaps } = useLocation();
   const { data: appointment } = useQuery({
     queryKey: ["appointment", appointmentId],
     queryFn: () => appointmentApi.getById(appointmentId),
@@ -23,8 +20,24 @@ export default function RouteScreen() {
   });
 
   const handleOpenMaps = async () => {
-    await getCurrentLocation();
-    showToast("Opening Google Maps");
+    if (!appointment?.latitude || !appointment.longitude) {
+      showToast("Patient coordinates unavailable");
+      return;
+    }
+    try {
+      await getCurrentLocation();
+      await openInMaps(appointment.latitude, appointment.longitude, appointment.patientName);
+    } catch {
+      showToast("Unable to open maps");
+    }
+  };
+
+  const handleCallPatient = async () => {
+    if (!appointment?.patientPhone) {
+      showToast("Patient phone unavailable");
+      return;
+    }
+    await Linking.openURL(`tel:${appointment.patientPhone}`);
   };
 
   const checklist = [
@@ -93,7 +106,7 @@ export default function RouteScreen() {
                 <Text className="text-muted text-[11px]">{appointment.patientPhone} · Home visit</Text>
               </View>
               <View className="flex-row" style={{ gap: 8 }}>
-                <Pressable onPress={() => showToast(`Calling ${appointment.patientPhone}`)} className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: "rgba(35,145,73,0.1)" }}>
+                <Pressable onPress={handleCallPatient} className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: "rgba(35,145,73,0.1)" }}>
                   <Phone size={16} color={COLORS.success} />
                 </Pressable>
                 <Pressable onPress={() => showToast("Opening WhatsApp")} className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.primarySoft }}>

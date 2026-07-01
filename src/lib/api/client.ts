@@ -1,8 +1,8 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
-import { API_BASE_URL } from "@/constants/config";
+import { API_BASE_URL, USE_MOCK_API } from "@/constants/config";
 import { getTokens, saveTokens, clearTokens } from "@/lib/storage/secure";
 
-const USE_MOCK = true;
+const USE_MOCK = USE_MOCK_API;
 
 const client: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,

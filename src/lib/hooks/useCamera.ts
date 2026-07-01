@@ -1,4 +1,4 @@
-import { useCameraPermissions, useMicrophonePermissions } from "expo-camera";
+import { CameraView, useCameraPermissions, useMicrophonePermissions } from "expo-camera";
 import { useCallback, useRef, useState } from "react";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as FileSystem from "expo-file-system";
@@ -7,7 +7,7 @@ export function useCamera() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const [lastPhoto, setLastPhoto] = useState<string | null>(null);
-  const cameraRef = useRef<{ takePictureAsync: (opts?: unknown) => Promise<{ uri: string }> } | null>(null);
+  const cameraRef = useRef<CameraView | null>(null);
 
   const ensurePermission = useCallback(async () => {
     const status = await requestCameraPermission();

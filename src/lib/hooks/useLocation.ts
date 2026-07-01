@@ -1,5 +1,6 @@
 import * as Location from "expo-location";
 import { useCallback, useState } from "react";
+import { Linking, Platform } from "react-native";
 
 export function useLocation() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
@@ -30,9 +31,16 @@ export function useLocation() {
   }, [requestPermission]);
 
   const openInMaps = useCallback(
-    (destLat: number, destLng: number, label?: string) => {
-      const scheme = `geo:${destLat},${destLng}?q=${destLat},${destLng}${label ? `(${label})` : ""}`;
-      return scheme;
+    async (destLat: number, destLng: number, label?: string) => {
+      const encodedLabel = encodeURIComponent(label ?? "Patient location");
+      const destination = `${destLat},${destLng}`;
+      const nativeUrl =
+        Platform.OS === "ios"
+          ? `maps://?daddr=${destination}&q=${encodedLabel}`
+          : `google.navigation:q=${destination}`;
+      const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving&query=${encodedLabel}`;
+      const canOpenNative = await Linking.canOpenURL(nativeUrl);
+      await Linking.openURL(canOpenNative ? nativeUrl : webUrl);
     },
     [],
   );

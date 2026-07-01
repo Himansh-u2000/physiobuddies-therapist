@@ -1,5 +1,5 @@
 import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -11,6 +11,7 @@ import { QueryProvider } from "@/lib/query/provider";
 import { ToastContainer } from "@/components/ui/Toast";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useNetwork } from "@/lib/hooks/useNetwork";
+import { useNotifications } from "@/lib/hooks/useNotifications";
 
 function useProtectedRouting() {
   const segments = useSegments() as string[];
@@ -39,6 +40,17 @@ function useProtectedRouting() {
 function RootLayoutNav() {
   useProtectedRouting();
   useNetwork();
+  const notificationRegistrationStarted = useRef(false);
+  const { registerForPushNotifications } = useNotifications();
+  const { isAuthenticated, isHydrated } = useAuthStore();
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || notificationRegistrationStarted.current) return;
+    notificationRegistrationStarted.current = true;
+    registerForPushNotifications().catch(() => {
+      notificationRegistrationStarted.current = false;
+    });
+  }, [isHydrated, isAuthenticated, registerForPushNotifications]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

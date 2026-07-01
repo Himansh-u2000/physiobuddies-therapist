@@ -101,6 +101,12 @@ export const sessionApi = {
     return data;
   },
 
+  async startFlagged(appointmentId: string): Promise<{ sessionId: string; flagged: boolean }> {
+    if (USE_MOCK) return delay({ sessionId: `flagged-session-${appointmentId}`, flagged: true }, 600);
+    const { data } = await client.post("/session/start-flagged", { appointmentId });
+    return data;
+  },
+
   async complete(sessionId: string): Promise<{ payoutQueued: boolean }> {
     if (USE_MOCK) return delay({ payoutQueued: true }, 500);
     const { data } = await client.put(`/session/${sessionId}/complete`);
@@ -157,5 +163,39 @@ export const notificationApi = {
   async registerPushToken(token: string): Promise<void> {
     if (USE_MOCK) return delay(undefined, 200);
     await client.post("/notification/token", { token });
+  },
+};
+
+export const uploadApi = {
+  async uploadSessionPhoto(
+    sessionId: string,
+    uri: string,
+    fileName: string,
+    mimeType: string
+  ): Promise<{ url: string; id: string }> {
+    if (USE_MOCK) return delay({ url: uri, id: `photo-${Date.now()}` }, 800);
+    const formData = new FormData();
+    formData.append("file", { uri, name: fileName, type: mimeType } as any);
+    formData.append("sessionId", sessionId);
+    const { data } = await client.post("/upload/session-photo", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return data;
+  },
+
+  async uploadTreatmentAttachment(
+    treatmentId: string,
+    uri: string,
+    fileName: string,
+    mimeType: string
+  ): Promise<{ url: string; id: string }> {
+    if (USE_MOCK) return delay({ url: uri, id: `attachment-${Date.now()}` }, 800);
+    const formData = new FormData();
+    formData.append("file", { uri, name: fileName, type: mimeType } as any);
+    formData.append("treatmentId", treatmentId);
+    const { data } = await client.post("/upload/treatment-attachment", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return data;
   },
 };

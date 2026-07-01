@@ -1,26 +1,28 @@
-import { useEffect, useState, useCallback } from "react";
-import { View, Text, Pressable, ScrollView, TextInput } from "react-native";
+import { useEffect, useState } from "react";
+import { View, Text, Pressable, ScrollView, TextInput, Modal, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import { CameraView } from "expo-camera";
 import Svg, { Circle } from "react-native-svg";
-import { Camera, FileText, Pause, CheckCircle2, Circle as CircleIcon } from "lucide-react-native";
-import { TopBar } from "@/components/shared/TopBar";
+import { Camera, FileText, Pause, CheckCircle2, Circle as CircleIcon, X } from "lucide-react-native";
 import { Chip, Button, BottomSheet, useBottomSheet } from "@/components/ui";
-import { useAuthStore } from "@/lib/stores/auth.store";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useSessionStore } from "@/lib/stores/session.store";
 import { useCamera } from "@/lib/hooks/useCamera";
+import { uploadApi } from "@/lib/api/services";
 import { COLORS, SESSION_CONFIG } from "@/constants/config";
 import { formatTime } from "@/lib/utils/format";
 
 export default function ActiveSessionScreen() {
   const router = useRouter();
-  const therapist = useAuthStore((s) => s.therapist);
   const showToast = useAppStore((s) => s.showToast);
   const { patientName, condition, elapsedSeconds, checklist, toggleChecklistItem, quickNote, setQuickNote, tick, endSession } = useSessionStore();
   const sheet = useBottomSheet();
-  const { ensurePermission, takePhoto } = useCamera();
+  const { cameraRef, ensurePermission, takePhoto } = useCamera();
   const [, forceUpdate] = useState(0);
+  const [cameraVisible, setCameraVisible] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -30,13 +32,46 @@ export default function ActiveSessionScreen() {
     return () => clearInterval(timer);
   }, [tick]);
 
-  const handleUploadPhoto = async () => {
+  const handleOpenCamera = async () => {
     const granted = await ensurePermission();
     if (!granted) {
       showToast("Camera permission required");
       return;
     }
-    showToast("Camera opened for session photo");
+    setCameraReady(false);
+    setCameraVisible(true);
+  };
+
+  const handleCapturePhoto = async () => {
+    if (!cameraReady) {
+      showToast("Camera is still starting");
+      return;
+    }
+    setUploadingPhoto(true);
+    try {
+      const photoUri = await takePhoto();
+      if (!photoUri) {
+        showToast("Failed to capture photo");
+        return;
+      }
+      const sessionId = useSessionStore.getState().sessionId;
+      if (!sessionId) {
+        showToast("No active session");
+        return;
+      }
+      const fileName = `session-${sessionId}-${Date.now()}.jpg`;
+      await uploadApi.uploadSessionPhoto(sessionId, photoUri, fileName, "image/jpeg");
+      showToast("Photo uploaded");
+      if (!checklist.find((item) => item.id === "photo")?.done) {
+        toggleChecklistItem("photo");
+      }
+      setCameraVisible(false);
+    } catch (e) {
+      console.error("Photo upload failed:", e);
+      showToast("Upload failed. Will retry later.");
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   const handlePause = () => {
@@ -133,9 +168,9 @@ export default function ActiveSessionScreen() {
             />
           </View>
           <View className="flex-row" style={{ gap: 10 }}>
-            <Button variant="secondary" onPress={handleUploadPhoto}>
+            <Button variant="secondary" onPress={handleOpenCamera} disabled={uploadingPhoto}>
               <Camera size={16} color={COLORS.accent} />
-              <Text className="text-accent font-bold text-[14px]">Upload photo</Text>
+              <Text className="text-accent font-bold text-[14px]">{uploadingPhoto ? "Uploading..." : "Upload photo"}</Text>
             </Button>
             <Button onPress={() => router.push("/session/treatment")}>
               <FileText size={16} color="#fff" />
@@ -159,6 +194,31 @@ export default function ActiveSessionScreen() {
         </Button>
         <Button variant="secondary" onPress={sheet.close}>Continue treatment</Button>
       </BottomSheet>
+
+      <Modal visible={cameraVisible} animationType="slide" onRequestClose={() => setCameraVisible(false)}>
+        <View className="flex-1 bg-black">
+          <CameraView
+            ref={cameraRef}
+            facing="back"
+            mode="picture"
+            onCameraReady={() => setCameraReady(true)}
+            onMountError={() => showToast("Camera failed to start")}
+            style={{ flex: 1 }}
+          />
+          <View className="absolute left-0 right-0 top-0 px-4 pt-12 flex-row justify-between items-center">
+            <Pressable onPress={() => setCameraVisible(false)} className="w-11 h-11 rounded-full bg-black/45 items-center justify-center">
+              <X size={22} color="#fff" />
+            </Pressable>
+            <Chip variant="neutral">{cameraReady ? "Ready" : "Starting"}</Chip>
+          </View>
+          <View className="absolute left-0 right-0 bottom-0 px-6 pb-10 pt-6 bg-black/45">
+            <Button onPress={handleCapturePhoto} disabled={!cameraReady || uploadingPhoto}>
+              {uploadingPhoto ? <ActivityIndicator color="#fff" /> : <Camera size={18} color="#fff" />}
+              <Text className="text-white font-bold text-[14px]">{uploadingPhoto ? "Uploading..." : "Capture session photo"}</Text>
+            </Button>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

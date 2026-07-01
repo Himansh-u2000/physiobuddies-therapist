@@ -6,7 +6,7 @@ import { ChevronLeft, Plus, X, Upload, Save, CheckCircle2 } from "lucide-react-n
 import { Avatar, Chip, Button, TextArea, Input, BottomSheet, useBottomSheet } from "@/components/ui";
 import { useSessionStore } from "@/lib/stores/session.store";
 import { useAppStore } from "@/lib/stores/app.store";
-import { treatmentApi } from "@/lib/api/services";
+import { sessionApi, treatmentApi } from "@/lib/api/services";
 import { COLORS } from "@/constants/config";
 
 const PAIN_REGIONS = ["Lower back", "Upper back", "Neck", "Left shoulder", "Right shoulder", "Left knee", "Right knee", "Hip", "Ankle", "Wrist"];
@@ -33,7 +33,7 @@ const EXERCISE_OPTIONS = ["Cat-Camel Stretch", "Knee-to-Chest", "Pelvic Tilt", "
 export default function TreatmentFormScreen() {
   const router = useRouter();
   const showToast = useAppStore((s) => s.showToast);
-  const { patientName, condition } = useSessionStore();
+  const { sessionId, appointmentId, patientName, condition, elapsedSeconds, checklist, quickNote } = useSessionStore();
   const safeName = patientName ?? "Patient";
   const safeCondition = condition ?? "condition";
   const sheet = useBottomSheet();
@@ -70,9 +70,14 @@ export default function TreatmentFormScreen() {
     setSubmitting(true);
     try {
       await treatmentApi.submit({
+        sessionId,
+        appointmentId,
         chiefComplaint, painRegions, painScale, assessments, treatments, exercises,
-        clinicalNotes, precautions, followUpRequired, followUpDate,
+        clinicalNotes, precautions, followUpRequired, followUpDate, elapsedSeconds, checklist, quickNote,
       });
+      if (sessionId) {
+        await sessionApi.complete(sessionId);
+      }
       sheet.close();
       showToast("Session completed — payout queued");
       setTimeout(() => router.replace("/session/complete"), 500);

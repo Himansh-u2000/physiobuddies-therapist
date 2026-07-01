@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useMemo } from "react";
 import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -22,7 +22,7 @@ export default function PatientsScreen() {
     queryFn: patientApi.list,
   });
 
-  const debouncedSet = useCallback(debounce(setDebouncedSearch, 300), []);
+  const debouncedSet = useMemo(() => debounce(setDebouncedSearch, 300), []);
 
   const filtered = patients?.filter(
     (p) =>

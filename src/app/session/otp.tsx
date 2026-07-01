@@ -53,6 +53,21 @@ export default function SessionOtpScreen() {
     }
   };
 
+  const handleFlaggedStart = async () => {
+    if (!appointment) return;
+    setLoading(true);
+    try {
+      const { sessionId } = await sessionApi.startFlagged(appointmentId);
+      startSession(sessionId, appointment.id, appointment.patientName, appointment.condition);
+      showToast("Supervisor notified - flagged start recorded");
+      setTimeout(() => router.replace("/session/active"), 500);
+    } catch {
+      showToast("Unable to start flagged session");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!appointment) return <View className="flex-1 bg-bg" />;
 
   return (
@@ -122,8 +137,8 @@ export default function SessionOtpScreen() {
           <Text className="text-muted text-[12px] mt-1">
             Only proceed without OTP if the patient is unable (elderly, emergency). This will be flagged for review.
           </Text>
-          <Button variant="danger" size="small" onPress={() => showToast("Supervisor notified — flagged start recorded")}>
-            <Text className="text-danger font-bold text-[12px]">Start without OTP (flagged)</Text>
+          <Button variant="danger" size="small" onPress={handleFlaggedStart} disabled={loading}>
+            <Text className="text-danger font-bold text-[12px]">{loading ? "Starting..." : "Start without OTP (flagged)"}</Text>
           </Button>
         </View>
       </View>

@@ -8,16 +8,14 @@ interface UseOtpOptions {
 
 export function useOtp({ length, onComplete }: UseOtpOptions) {
   const [values, setValues] = useState<string[]>(Array(length).fill(""));
-  const [isComplete, setIsComplete] = useState(false);
   const refs = useRef<(TextInput | null)[]>([]);
 
   const code = values.join("");
+  const isComplete = values.every((v) => v !== "") && values.length === length;
 
   useEffect(() => {
-    const complete = values.every((v) => v !== "") && values.length === length;
-    setIsComplete(complete);
-    if (complete && onComplete) onComplete(code);
-  }, [values, length, code, onComplete]);
+    if (isComplete && onComplete) onComplete(code);
+  }, [isComplete, code, onComplete]);
 
   const setValue = useCallback(
     (index: number, val: string) => {
@@ -64,7 +62,7 @@ export function useOtp({ length, onComplete }: UseOtpOptions) {
         });
       }
     },
-    [values, length],
+    [values],
   );
 
   const clear = useCallback(() => {

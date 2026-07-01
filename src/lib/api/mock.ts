@@ -105,6 +105,8 @@ export const mockAppointments: Appointment[] = [
     amount: 1200,
     condition: "Lower back pain rehab",
     address: "Flat 804, Sea View Residency, Turner Rd, Bandra West, Mumbai — 400050",
+    latitude: 19.0596,
+    longitude: 72.8295,
     distanceKm: 5.2,
     etaMin: 18,
     notes:
@@ -128,6 +130,8 @@ export const mockAppointments: Appointment[] = [
     amount: 800,
     condition: "Post-surgery knee rehab",
     address: "Physiobuddies Clinic, Andheri West",
+    latitude: 19.1364,
+    longitude: 72.8296,
     distanceKm: 3.1,
     etaMin: 12,
     notes: "6 weeks post ACL reconstruction. Progressing well. Focus on proprioception.",

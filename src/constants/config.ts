@@ -36,6 +36,8 @@ export const RADII = {
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ?? "https://api.physiobuddies.in/api/therapist";
 
+export const USE_MOCK_API = process.env.EXPO_PUBLIC_USE_MOCK_API !== "false";
+
 export const STORAGE_KEYS = {
   accessToken: "pb_access_token",
   refreshToken: "pb_refresh_token",

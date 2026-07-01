@@ -1,4 +1,5 @@
 import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Platform } from "react-native";
 import { notificationApi } from "@/lib/api/services";
@@ -37,7 +38,10 @@ export function useNotifications() {
       });
     }
 
-    const token = (await Notifications.getExpoPushTokenAsync()).data;
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+    if (!projectId) return null;
+
+    const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
     setExpoPushToken(token);
     await notificationApi.registerPushToken(token);
     return token;
