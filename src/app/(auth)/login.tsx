@@ -73,6 +73,19 @@ export default function LoginScreen() {
           <Text className="text-white font-bold text-[14px]">{loading ? "Sending..." : "Send OTP"}</Text>
         </Button>
 
+        <View className="flex-row items-center gap-3">
+          <View className="flex-1 h-px bg-border" />
+          <Text className="text-muted text-[11px]">or</Text>
+          <View className="flex-1 h-px bg-border" />
+        </View>
+
+        <Button variant="secondary" onPress={() => router.push("/(auth)/email-login")}>
+          <Mail size={18} color="#004060" />
+          <Text className="text-accent font-bold text-[14px]">Sign in with email & password</Text>
+        </Button>
+
+        <SocialAuthButtons />
+
         <View className="h-px bg-border my-1" />
 
         <View className="items-center">

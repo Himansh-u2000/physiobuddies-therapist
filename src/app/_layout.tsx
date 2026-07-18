@@ -63,6 +63,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(app)" />
       <Stack.Screen name="session" />
       <Stack.Screen name="patient" />
+      <Stack.Screen name="delete-account" options={{ presentation: "modal" }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

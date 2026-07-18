@@ -1,6 +1,6 @@
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { Star, Shield, FileText, Bell, Lock, HelpCircle, LogOut, ChevronRight, Fingerprint } from "lucide-react-native";
+import { Star, Shield, FileText, Bell, Lock, HelpCircle, LogOut, ChevronRight, Fingerprint, Trash2 } from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
 import { Avatar } from "@/components/ui";
 import { useAuthStore } from "@/lib/stores/auth.store";
@@ -78,6 +78,15 @@ export default function ProfileScreen() {
         >
           <LogOut size={18} color={COLORS.danger} />
           <Text className="text-danger font-bold text-[14px]">Log out</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => router.push("/delete-account")}
+          className="mt-2.5 p-2 flex-row items-center justify-center active:opacity-70"
+          style={{ gap: 6 }}
+        >
+          <Trash2 size={15} color={COLORS.muted} />
+          <Text className="text-muted font-bold text-[12px]">Delete account</Text>
         </Pressable>
 
         <Text className="text-muted/60 text-[11px] text-center mt-4">Physiobuddies Therapist v1.0.0</Text>

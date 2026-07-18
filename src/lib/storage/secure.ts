@@ -25,10 +25,31 @@ export async function clearTokens(): Promise<void> {
   await SecureStore.deleteItemAsync(STORAGE_KEYS.tokenExpiry);
 }
 
+/**
+ * Refresh this far ahead of the real expiry, so a request never departs holding a token
+ * that expires mid-flight.
+ */
+export const TOKEN_EXPIRY_SKEW_MS = 60_000;
+
+/**
+ * Pure expiry predicate — no I/O, so the client's request path can call it on every
+ * request and it stays unit-testable.
+ *
+ * Fails CLOSED: a missing or non-finite `expiresAt` counts as expired. (A corrupt value
+ * yields `NaN`, and `Date.now() >= NaN - skew` is `false`, which would otherwise treat an
+ * unreadable token as indefinitely valid.)
+ */
+export function isExpired(
+  tokens: AuthTokens | null,
+  skewMs: number = TOKEN_EXPIRY_SKEW_MS,
+): boolean {
+  if (!tokens?.accessToken) return true;
+  if (!Number.isFinite(tokens.expiresAt)) return true;
+  return Date.now() >= tokens.expiresAt - skewMs;
+}
+
 export async function isTokenExpired(): Promise<boolean> {
-  const tokens = await getTokens();
-  if (!tokens) return true;
-  return Date.now() >= tokens.expiresAt - 60_000;
+  return isExpired(await getTokens());
 }
 
 export async function saveTherapistProfile(profile: Therapist): Promise<void> {

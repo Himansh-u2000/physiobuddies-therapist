@@ -8,25 +8,25 @@
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
+      "environment": "development",
       "android": {
         "buildType": "apk"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://staging-api.physiobuddies.in/api/v1",
-        "EXPO_PUBLIC_USE_MOCK_API": "true",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": ""
+        "EXPO_PUBLIC_USE_MOCK_API": "true"
       }
     },
     "preview": {
       "distribution": "internal",
       "channel": "staging",
+      "environment": "preview",
       "android": {
         "buildType": "apk"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://staging-api.physiobuddies.in/api/v1",
-        "EXPO_PUBLIC_USE_MOCK_API": "false",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": ""
+        "EXPO_PUBLIC_USE_MOCK_API": "false"
       }
     },
     "ios-simulator": {
@@ -39,14 +39,14 @@
     "production": {
       "distribution": "store",
       "channel": "production",
+      "environment": "production",
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.physiobuddies.in/api/v1",
-        "EXPO_PUBLIC_USE_MOCK_API": "false",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": ""
+        "EXPO_PUBLIC_USE_MOCK_API": "false"
       }
     }
   },

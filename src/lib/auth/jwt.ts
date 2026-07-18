@@ -35,7 +35,6 @@ function base64UrlDecode(input: string): string {
 /** Interpret a binary string as UTF-8 (safe for non-ASCII names in the payload). */
 function toUtf8(binary: string): string {
   try {
-    // eslint-disable-next-line no-restricted-globals
     return decodeURIComponent(escape(binary));
   } catch {
     return binary;

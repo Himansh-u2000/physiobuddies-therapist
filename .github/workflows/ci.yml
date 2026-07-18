@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   quality:
-    name: Typecheck, lint & dependency check
+    name: Typecheck, lint, test & dependency check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,6 +33,9 @@ jobs:
 
       - name: ESLint
         run: npm run lint
+
+      - name: Unit tests
+        run: npm test -- --ci
 
       - name: Expo dependency version check (SDK 56 alignment)
         run: npx expo install --check

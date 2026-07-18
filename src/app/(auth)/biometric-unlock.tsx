@@ -33,12 +33,19 @@ export default function BiometricUnlockScreen() {
       const result = await authenticate("Unlock Physiobuddies Therapist");
       if (result.success) {
         unlock();
-        showToast("Unlocked — welcome back");
+        showToast("Unlocked — welcome back", "success");
         setTimeout(() => router.replace("/(app)"), 400);
-      } else if (result.error === "lockout" || result.error === "lockout_permanent") {
-        showToast("Too many attempts. Use your password to sign in.");
+      } else if (
+        result.error &&
+        result.error !== "user_cancel" &&
+        result.error !== "system_cancel" &&
+        result.error !== "app_cancel" &&
+        result.error !== "user_fallback"
+      ) {
+        // Repeated failures / lockout / hardware issues → steer to password sign-in.
+        showToast("Couldn't verify. Sign in with your password instead.", "error");
       }
-      // Other failures (user cancel) leave the user on this screen to retry.
+      // User-initiated cancels leave the user on this screen to retry.
     } catch {
       showToast("Authentication failed. Sign in with your password instead.");
     } finally {
@@ -82,11 +89,11 @@ export default function BiometricUnlockScreen() {
 
         <View className="w-full max-w-[300px]" style={{ gap: 10 }}>
           <Pressable
-            onPress={() => router.replace("/(auth)/otp")}
+            onPress={() => router.replace("/(auth)/email-login")}
             className="h-[46px] rounded-[13px] items-center justify-center"
             style={{ backgroundColor: "rgba(255,255,255,0.16)", borderWidth: 1, borderColor: "rgba(255,255,255,0.24)" }}
           >
-            <Text className="text-white font-bold text-[14px]">Use OTP instead</Text>
+            <Text className="text-white font-bold text-[14px]">Sign in with password</Text>
           </Pressable>
           <Text className="text-white/40 text-[11px] text-center">
             Not {therapist?.name?.split(" ").slice(-1)[0] ?? "Riya"}?{" "}
