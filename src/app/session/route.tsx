@@ -64,7 +64,7 @@ export default function RouteScreen() {
           <View className="absolute" style={{ top: 45, right: "28%" }}>
             <View className="w-3.5 h-3.5 rounded-full border-[2.5px] border-white" style={{ backgroundColor: COLORS.danger }} />
             <View className="bg-white rounded-lg px-2 py-1 mt-1">
-              <Text className="text-[10px] font-bold">🏠 {appointment?.patientName ?? "Patient"}'s home</Text>
+              <Text className="text-[10px] font-bold">🏠 {appointment?.patientName ?? "Patient"}&apos;s home</Text>
             </View>
           </View>
         </View>

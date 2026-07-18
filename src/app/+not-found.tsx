@@ -10,7 +10,7 @@ export default function NotFoundScreen() {
         <Text className="text-[48px] font-black text-accent">404</Text>
         <Text className="text-[16px] font-bold text-fg mt-2">Page not found</Text>
         <Text className="text-muted text-[13px] mt-1 text-center">
-          The screen you're looking for doesn't exist.
+          The screen you&apos;re looking for doesn&apos;t exist.
         </Text>
         <View className="mt-6 w-full max-w-[260px]">
           <Link href="/(app)" asChild>

@@ -35,13 +35,13 @@ export function useBiometric() {
 
   const authenticate = useCallback(
     async (promptMessage = "Authenticate to continue") => {
-      const result = await LocalAuthentication.authenticateAsync({
+      // disableDeviceFallback:false keeps the passcode fallback available when biometric fails.
+      return LocalAuthentication.authenticateAsync({
         promptMessage,
         fallbackLabel: "Use passcode",
         cancelLabel: "Cancel",
         disableDeviceFallback: false,
       });
-      return result.success;
     },
     [],
   );

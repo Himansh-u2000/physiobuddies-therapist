@@ -57,7 +57,7 @@ export default function SessionCompleteScreen() {
 
         <View className="mx-4 mt-3.5 bg-surface-strong rounded-md border-[1.5px] border-border overflow-hidden">
           <View className="px-4 py-3 border-b border-border">
-            <Text className="text-[13px] font-extrabold text-fg">Everything's taken care of</Text>
+            <Text className="text-[13px] font-extrabold text-fg">Everything&apos;s taken care of</Text>
           </View>
           <Milestone title="Patient record updated" sub="Treatment details, assessment notes, and prescribed exercises saved to patient history." />
           <Milestone title="Payout queued — ₹1,200" sub="Will be included in Monday's weekly settlement to HDFC ending 2041." />
@@ -66,9 +66,9 @@ export default function SessionCompleteScreen() {
         </View>
 
         <View className="mx-4 mt-4" style={{ gap: 10 }}>
-          <Text className="text-[13px] font-bold text-muted uppercase tracking-wide">What's next</Text>
+          <Text className="text-[13px] font-bold text-muted uppercase tracking-wide">What&apos;s next</Text>
           <Button variant="secondary" onPress={() => router.replace("/(app)/patients")}>
-            <Text className="text-accent font-bold text-[14px]">View {safeName.split(" ")[0]}'s full profile</Text>
+            <Text className="text-accent font-bold text-[14px]">View {safeName.split(" ")[0]}&apos;s full profile</Text>
           </Button>
           <Button variant="secondary" onPress={() => router.replace("/(app)/appointments")}>
             <Text className="text-accent font-bold text-[14px]">Back to appointments</Text>

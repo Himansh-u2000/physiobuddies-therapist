@@ -7,7 +7,13 @@
     "icon": "./assets/images/icon.png",
     "scheme": "physiobuddiestherapist",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e73e2219-8f33-41f9-8f83-ccab827af8af",
+      "fallbackToCacheTimeout": 0
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "in.physiobuddies.therapist",
@@ -35,7 +41,8 @@
         "android.permission.USE_FINGERPRINT",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.VIBRATE",
-        "android.permission.RECEIVE_BOOT_COMPLETED"
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.RECORD_AUDIO"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -79,7 +86,14 @@
           "color": "#004060"
         }
       ],
-      "expo-local-authentication"
+      "expo-local-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.PLACEHOLDER-REVERSED-IOS-CLIENT-ID"
+        }
+      ],
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true
@@ -89,8 +103,9 @@
         "origin": false
       },
       "eas": {
-        "projectId": ""
+        "projectId": "e73e2219-8f33-41f9-8f83-ccab827af8af"
       }
-    }
+    },
+    "owner": "himansh-u2000"
   }
 }

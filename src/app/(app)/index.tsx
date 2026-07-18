@@ -118,7 +118,7 @@ export default function DashboardScreen() {
                       <View className="w-9 h-9 rounded-[10px] items-center justify-center" style={{ backgroundColor: "rgba(209,154,18,0.1)" }}>
                         <ClipboardList size={18} color={COLORS.warning} />
                       </View>
-                      <Text className="text-[13px] font-bold text-fg">Complete Neha's treatment note</Text>
+                      <Text className="text-[13px] font-bold text-fg">Complete Neha&apos;s treatment note</Text>
                     </View>
                     <Chip variant="pending">Draft</Chip>
                   </View>

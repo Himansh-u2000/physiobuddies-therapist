@@ -2,12 +2,12 @@ import { useState } from "react";
 import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Phone } from "lucide-react-native";
+import { Phone, Mail } from "lucide-react-native";
 import { Button, PhoneInput } from "@/components/ui";
+import { SocialAuthButtons } from "@/components/auth/SocialAuthButtons";
 import { useAppStore } from "@/lib/stores/app.store";
 import { authApi } from "@/lib/api/services";
 import { savePhone } from "@/lib/storage/secure";
-import { COLORS, GRADIENTS } from "@/constants/config";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -56,7 +56,7 @@ export default function LoginScreen() {
         <View>
           <Text className="text-[20px] font-bold text-fg">Enter your mobile number</Text>
           <Text className="text-muted text-[12px] mt-1">
-            We'll send a 6-digit OTP to verify your account
+            We&apos;ll send a 6-digit OTP to verify your account
           </Text>
         </View>
 

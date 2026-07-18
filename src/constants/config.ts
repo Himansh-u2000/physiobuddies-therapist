@@ -34,9 +34,36 @@ export const RADII = {
 } as const;
 
 export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? "https://api.physiobuddies.in/api/therapist";
+  process.env.EXPO_PUBLIC_API_URL ?? "https://api.physiobuddies.in/api/v1";
 
-export const USE_MOCK_API = process.env.EXPO_PUBLIC_USE_MOCK_API !== "false";
+/** Resolve a boolean env flag: unset -> fallback; else anything but "false" is true. */
+function envFlag(value: string | undefined, fallback: boolean): boolean {
+  return value === undefined ? fallback : value !== "false";
+}
+
+/** Global mock switch — mocks every API domain unless a per-domain flag overrides it. */
+export const USE_MOCK_API = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_API, true);
+
+/**
+ * Auth-specific mock switch. Phase 2 wires the real auth endpoints (they exist on the
+ * backend) while dashboard/session/etc. stay on mock. Set EXPO_PUBLIC_USE_MOCK_AUTH=false
+ * to exercise real auth against the backend while the rest of the app remains mocked.
+ * Falls back to the global flag when unset.
+ */
+export const USE_MOCK_AUTH = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_AUTH, USE_MOCK_API);
+
+/** Auth / Google Sign-In configuration. */
+export const AUTH_CONFIG = {
+  /**
+   * Google OAuth **Web** client ID — used as the native SDK's server client so Google
+   * returns a `serverAuthCode` we post to `POST /auth/google?code=…` (the backend runs the
+   * authorization-code exchange with the web client secret). Supply via env; see
+   * GOOGLE_SIGNIN_SETUP.md. Empty until credentials are added.
+   */
+  googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "",
+  /** Re-lock the app (require biometric again) after this long in the background. */
+  biometricRelockMs: 2 * 60 * 1000,
+} as const;
 
 export const STORAGE_KEYS = {
   accessToken: "pb_access_token",
@@ -45,6 +72,7 @@ export const STORAGE_KEYS = {
   therapistProfile: "pb_therapist_profile",
   biometricEnabled: "pb_biometric_enabled",
   phone: "pb_phone",
+  email: "pb_email",
   pushToken: "pb_push_token",
   preferences: "pb_preferences",
 } as const;

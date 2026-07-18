@@ -133,7 +133,7 @@ export default function SessionOtpScreen() {
         </View>
 
         <View className="bg-danger/5 border border-danger/10 rounded-md p-3 mt-2.5">
-          <Text className="text-danger text-[12px] font-bold">⚠️ Patient can't share OTP?</Text>
+          <Text className="text-danger text-[12px] font-bold">⚠️ Patient can&apos;t share OTP?</Text>
           <Text className="text-muted text-[12px] mt-1">
             Only proceed without OTP if the patient is unable (elderly, emergency). This will be flagged for review.
           </Text>

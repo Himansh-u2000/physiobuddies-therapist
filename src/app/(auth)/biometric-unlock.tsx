@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -11,28 +11,46 @@ export default function BiometricUnlockScreen() {
   const router = useRouter();
   const showToast = useAppStore((s) => s.showToast);
   const therapist = useAuthStore((s) => s.therapist);
-  const { authenticate } = useBiometric();
+  const unlock = useAuthStore((s) => s.unlock);
+  const setBiometric = useAuthStore((s) => s.setBiometric);
+  const logout = useAuthStore((s) => s.logout);
+  const { authenticate, checkAvailability } = useBiometric();
   const [scanning, setScanning] = useState(false);
 
-  const handleUnlock = async () => {
+  const handleUnlock = useCallback(async () => {
     if (scanning) return;
     setScanning(true);
     try {
-      const success = await authenticate("Unlock Physiobuddies Therapist");
-      if (success) {
-        showToast("Fingerprint recognised — logging in…");
-        setTimeout(() => router.replace("/(app)"), 600);
+      // Hardening: if hardware/enrollment changed since setup, biometric is no longer valid.
+      const { compatible, enrolled } = await checkAvailability();
+      if (!compatible || !enrolled) {
+        await setBiometric(false);
+        showToast("Biometric changed on this device. Please sign in again.");
+        await logout();
+        router.replace("/(auth)/login");
+        return;
       }
+      const result = await authenticate("Unlock Physiobuddies Therapist");
+      if (result.success) {
+        unlock();
+        showToast("Unlocked — welcome back");
+        setTimeout(() => router.replace("/(app)"), 400);
+      } else if (result.error === "lockout" || result.error === "lockout_permanent") {
+        showToast("Too many attempts. Use your password to sign in.");
+      }
+      // Other failures (user cancel) leave the user on this screen to retry.
     } catch {
-      showToast("Authentication failed. Try OTP instead.");
+      showToast("Authentication failed. Sign in with your password instead.");
     } finally {
       setScanning(false);
     }
-  };
+  }, [scanning, checkAvailability, authenticate, setBiometric, logout, unlock, showToast, router]);
 
   useEffect(() => {
     const timer = setTimeout(handleUnlock, 500);
     return () => clearTimeout(timer);
+    // Run once on mount; handleUnlock guards against concurrent runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

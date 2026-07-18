@@ -23,8 +23,17 @@ export default function BiometricSetupScreen() {
   const handleEnable = async () => {
     setScanning(true);
     try {
-      const success = await authenticate("Enable fingerprint login for Physiobuddies");
-      if (success) {
+      const { compatible, enrolled } = await checkAvailability();
+      if (!compatible) {
+        showToast("This device has no biometric hardware. You can skip this.");
+        return;
+      }
+      if (!enrolled) {
+        showToast("No fingerprint/face enrolled. Add one in device settings first.");
+        return;
+      }
+      const result = await authenticate("Enable fingerprint login for Physiobuddies");
+      if (result.success) {
         await setBiometric(true);
         setEnabled(true);
         showToast("Fingerprint registered successfully");

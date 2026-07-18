@@ -12,33 +12,38 @@ import { ToastContainer } from "@/components/ui/Toast";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useNetwork } from "@/lib/hooks/useNetwork";
 import { useNotifications } from "@/lib/hooks/useNotifications";
+import { useAppLock } from "@/lib/hooks/useAppLock";
 
 function useProtectedRouting() {
   const segments = useSegments() as string[];
   const router = useRouter();
   const navState = useRootNavigationState();
-  const { isAuthenticated, isHydrated, biometricEnabled } = useAuthStore();
+  const { isAuthenticated, isHydrated, biometricEnabled, isLocked } = useAuthStore();
 
   useEffect(() => {
     if (!isHydrated || !navState?.key) return;
 
     const inAuthGroup = segments[0] === "(auth)";
     const inAppGroup = segments[0] === "(app)" || segments[0] === "session";
+    const onUnlockScreen = inAuthGroup && segments[1] === "biometric-unlock";
+    const onSetupScreen = inAuthGroup && segments[1] === "biometric-setup";
 
     if (!isAuthenticated && inAppGroup) {
+      // Not signed in but on a protected route → back to splash.
       router.replace("/(auth)/splash");
-    } else if (isAuthenticated && inAuthGroup) {
-      if (biometricEnabled && segments[1] !== "biometric-unlock") {
-        router.replace("/(auth)/biometric-unlock");
-      } else if (!biometricEnabled) {
-        router.replace("/(app)");
-      }
+    } else if (isAuthenticated && biometricEnabled && isLocked && !onUnlockScreen) {
+      // Signed in, biometric on, re-locked (cold start or background timeout) → unlock gate.
+      router.replace("/(auth)/biometric-unlock");
+    } else if (isAuthenticated && !isLocked && inAuthGroup && !onSetupScreen) {
+      // Signed in and unlocked but stranded on an auth screen (splash/login/otp/unlock) → app.
+      router.replace("/(app)");
     }
-  }, [isAuthenticated, isHydrated, biometricEnabled, segments, navState?.key, router]);
+  }, [isAuthenticated, isHydrated, biometricEnabled, isLocked, segments, navState?.key, router]);
 }
 
 function RootLayoutNav() {
   useProtectedRouting();
+  useAppLock();
   useNetwork();
   const notificationRegistrationStarted = useRef(false);
   const { registerForPushNotifications } = useNotifications();
