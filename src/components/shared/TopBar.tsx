@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Bell } from "lucide-react-native";
 import { Avatar } from "@/components/ui/Avatar";
+import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
 import type { Therapist } from "@/types";
 
@@ -16,11 +17,15 @@ interface TopBarProps {
 export function TopBar({ therapist, title = "Physiobuddies", subtitle = "Therapist Partner", showNotification = true }: TopBarProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // OfflineBanner (rendered above every screen in the root layout) already pads for the
+  // status bar when it's showing — adding this too would double that gap.
+  const isOnline = useAppStore((s) => s.isOnline);
+  const topInset = isOnline ? insets.top : 0;
 
   return (
     <View
       className="bg-white/92 border-b border-border px-3.5 flex-row items-center justify-between"
-      style={{ zIndex: 10, paddingTop: insets.top, minHeight: 56 + insets.top }}
+      style={{ zIndex: 10, paddingTop: topInset, minHeight: 56 + topInset }}
     >
       <Pressable className="flex-row items-center gap-2.5" onPress={() => router.push("/(app)")}>
         <View className="w-6 h-6 rounded-[10px] items-center justify-center" style={{ backgroundColor: COLORS.accent }}>

@@ -1,5 +1,6 @@
 import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
 import { useEffect, useRef } from "react";
+import { View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -9,10 +10,13 @@ import "@/lib/nativewind-interop";
 import { DatabaseProvider } from "@/lib/db/provider";
 import { QueryProvider } from "@/lib/query/provider";
 import { ToastContainer } from "@/components/ui/Toast";
+import { OfflineBanner } from "@/components/shared/OfflineBanner";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useNetwork } from "@/lib/hooks/useNetwork";
 import { useNotifications } from "@/lib/hooks/useNotifications";
 import { useAppLock } from "@/lib/hooks/useAppLock";
+import { useSyncEngine } from "@/lib/hooks/useSyncEngine";
+import { useSessionSync } from "@/lib/hooks/useSessionSync";
 
 function useProtectedRouting() {
   const segments = useSegments() as string[];
@@ -45,6 +49,8 @@ function RootLayoutNav() {
   useProtectedRouting();
   useAppLock();
   useNetwork();
+  useSyncEngine();
+  useSessionSync();
   const notificationRegistrationStarted = useRef(false);
   const { registerForPushNotifications } = useNotifications();
   const { isAuthenticated, isHydrated } = useAuthStore();
@@ -58,14 +64,17 @@ function RootLayoutNav() {
   }, [isHydrated, isAuthenticated, registerForPushNotifications]);
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(app)" />
-      <Stack.Screen name="session" />
-      <Stack.Screen name="patient" />
-      <Stack.Screen name="delete-account" options={{ presentation: "modal" }} />
-      <Stack.Screen name="+not-found" />
-    </Stack>
+    <View style={{ flex: 1 }}>
+      <OfflineBanner />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(app)" />
+        <Stack.Screen name="session" />
+        <Stack.Screen name="patient" />
+        <Stack.Screen name="delete-account" options={{ presentation: "modal" }} />
+        <Stack.Screen name="+not-found" />
+      </Stack>
+    </View>
   );
 }
 

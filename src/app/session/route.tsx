@@ -1,8 +1,8 @@
 import { View, Text, Pressable, ScrollView, Linking } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { Phone, MessageSquare, Lock, ChevronLeft } from "lucide-react-native";
-import { Avatar, Chip, Button } from "@/components/ui";
+import { Phone, MessageSquare, Lock, ChevronLeft, MapPinOff } from "lucide-react-native";
+import { Avatar, Chip, Button, ErrorState } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useLocation } from "@/lib/hooks/useLocation";
@@ -12,7 +12,7 @@ export default function RouteScreen() {
   const router = useRouter();
   const { appointmentId } = useLocalSearchParams<{ appointmentId: string }>();
   const showToast = useAppStore((s) => s.showToast);
-  const { getCurrentLocation, openInMaps } = useLocation();
+  const { getCurrentLocation, openInMaps, permissionBlocked } = useLocation();
   const { data: appointment } = useQuery({
     queryKey: ["appointment", appointmentId],
     queryFn: () => appointmentApi.getById(appointmentId),
@@ -68,6 +68,19 @@ export default function RouteScreen() {
             </View>
           </View>
         </View>
+
+        {permissionBlocked && (
+          <View className="mx-4 mt-3.5">
+            <ErrorState
+              icon={MapPinOff}
+              tone="warning"
+              title="Location access denied"
+              badge="Permission"
+              description="Enable location permission to see travel time to patients and verify your presence at home visit locations."
+              action={{ label: "Open app settings", onPress: () => Linking.openSettings() }}
+            />
+          </View>
+        )}
 
         {appointment && (
           <>

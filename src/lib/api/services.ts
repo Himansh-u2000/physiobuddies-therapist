@@ -17,6 +17,7 @@ import type {
   EarningsSummary,
   AppNotification,
   AuthTokens,
+  Treatment,
 } from "@/types";
 import { OTP_CONFIG, USE_MOCK_AUTH } from "@/constants/config";
 import { getTokens } from "@/lib/storage/secure";
@@ -269,17 +270,37 @@ export const sessionApi = {
     return data;
   },
 
-  async complete(sessionId: string): Promise<{ payoutQueued: boolean }> {
+  /**
+   * `idempotencyKey` is generated once on the client when the session is first completed
+   * locally and persists across retries — a resend after a dropped response (offline, app
+   * killed mid-request) must never double-trigger a payout server-side.
+   */
+  async complete(sessionId: string, idempotencyKey?: string): Promise<{ payoutQueued: boolean }> {
     if (USE_MOCK) return delay({ payoutQueued: true }, 500);
-    const { data } = await client.put(`/session/${sessionId}/complete`);
+    const { data } = await client.put(
+      `/session/${sessionId}/complete`,
+      undefined,
+      idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : undefined,
+    );
     return data;
   },
 };
 
+/** What the sync queue sends over the wire — the same shape it read back out of SQLite. */
+export type TreatmentSubmitPayload = Omit<Treatment, "id" | "createdAt" | "updatedAt" | "syncStatus"> & {
+  elapsedSeconds: number;
+  checklist: unknown;
+  quickNote?: string;
+};
+
 export const treatmentApi = {
-  async submit(payload: unknown): Promise<{ id: string }> {
+  async submit(payload: TreatmentSubmitPayload, idempotencyKey?: string): Promise<{ id: string }> {
     if (USE_MOCK) return delay({ id: `treatment-${Date.now()}` }, 600);
-    const { data } = await client.post("/treatment", payload);
+    const { data } = await client.post(
+      "/treatment",
+      payload,
+      idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : undefined,
+    );
     return data;
   },
 };

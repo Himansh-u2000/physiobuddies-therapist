@@ -42,6 +42,21 @@ module.exports = {
       fontSize: {
         "2xs": ["10px", { lineHeight: "14px" }],
       },
+      // Prototype shadows are tinted with the `nav` navy (oklch(31% .08 238) ≈ #003553,
+      // effectively identical to `nav` #003554), not black — RN only renders one shadow
+      // layer, so these keep each CSS shadow's dominant (first) layer only.
+      boxShadow: {
+        sm: "0px 2px 8px rgba(0, 53, 84, 0.07)",
+        md: "0px 8px 28px rgba(0, 53, 84, 0.12)",
+        lg: "0px 20px 48px rgba(0, 53, 84, 0.16)",
+        btn: "0px 4px 14px rgba(0, 53, 84, 0.22)",
+      },
+      elevation: {
+        sm: 2,
+        md: 6,
+        lg: 12,
+        btn: 4,
+      },
     },
   },
   plugins: [],

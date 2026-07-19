@@ -1,26 +1,44 @@
 import { View, Text } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import { FlashList } from "@shopify/flash-list";
 import { LinearGradient } from "expo-linear-gradient";
-import { TrendingUp, Clock, ArrowDownCircle, AlertCircle } from "lucide-react-native";
+import { TrendingUp, Clock, ArrowDownCircle, AlertCircle, Wallet, TriangleAlert } from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
 import { WeeklyChart } from "@/components/dashboard/WeeklyChart";
-import { Skeleton } from "@/components/ui";
+import { PayoutTrendChart } from "@/components/charts/PayoutTrendChart";
+import { Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { earningsApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/stores/auth.store";
+import { useSyncedQuery } from "@/lib/hooks/useSyncedQuery";
+import { getCachedEarningsSummary, cacheEarningsSummary, getCachedTransactions, cacheTransactions } from "@/lib/db/repositories";
 import { COLORS } from "@/constants/config";
 import { formatCurrency } from "@/lib/utils/format";
 import type { Transaction } from "@/types";
 
 export default function EarningsScreen() {
+  const router = useRouter();
   const therapist = useAuthStore((s) => s.therapist);
-  const { data: earnings, isLoading: earningsLoading } = useQuery({
+  const {
+    data: earnings,
+    isLoading: earningsLoading,
+    isError: earningsError,
+    refetch: refetchEarnings,
+  } = useSyncedQuery({
     queryKey: ["earnings"],
     queryFn: earningsApi.getSummary,
+    readCache: getCachedEarningsSummary,
+    writeCache: cacheEarningsSummary,
   });
-  const { data: transactions, isLoading: txLoading } = useQuery({
+  const {
+    data: transactions,
+    isLoading: txLoading,
+    isError: txError,
+    refetch: refetchTx,
+  } = useSyncedQuery({
     queryKey: ["transactions"],
     queryFn: earningsApi.getTransactions,
+    readCache: getCachedTransactions,
+    writeCache: cacheTransactions,
   });
 
   const txIcon = (status: string) => {
@@ -53,11 +71,19 @@ export default function EarningsScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: 14, paddingBottom: 96 }}
         ListHeaderComponent={
-          earningsLoading || !earnings ? (
+          earningsLoading ? (
             <View style={{ gap: 10, marginBottom: 12 }}>
               <Skeleton height={140} radius={18} />
               <Skeleton height={120} radius={12} />
             </View>
+          ) : earningsError || !earnings ? (
+            <ErrorState
+              icon={TriangleAlert}
+              title="Something went wrong"
+              badge="Error"
+              description="We couldn't load your earnings summary right now. This is usually temporary. Your data is safe."
+              action={{ label: "Try again", onPress: () => refetchEarnings() }}
+            />
           ) : (
             <View style={{ gap: 12, marginBottom: 12 }}>
               <LinearGradient
@@ -86,11 +112,33 @@ export default function EarningsScreen() {
                 <Text className="text-white/60 text-[11px] mt-2.5">Next payout: {earnings.nextPayoutDate}</Text>
               </LinearGradient>
               <WeeklyChart data={earnings.weeklyChart} />
+              <PayoutTrendChart
+                data={earnings.weeklyChart}
+                trendLabel={`↑ ${earnings.changePercent}% vs last week`}
+              />
               <Text className="text-[15px] font-bold text-fg mt-1">Transactions</Text>
             </View>
           )
         }
-        ListEmptyComponent={!txLoading ? <Text className="text-muted text-center mt-10">No transactions</Text> : null}
+        ListEmptyComponent={
+          txLoading ? null : txError ? (
+            <ErrorState
+              icon={TriangleAlert}
+              title="Something went wrong"
+              badge="Error"
+              description="We couldn't load your transactions right now. This is usually temporary. Your data is safe."
+              action={{ label: "Try again", onPress: () => refetchTx() }}
+            />
+          ) : (
+            <EmptyState
+              icon={Wallet}
+              tone="success"
+              title="No earnings yet"
+              description="Complete your first paid session to see payouts and transactions here. Earnings are settled every Monday."
+              action={{ label: "View appointments", onPress: () => router.push("/(app)/appointments") }}
+            />
+          )
+        }
       />
     </View>
   );

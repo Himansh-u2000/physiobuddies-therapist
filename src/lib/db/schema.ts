@@ -48,6 +48,8 @@ export const appointments = sqliteTable("appointments", {
   amount: integer("amount").notNull().default(0),
   condition: text("condition").notNull(),
   address: text("address"),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
   distanceKm: real("distance_km"),
   etaMin: integer("eta_min"),
   notes: text("notes"),
@@ -70,6 +72,11 @@ export const sessions = sqliteTable("sessions", {
   checklist: text("checklist"),
   quickNote: text("quick_note"),
   syncStatus: text("sync_status").notNull().default("pending"),
+  // Generated once when the row is created, reused on every retry — this is what lets the
+  // (eventual) backend dedupe a session-complete call the client had to resend.
+  idempotencyKey: text("idempotency_key").notNull(),
+  syncAttempts: integer("sync_attempts").notNull().default(0),
+  nextRetryAt: integer("next_retry_at").notNull().default(0),
   updatedAt: integer("updated_at").notNull().default(0),
 });
 
@@ -91,6 +98,9 @@ export const treatments = sqliteTable("treatments", {
   followUpDate: text("follow_up_date"),
   attachments: text("attachments"),
   syncStatus: text("sync_status").notNull().default("pending"),
+  idempotencyKey: text("idempotency_key").notNull(),
+  syncAttempts: integer("sync_attempts").notNull().default(0),
+  nextRetryAt: integer("next_retry_at").notNull().default(0),
   createdAt: integer("created_at").notNull().default(0),
   updatedAt: integer("updated_at").notNull().default(0),
 });

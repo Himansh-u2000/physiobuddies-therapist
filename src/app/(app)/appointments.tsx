@@ -1,11 +1,13 @@
 import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
 import { FlashList } from "@shopify/flash-list";
+import { Calendar, TriangleAlert } from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
-import { Avatar, Chip, Skeleton } from "@/components/ui";
+import { Avatar, Chip, Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/stores/auth.store";
+import { useSyncedQuery } from "@/lib/hooks/useSyncedQuery";
+import { getCachedAppointments, cacheAppointments } from "@/lib/db/repositories";
 import { COLORS } from "@/constants/config";
 import { formatCurrency, getSessionTypeLabel } from "@/lib/utils/format";
 import type { Appointment } from "@/types";
@@ -13,9 +15,11 @@ import type { Appointment } from "@/types";
 export default function AppointmentsScreen() {
   const router = useRouter();
   const therapist = useAuthStore((s) => s.therapist);
-  const { data: appointments, isLoading } = useQuery({
+  const { data: appointments, isLoading, isError, refetch } = useSyncedQuery({
     queryKey: ["appointments"],
     queryFn: appointmentApi.list,
+    readCache: getCachedAppointments,
+    writeCache: cacheAppointments,
   });
 
   const renderItem = ({ item }: { item: Appointment }) => (
@@ -85,8 +89,20 @@ export default function AppointmentsScreen() {
               <Skeleton height={110} radius={14} />
               <Skeleton height={110} radius={14} />
             </View>
+          ) : isError ? (
+            <ErrorState
+              icon={TriangleAlert}
+              title="Something went wrong"
+              badge="Error"
+              description="We couldn't load your appointments right now. This is usually temporary. Your data is safe."
+              action={{ label: "Try again", onPress: () => refetch() }}
+            />
           ) : (
-            <Text className="text-muted text-center mt-10">No appointments</Text>
+            <EmptyState
+              icon={Calendar}
+              title="No appointments today"
+              description="You don't have any sessions scheduled for today. Add your availability so patients can book a clinic, home, or online slot."
+            />
           )
         }
       />

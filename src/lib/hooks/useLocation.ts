@@ -5,13 +5,18 @@ import { Linking, Platform } from "react-native";
 export function useLocation() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // True once the OS says it won't prompt again — distinct from "denied but can ask again",
+  // which the native re-request already covers with no extra UI needed.
+  const [permissionBlocked, setPermissionBlocked] = useState(false);
 
   const requestPermission = useCallback(async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
+    const result = await Location.requestForegroundPermissionsAsync();
+    if (result.status !== "granted") {
       setErrorMsg("Location permission denied");
+      setPermissionBlocked(!result.canAskAgain);
       return false;
     }
+    setPermissionBlocked(false);
     return true;
   }, []);
 
@@ -45,5 +50,5 @@ export function useLocation() {
     [],
   );
 
-  return { location, errorMsg, requestPermission, getCurrentLocation, openInMaps };
+  return { location, errorMsg, permissionBlocked, requestPermission, getCurrentLocation, openInMaps };
 }

@@ -9,14 +9,18 @@ export function useCamera() {
   const [lastPhoto, setLastPhoto] = useState<string | null>(null);
   const cameraRef = useRef<CameraView | null>(null);
 
+  /**
+   * Returns the full permission response (not just a boolean) so callers can tell "denied,
+   * ask again" from "permanently denied" — `cameraPermission` state updates asynchronously
+   * and reading it right after this resolves would race the state update.
+   */
   const ensurePermission = useCallback(async () => {
-    const status = await requestCameraPermission();
-    return status.granted;
+    return requestCameraPermission();
   }, [requestCameraPermission]);
 
   const takePhoto = useCallback(async () => {
-    const granted = await ensurePermission();
-    if (!granted || !cameraRef.current) return null;
+    const status = await ensurePermission();
+    if (!status.granted || !cameraRef.current) return null;
     try {
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.7,

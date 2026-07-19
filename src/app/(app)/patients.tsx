@@ -1,12 +1,14 @@
 import { useState, useMemo } from "react";
 import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
 import { FlashList } from "@shopify/flash-list";
+import { Users, TriangleAlert, SearchX } from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
-import { Avatar, Chip, Input, Skeleton } from "@/components/ui";
+import { Avatar, Chip, Input, Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { patientApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/stores/auth.store";
+import { useSyncedQuery } from "@/lib/hooks/useSyncedQuery";
+import { getCachedPatients, cachePatients } from "@/lib/db/repositories";
 import { COLORS } from "@/constants/config";
 import { debounce } from "@/lib/utils/format";
 import type { Patient } from "@/types";
@@ -17,9 +19,11 @@ export default function PatientsScreen() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  const { data: patients, isLoading } = useQuery({
+  const { data: patients, isLoading, isError, refetch } = useSyncedQuery({
     queryKey: ["patients"],
     queryFn: patientApi.list,
+    readCache: getCachedPatients,
+    writeCache: cachePatients,
   });
 
   const debouncedSet = useMemo(() => debounce(setDebouncedSearch, 300), []);
@@ -98,8 +102,28 @@ export default function PatientsScreen() {
               <Skeleton height={100} radius={14} />
               <Skeleton height={100} radius={14} />
             </View>
+          ) : isError ? (
+            <ErrorState
+              icon={TriangleAlert}
+              title="Something went wrong"
+              badge="Error"
+              description="We couldn't load your patients right now. This is usually temporary. Your data is safe."
+              action={{ label: "Try again", onPress: () => refetch() }}
+            />
+          ) : debouncedSearch ? (
+            <EmptyState
+              icon={SearchX}
+              tone="neutral"
+              title="No matches"
+              description={`No patients match "${debouncedSearch}". Try a different name or condition.`}
+            />
           ) : (
-            <Text className="text-muted text-center mt-10">No patients found</Text>
+            <EmptyState
+              icon={Users}
+              tone="info"
+              title="No patients yet"
+              description="Patient profiles appear automatically after your first confirmed appointment. Complete your verification to start accepting bookings."
+            />
           )
         }
       />

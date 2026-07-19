@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS appointments (
   amount INTEGER NOT NULL DEFAULT 0,
   condition TEXT NOT NULL,
   address TEXT,
+  latitude REAL,
+  longitude REAL,
   distance_km REAL,
   eta_min INTEGER,
   notes TEXT,
@@ -74,6 +76,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   checklist TEXT,
   quick_note TEXT,
   sync_status TEXT NOT NULL DEFAULT 'pending',
+  idempotency_key TEXT NOT NULL DEFAULT '',
+  sync_attempts INTEGER NOT NULL DEFAULT 0,
+  next_retry_at INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_appointment ON sessions(appointment_id);
@@ -97,6 +102,9 @@ CREATE TABLE IF NOT EXISTS treatments (
   follow_up_date TEXT,
   attachments TEXT,
   sync_status TEXT NOT NULL DEFAULT 'pending',
+  idempotency_key TEXT NOT NULL DEFAULT '',
+  sync_attempts INTEGER NOT NULL DEFAULT 0,
+  next_retry_at INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL DEFAULT 0
 );

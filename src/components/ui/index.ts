@@ -6,5 +6,7 @@ export { Avatar, Portrait } from "./Avatar";
 export { OTPInput } from "./OTPInput";
 export { Toggle } from "./Toggle";
 export { Skeleton } from "./Skeleton";
+export { EmptyState } from "./EmptyState";
+export { ErrorState } from "./ErrorState";
 export { ToastContainer } from "./Toast";
 export { BottomSheet, useBottomSheet } from "./BottomSheet";

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { View, Text, Pressable, ScrollView, TextInput, Modal, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, ScrollView, TextInput, Modal, ActivityIndicator, Linking } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { CameraView } from "expo-camera";
 import Svg, { Circle } from "react-native-svg";
-import { Camera, FileText, Pause, CheckCircle2, Circle as CircleIcon, X } from "lucide-react-native";
-import { Chip, Button, BottomSheet, useBottomSheet } from "@/components/ui";
+import { Camera, CameraOff, FileText, Pause, CheckCircle2, Circle as CircleIcon, X } from "lucide-react-native";
+import { Chip, Button, BottomSheet, useBottomSheet, ErrorState } from "@/components/ui";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useSessionStore } from "@/lib/stores/session.store";
 import { useCamera } from "@/lib/hooks/useCamera";
@@ -16,28 +16,42 @@ import { formatTime } from "@/lib/utils/format";
 export default function ActiveSessionScreen() {
   const router = useRouter();
   const showToast = useAppStore((s) => s.showToast);
-  const { patientName, condition, elapsedSeconds, checklist, toggleChecklistItem, quickNote, setQuickNote, tick, endSession } = useSessionStore();
+  // Selectors, not a bare `useSessionStore()` — this screen must not re-subscribe to
+  // `elapsedSeconds`, or the once-a-second `tick()` re-renders the checklist, note input,
+  // and buttons along with the ring. Only <SessionTimerRing> below selects elapsedSeconds.
+  const patientName = useSessionStore((s) => s.patientName);
+  const condition = useSessionStore((s) => s.condition);
+  const checklist = useSessionStore((s) => s.checklist);
+  const toggleChecklistItem = useSessionStore((s) => s.toggleChecklistItem);
+  const quickNote = useSessionStore((s) => s.quickNote);
+  const setQuickNote = useSessionStore((s) => s.setQuickNote);
+  const tick = useSessionStore((s) => s.tick);
+  const endSession = useSessionStore((s) => s.endSession);
   const sheet = useBottomSheet();
   const { cameraRef, ensurePermission, takePhoto } = useCamera();
-  const [, forceUpdate] = useState(0);
   const [cameraVisible, setCameraVisible] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [cameraPermissionBlocked, setCameraPermissionBlocked] = useState(false);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      tick();
-      forceUpdate((n) => n + 1);
-    }, 1000);
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, [tick]);
 
   const handleOpenCamera = async () => {
-    const granted = await ensurePermission();
-    if (!granted) {
-      showToast("Camera permission required");
+    const status = await ensurePermission();
+    if (!status.granted) {
+      // canAskAgain === false means the OS won't show its prompt anymore — the toast would
+      // leave the user stuck re-tapping a button that can never succeed again.
+      if (!status.canAskAgain) {
+        setCameraPermissionBlocked(true);
+      } else {
+        showToast("Camera permission required");
+      }
       return;
     }
+    setCameraPermissionBlocked(false);
     setCameraReady(false);
     setCameraVisible(true);
   };
@@ -86,9 +100,6 @@ export default function ActiveSessionScreen() {
   };
 
   const doneCount = checklist.filter((c) => c.done).length;
-  const progress = Math.min(elapsedSeconds / SESSION_CONFIG.defaultDurationSec, 1);
-  const circumference = 2 * Math.PI * 60;
-  const dashOffset = circumference * (1 - progress);
 
   return (
     <View className="flex-1 bg-bg">
@@ -99,26 +110,7 @@ export default function ActiveSessionScreen() {
         </View>
 
         <LinearGradient colors={["#00486b", "#006071"]} className="rounded-md p-5 items-center" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.28, shadowRadius: 32, elevation: 10 }}>
-          <View className="relative items-center justify-center mb-3.5">
-            <Svg width={140} height={140} style={{ transform: [{ rotate: "-90deg" }] }}>
-              <Circle cx={70} cy={70} r={60} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth={8} />
-              <Circle
-                cx={70}
-                cy={70}
-                r={60}
-                fill="none"
-                stroke={COLORS.successLight}
-                strokeWidth={8}
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={dashOffset}
-              />
-            </Svg>
-            <View className="absolute items-center">
-              <Text className="text-[22px] font-extrabold text-white" style={{ fontFamily: "monospace" }}>{formatTime(elapsedSeconds)}</Text>
-              <Text className="text-white/60 text-[10px] font-bold">elapsed</Text>
-            </View>
-          </View>
+          <SessionTimerRing />
           <Text className="text-white text-[18px] font-bold">{patientName}</Text>
           <Text className="text-white/70 text-[12px] mt-1">{condition} · Home visit</Text>
           <View className="flex-row mt-3.5" style={{ gap: 6 }}>
@@ -155,6 +147,16 @@ export default function ActiveSessionScreen() {
         </View>
 
         <View className="mt-3" style={{ gap: 10 }}>
+          {cameraPermissionBlocked && (
+            <ErrorState
+              icon={CameraOff}
+              tone="warning"
+              title="Camera access denied"
+              badge="Permission"
+              description="Camera permission is required to upload session photos. Enable it in your device settings to continue."
+              action={{ label: "Open app settings", onPress: () => Linking.openSettings() }}
+            />
+          )}
           <View>
             <Text className="text-[12px] font-bold text-fg mb-1.5">Quick session note</Text>
             <TextInput
@@ -219,6 +221,37 @@ export default function ActiveSessionScreen() {
           </View>
         </View>
       </Modal>
+    </View>
+  );
+}
+
+/** Isolated so the once-a-second tick only re-renders this ring, not the whole screen. */
+function SessionTimerRing() {
+  const elapsedSeconds = useSessionStore((s) => s.elapsedSeconds);
+  const progress = Math.min(elapsedSeconds / SESSION_CONFIG.defaultDurationSec, 1);
+  const circumference = 2 * Math.PI * 60;
+  const dashOffset = circumference * (1 - progress);
+
+  return (
+    <View className="relative items-center justify-center mb-3.5">
+      <Svg width={140} height={140} style={{ transform: [{ rotate: "-90deg" }] }}>
+        <Circle cx={70} cy={70} r={60} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth={8} />
+        <Circle
+          cx={70}
+          cy={70}
+          r={60}
+          fill="none"
+          stroke={COLORS.successLight}
+          strokeWidth={8}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+        />
+      </Svg>
+      <View className="absolute items-center">
+        <Text className="text-[22px] font-extrabold text-white" style={{ fontFamily: "monospace" }}>{formatTime(elapsedSeconds)}</Text>
+        <Text className="text-white/60 text-[10px] font-bold">elapsed</Text>
+      </View>
     </View>
   );
 }

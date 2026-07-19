@@ -2,12 +2,16 @@ import { useState } from "react";
 import { View, Text, Pressable, TextInput, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Crypto from "expo-crypto";
 import { ChevronLeft, Plus, X, Upload, Save, CheckCircle2 } from "lucide-react-native";
 import { Avatar, Chip, Button, TextArea, Input, BottomSheet, useBottomSheet } from "@/components/ui";
 import { useSessionStore } from "@/lib/stores/session.store";
 import { useAppStore } from "@/lib/stores/app.store";
-import { sessionApi, treatmentApi } from "@/lib/api/services";
+import { useDatabase } from "@/lib/db/provider";
+import { upsertTreatmentDraft, upsertSessionDraft, getSessionById } from "@/lib/db/repositories";
+import { flushPendingSync } from "@/lib/db/sync/syncEngine";
 import { COLORS } from "@/constants/config";
+import type { AssessmentFinding, TreatmentGiven, ExercisePrescribed } from "@/types";
 
 const PAIN_REGIONS = ["Lower back", "Upper back", "Neck", "Left shoulder", "Right shoulder", "Left knee", "Right knee", "Hip", "Ankle", "Wrist"];
 const ASSESSMENT_TYPES = [
@@ -30,10 +34,21 @@ const TREATMENT_TYPES = [
 ];
 const EXERCISE_OPTIONS = ["Cat-Camel Stretch", "Knee-to-Chest", "Pelvic Tilt", "Bridges", "Bird-Dog", "McKenzie Extension", "Clamshell", "Wall Sit", "SLR", "Plank"];
 
+/** The form only captures which types were picked, not the prototype's per-finding
+ *  detail sub-fields (ROM degrees, tenderness location, etc.) — nothing to lose by wrapping
+ *  them with empty `details` here; that's already all the UI collects today. */
+function toFindings(types: string[], labels: { type: string; label: string }[]): AssessmentFinding[] {
+  return types.map((type) => ({ id: type, type, label: labels.find((l) => l.type === type)?.label ?? type, details: {} }));
+}
+function toTreatmentsGiven(types: string[], labels: { type: string; label: string }[]): TreatmentGiven[] {
+  return types.map((type) => ({ id: type, type, label: labels.find((l) => l.type === type)?.label ?? type, details: {} }));
+}
+
 export default function TreatmentFormScreen() {
   const router = useRouter();
   const showToast = useAppStore((s) => s.showToast);
-  const { sessionId, appointmentId, patientName, condition, elapsedSeconds, checklist, quickNote } = useSessionStore();
+  const { db } = useDatabase();
+  const { sessionId, appointmentId, patientId, patientName, condition } = useSessionStore();
   const safeName = patientName ?? "Patient";
   const safeCondition = condition ?? "condition";
   const sheet = useBottomSheet();
@@ -43,10 +58,10 @@ export default function TreatmentFormScreen() {
   const [painScale, setPainScale] = useState(7);
   const [assessments, setAssessments] = useState<string[]>(["rom", "slr", "spasm"]);
   const [treatments, setTreatments] = useState<string[]>(["mobilisation", "tens", "massage"]);
-  const [exercises, setExercises] = useState([
-    { name: "Cat-Camel Stretch", reps: 10, sets: 2 },
-    { name: "Knee-to-Chest", reps: 15, sets: 2 },
-    { name: "Pelvic Tilt", reps: 15, sets: 3 },
+  const [exercises, setExercises] = useState<ExercisePrescribed[]>([
+    { id: Crypto.randomUUID(), name: "Cat-Camel Stretch", reps: 10, sets: 2 },
+    { id: Crypto.randomUUID(), name: "Knee-to-Chest", reps: 15, sets: 2 },
+    { id: Crypto.randomUUID(), name: "Pelvic Tilt", reps: 15, sets: 3 },
   ]);
   const [clinicalNotes, setClinicalNotes] = useState("Patient responded well, reported 30% relief post-session. Anterior pelvic tilt observed — consider core strengthening focus next visit.");
   const [precautions, setPrecautions] = useState("Avoid forward bending, prolonged sitting. Use lumbar roll.");
@@ -63,26 +78,78 @@ export default function TreatmentFormScreen() {
   const toggleTreatment = (type: string) => {
     setTreatments((prev) => prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]);
   };
-  const addExercise = () => setExercises((prev) => [...prev, { name: EXERCISE_OPTIONS[0], reps: 10, sets: 2 }]);
+  const addExercise = () => setExercises((prev) => [...prev, { id: Crypto.randomUUID(), name: EXERCISE_OPTIONS[0], reps: 10, sets: 2 }]);
   const removeExercise = (idx: number) => setExercises((prev) => prev.filter((_, i) => i !== idx));
+
+  /** Builds the row to persist. Local-first — this always succeeds regardless of connectivity. */
+  const persistTreatment = async () => {
+    if (!db || !sessionId || !appointmentId) return false;
+    await upsertTreatmentDraft(db, {
+      id: Crypto.randomUUID(),
+      sessionId,
+      appointmentId,
+      patientId: patientId ?? "",
+      patientName: safeName,
+      chiefComplaint,
+      painRegions,
+      painScale,
+      assessmentFindings: toFindings(assessments, ASSESSMENT_TYPES),
+      treatmentsGiven: toTreatmentsGiven(treatments, TREATMENT_TYPES),
+      exercises,
+      clinicalNotes,
+      precautions,
+      followUpRequired,
+      followUpDate,
+      attachments: [],
+      syncStatus: "pending",
+      idempotencyKey: Crypto.randomUUID(),
+    });
+    return true;
+  };
+
+  const handleSaveDraft = async () => {
+    const saved = await persistTreatment().catch(() => false);
+    showToast(saved ? "Draft saved — you can return any time" : "Couldn't save draft — no active session");
+  };
 
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      await treatmentApi.submit({
-        sessionId,
-        appointmentId,
-        chiefComplaint, painRegions, painScale, assessments, treatments, exercises,
-        clinicalNotes, precautions, followUpRequired, followUpDate, elapsedSeconds, checklist, quickNote,
-      });
-      if (sessionId) {
-        await sessionApi.complete(sessionId);
+      const saved = await persistTreatment();
+      if (!saved || !db || !sessionId) throw new Error("No active session to complete");
+
+      // Mark the session completed locally FIRST — this is what makes it (and its
+      // treatment) eligible for the sync queue. Durable the moment this line returns,
+      // independent of whatever happens to the network call right after.
+      const session = await getSessionById(db, sessionId);
+      if (session) {
+        await upsertSessionDraft(db, {
+          id: session.id,
+          appointmentId: session.appointmentId,
+          patientId: session.patientId,
+          patientName: session.patientName,
+          condition: session.condition,
+          type: session.type,
+          status: "completed",
+          startedAt: session.startedAt,
+          endedAt: Date.now(),
+          elapsedSeconds: session.elapsedSeconds,
+          checklist: session.checklist,
+          quickNote: session.quickNote,
+          syncStatus: "pending",
+        });
       }
+
+      // Best-effort immediate push — if online this resolves in the background almost
+      // instantly (same feel as the old direct call); if offline it silently no-ops and
+      // useSyncEngine picks the row up on reconnect. Either way the data's already safe.
+      flushPendingSync(db).catch(() => {});
+
       sheet.close();
       showToast("Session completed — payout queued");
       setTimeout(() => router.replace("/session/complete"), 500);
     } catch {
-      showToast("Failed to submit. Try again.");
+      showToast("Couldn't complete session. It's saved locally — try again from here.");
     } finally {
       setSubmitting(false);
     }
@@ -248,7 +315,7 @@ export default function TreatmentFormScreen() {
           </Section>
 
           <View style={{ gap: 10, paddingBottom: 20 }}>
-            <Button variant="secondary" onPress={() => showToast("Draft saved — you can return any time")}>
+            <Button variant="secondary" onPress={handleSaveDraft}>
               <Save size={16} color={COLORS.accent} />
               <Text className="text-accent font-bold text-[14px]">Save draft</Text>
             </Button>

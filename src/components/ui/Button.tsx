@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { Pressable, Text, type PressableProps, type ViewStyle } from "react-native";
-import { GRADIENTS, COLORS } from "@/constants/config";
+import { GRADIENTS } from "@/constants/config";
 
 type ButtonVariant = "primary" | "secondary" | "success" | "danger" | "ghost";
 type ButtonSize = "default" | "small";
@@ -58,6 +58,10 @@ export function Button({
         style={flatStyle}
         {...props}
       >
+        {/* No shadow here: `overflow-hidden` (needed to clip the gradient to the rounded
+            corners) also clips RN's shadow on iOS. Pre-existing gap — the gradient variant
+            (primary/success, the default) has never had a shadow; fixing it needs an outer
+            shadow wrapper + inner clipped view, verified on a running build, not guessed here. */}
         <LinearGradient
           colors={colors as unknown as [string, string]}
           start={{ x: 0, y: 0 }}
@@ -72,8 +76,8 @@ export function Button({
   return (
     <Pressable
       disabled={disabled}
-      className={`${s.height} ${s.radius} ${fullWidth ? "w-full" : ""} ${v.bg} ${v.border} border items-center justify-center flex-row gap-2 ${disabled ? "opacity-50" : ""}`}
-      style={[{ shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 4 }, flatStyle]}
+      className={`${s.height} ${s.radius} ${fullWidth ? "w-full" : ""} ${v.bg} ${v.border} border shadow-btn items-center justify-center flex-row gap-2 ${disabled ? "opacity-50" : ""}`}
+      style={flatStyle}
       {...props}
     >
       {content}

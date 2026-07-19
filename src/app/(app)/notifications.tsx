@@ -1,11 +1,12 @@
 import { View, Text, Pressable } from "react-native";
-import { useQuery } from "@tanstack/react-query";
 import { FlashList } from "@shopify/flash-list";
-import { Calendar, IndianRupee, ClipboardList, Info, MessageSquare } from "lucide-react-native";
+import { Calendar, IndianRupee, ClipboardList, Info, MessageSquare, BellOff, TriangleAlert } from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
-import { Skeleton } from "@/components/ui";
+import { Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { notificationApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/stores/auth.store";
+import { useSyncedQuery } from "@/lib/hooks/useSyncedQuery";
+import { getCachedNotifications, cacheNotifications } from "@/lib/db/repositories";
 import { COLORS } from "@/constants/config";
 import type { AppNotification } from "@/types";
 
@@ -19,9 +20,11 @@ const iconMap = {
 
 export default function NotificationsScreen() {
   const therapist = useAuthStore((s) => s.therapist);
-  const { data: notifications, isLoading } = useQuery({
+  const { data: notifications, isLoading, isError, refetch } = useSyncedQuery({
     queryKey: ["notifications"],
     queryFn: notificationApi.list,
+    readCache: getCachedNotifications,
+    writeCache: cacheNotifications,
   });
 
   const renderItem = ({ item }: { item: AppNotification }) => {
@@ -59,8 +62,21 @@ export default function NotificationsScreen() {
               <Skeleton height={90} radius={13} />
               <Skeleton height={90} radius={13} />
             </View>
+          ) : isError ? (
+            <ErrorState
+              icon={TriangleAlert}
+              title="Something went wrong"
+              badge="Error"
+              description="We couldn't load your notifications right now. This is usually temporary. Your data is safe."
+              action={{ label: "Try again", onPress: () => refetch() }}
+            />
           ) : (
-            <Text className="text-muted text-center mt-10">No notifications</Text>
+            <EmptyState
+              icon={BellOff}
+              tone="neutral"
+              title="All caught up!"
+              description="You have no new notifications. We'll notify you about appointments, payments, document updates, and patient messages."
+            />
           )
         }
       />

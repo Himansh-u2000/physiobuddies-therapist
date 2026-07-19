@@ -75,6 +75,8 @@ export const STORAGE_KEYS = {
   email: "pb_email",
   pushToken: "pb_push_token",
   preferences: "pb_preferences",
+  /** SQLCipher key for the local SQLite cache — device-scoped, survives logout/login. */
+  dbEncryptionKey: "pb_db_key",
 } as const;
 
 export const OTP_CONFIG = {

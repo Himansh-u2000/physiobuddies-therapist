@@ -41,7 +41,7 @@ export default function SessionOtpScreen() {
     try {
       const { sessionId } = await sessionApi.start(appointmentId, code);
       if (appointment) {
-        startSession(sessionId, appointment.id, appointment.patientName, appointment.condition);
+        startSession(sessionId, appointment.id, appointment.patientName, appointment.condition, appointment.patientId, appointment.type);
       }
       showToast("Session started — timer running");
       setTimeout(() => router.replace("/session/active"), 500);
@@ -58,7 +58,7 @@ export default function SessionOtpScreen() {
     setLoading(true);
     try {
       const { sessionId } = await sessionApi.startFlagged(appointmentId);
-      startSession(sessionId, appointment.id, appointment.patientName, appointment.condition);
+      startSession(sessionId, appointment.id, appointment.patientName, appointment.condition, appointment.patientId, appointment.type);
       showToast("Supervisor notified - flagged start recorded");
       setTimeout(() => router.replace("/session/active"), 500);
     } catch {
