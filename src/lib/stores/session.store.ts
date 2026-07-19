@@ -50,6 +50,12 @@ interface SessionStore {
   toggleChecklistItem: (id: string) => void;
   setQuickNote: (note: string) => void;
   endSession: () => void;
+  /** Called once the treatment is submitted and the session is marked completed in SQLite.
+   *  Flips `isActive` false so `active.tsx`'s tick interval stops (it doesn't unmount when
+   *  the flow navigates on to /session/treatment or /session/complete — it stays mounted
+   *  underneath). Deliberately doesn't clear the other fields: /session/complete still needs
+   *  patientName/condition/elapsedSeconds to render its summary. */
+  completeSession: () => void;
   reset: () => void;
 }
 
@@ -141,6 +147,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set({ isActive: false });
     persistDraft(get(), { status: "paused" });
   },
+
+  completeSession: () => set({ isActive: false }),
 
   reset: () =>
     set({

@@ -6,14 +6,16 @@ import {
   getPendingSyncSessions,
   markSessionSyncResult,
   getSessionById,
+  getTreatmentBySessionId,
 } from "@/lib/db/repositories";
 
 /**
  * The queue exists to close a real bug: submitting a treatment / completing a session
- * offline used to just throw and lose the draft. These tests pin the two properties that
+ * offline used to just throw and lose the draft. These tests pin the properties that
  * actually matter for money — a session's completion is never pushed before its treatment
- * record exists server-side, and a failed push is retried with backoff, never dropped or
- * hammered.
+ * is *confirmed synced* server-side (not merely attempted in the same pass), overlapping
+ * flush triggers share one execution instead of double-submitting, and a failed push is
+ * retried with backoff, never dropped or hammered.
  */
 
 jest.mock("@/lib/api/services", () => ({
@@ -29,6 +31,9 @@ jest.mock("@/lib/db/repositories", () => ({
   markSessionSyncResult: jest.fn(async () => {}),
   sessionRowToDomain: jest.fn((row) => row),
   getSessionById: jest.fn(async () => null),
+  getTreatmentBySessionId: jest.fn(async () => ({ syncStatus: "synced" })),
+  requeueErroredSessions: jest.fn(async () => {}),
+  requeueErroredTreatments: jest.fn(async () => {}),
 }));
 
 const FAKE_DB = {} as never;
@@ -51,6 +56,7 @@ const sessionRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (getTreatmentBySessionId as jest.Mock).mockResolvedValue({ syncStatus: "synced" });
 });
 
 describe("nextBackoffMs", () => {
@@ -122,8 +128,30 @@ describe("flushPendingSync — sessions", () => {
     expect(sessionApi.complete).not.toHaveBeenCalled();
   });
 
-  it("completes with the row's idempotency key and marks it synced", async () => {
+  it("does not complete a session until its treatment is confirmed synced — attempted in the same pass is not enough", async () => {
+    // The treatment loop ran (or even "succeeded" per some other bookkeeping) but the row
+    // itself isn't actually synced yet — e.g. it parked as "error", or hasn't been reached.
     (getPendingSyncSessions as jest.Mock).mockResolvedValue([sessionRow()]);
+    (getTreatmentBySessionId as jest.Mock).mockResolvedValue({ syncStatus: "pending" });
+
+    const result = await flushPendingSync(FAKE_DB);
+
+    expect(sessionApi.complete).not.toHaveBeenCalled();
+    expect(result.sessionsSynced).toBe(0);
+  });
+
+  it("treats a missing treatment record the same as not-yet-synced, not as nothing-to-wait-for", async () => {
+    (getPendingSyncSessions as jest.Mock).mockResolvedValue([sessionRow()]);
+    (getTreatmentBySessionId as jest.Mock).mockResolvedValue(null);
+
+    await flushPendingSync(FAKE_DB);
+
+    expect(sessionApi.complete).not.toHaveBeenCalled();
+  });
+
+  it("completes with the row's idempotency key and marks it synced once its treatment is synced", async () => {
+    (getPendingSyncSessions as jest.Mock).mockResolvedValue([sessionRow()]);
+    (getTreatmentBySessionId as jest.Mock).mockResolvedValue({ syncStatus: "synced" });
     (sessionApi.complete as jest.Mock).mockResolvedValue({ payoutQueued: true });
 
     const result = await flushPendingSync(FAKE_DB);
@@ -154,5 +182,30 @@ describe("flushPendingSync — sessions", () => {
     await flushPendingSync(FAKE_DB);
 
     expect(order).toEqual(["treatment", "session"]);
+  });
+});
+
+describe("flushPendingSync — single-flight", () => {
+  it("shares one execution across overlapping calls instead of double-submitting", async () => {
+    (getPendingSyncSessions as jest.Mock).mockResolvedValue([sessionRow()]);
+    (sessionApi.complete as jest.Mock).mockResolvedValue({ payoutQueued: true });
+
+    // Two overlapping triggers, as would happen from treatment.tsx's immediate flush racing
+    // useSyncEngine's edge trigger — called back-to-back with no await between them, so the
+    // second must hit the in-flight guard rather than starting its own pass.
+    const [firstResult, secondResult] = await Promise.all([flushPendingSync(FAKE_DB), flushPendingSync(FAKE_DB)]);
+
+    expect(sessionApi.complete).toHaveBeenCalledTimes(1);
+    expect(firstResult).toBe(secondResult);
+  });
+
+  it("runs a fresh flush on the next call once the in-flight one has settled", async () => {
+    (getPendingSyncSessions as jest.Mock).mockResolvedValue([sessionRow()]);
+    (sessionApi.complete as jest.Mock).mockResolvedValue({ payoutQueued: true });
+
+    await flushPendingSync(FAKE_DB);
+    await flushPendingSync(FAKE_DB);
+
+    expect(sessionApi.complete).toHaveBeenCalledTimes(2);
   });
 });

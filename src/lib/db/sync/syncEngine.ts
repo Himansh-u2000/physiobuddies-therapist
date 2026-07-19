@@ -9,6 +9,9 @@ import {
   markSessionSyncResult,
   sessionRowToDomain,
   getSessionById,
+  getTreatmentBySessionId,
+  requeueErroredSessions,
+  requeueErroredTreatments,
 } from "../repositories";
 
 const BASE_BACKOFF_MS = 30_000;
@@ -42,15 +45,27 @@ function resultFor(err: unknown, attempts: number): SyncStatusUpdate {
 
 /**
  * Flushes locally-queued treatment submissions and session completions to the server.
- * Treatments are synced before sessions — a session can only be marked complete
- * server-side once its treatment record exists there. Each row carries its own
- * client-generated idempotency key (set once, at creation), so a retry after a dropped
- * response — offline, app killed mid-request — can never double-submit.
+ * Treatments are synced before sessions, and a session is only pushed once its treatment
+ * is actually confirmed `synced` — not merely attempted in the same pass — so the server
+ * can never end up with a completed session and no treatment record. Each row carries its
+ * own client-generated idempotency key (set once, at creation), so a retry after a dropped
+ * response — offline, app killed mid-request — can never double-submit *on the client side*
+ * (the backend doesn't dedupe on it yet — see `progress.md` blocker #4).
  *
- * Safe to call repeatedly and concurrently-ish: rows already synced or not yet due for
- * retry (`nextRetryAt` in the future) are simply not selected.
+ * Single-flighted: `useSyncEngine` can trigger this from three independent places (an
+ * immediate post-submit call, a reconnect edge, a periodic safety net) that can easily
+ * overlap. Without this, two overlapping flushes would both select the same pending row
+ * before either marks it synced, sending the same submission twice.
  */
-export async function flushPendingSync(db: DrizzleDB): Promise<SyncResult> {
+let inFlight: Promise<SyncResult> | null = null;
+export function flushPendingSync(db: DrizzleDB): Promise<SyncResult> {
+  inFlight ??= runFlush(db).finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+async function runFlush(db: DrizzleDB): Promise<SyncResult> {
   const now = Date.now();
   let treatmentsSynced = 0;
   let sessionsSynced = 0;
@@ -87,6 +102,14 @@ export async function flushPendingSync(db: DrizzleDB): Promise<SyncResult> {
     // A session still "active" locally has nothing to sync yet — it's just a live draft,
     // not a completion. Only "completed" sessions represent a real outbound call.
     if (row.status !== "completed") continue;
+    // Ordering above (treatments looped first) is only an attempt order, not a guarantee —
+    // a treatment can fail or park as "error" in the same pass. Require its actual synced
+    // state before pushing the completion, or the server can end up with a completed
+    // session and no treatment record. Every completed session has exactly one treatment
+    // by construction (handleSubmit writes both) — a missing one here is treated the same
+    // as "not synced yet", not as "nothing to wait for".
+    const treatment = await getTreatmentBySessionId(db, row.id);
+    if (treatment?.syncStatus !== "synced") continue;
     const session = sessionRowToDomain(row);
     try {
       await sessionApi.complete(session.id, row.idempotencyKey);
@@ -99,4 +122,16 @@ export async function flushPendingSync(db: DrizzleDB): Promise<SyncResult> {
   }
 
   return { treatmentsSynced, sessionsSynced, failed };
+}
+
+/**
+ * Non-retryable failures (validation, 404, and — the one that matters here — 401 from a
+ * dead refresh token) park a row as `syncStatus: "error"` so the queue stops hammering it.
+ * But a 401 during an offline-then-reconnect completion isn't really permanent — it just
+ * means the session died before the app could refresh it. Re-queuing "error" rows whenever
+ * the user successfully (re-)authenticates gives them another chance instead of leaving a
+ * payout silently stuck forever with no UI surfacing it.
+ */
+export async function requeueErroredSync(db: DrizzleDB): Promise<void> {
+  await Promise.all([requeueErroredSessions(db), requeueErroredTreatments(db)]);
 }

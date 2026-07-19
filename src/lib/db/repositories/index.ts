@@ -13,6 +13,7 @@ export {
   getPendingSyncSessions,
   markSessionSyncResult,
   sessionRowToDomain,
+  requeueErroredSessions,
 } from "./sessionsRepo";
 export {
   getTreatmentBySessionId,
@@ -20,4 +21,5 @@ export {
   getPendingSyncTreatments,
   markTreatmentSyncResult,
   treatmentRowToDomain,
+  requeueErroredTreatments,
 } from "./treatmentsRepo";

@@ -90,3 +90,8 @@ export async function markTreatmentSyncResult(
 ): Promise<void> {
   await db.update(treatments).set(result).where(eq(treatments.id, id));
 }
+
+/** Gives "error"-parked rows another chance on re-auth — see `syncEngine.ts`'s `requeueErroredSync`. */
+export async function requeueErroredTreatments(db: DrizzleDB): Promise<void> {
+  await db.update(treatments).set({ syncStatus: "pending", nextRetryAt: 0 }).where(eq(treatments.syncStatus, "error"));
+}

@@ -122,23 +122,31 @@ export default function TreatmentFormScreen() {
       // treatment) eligible for the sync queue. Durable the moment this line returns,
       // independent of whatever happens to the network call right after.
       const session = await getSessionById(db, sessionId);
-      if (session) {
-        await upsertSessionDraft(db, {
-          id: session.id,
-          appointmentId: session.appointmentId,
-          patientId: session.patientId,
-          patientName: session.patientName,
-          condition: session.condition,
-          type: session.type,
-          status: "completed",
-          startedAt: session.startedAt,
-          endedAt: Date.now(),
-          elapsedSeconds: session.elapsedSeconds,
-          checklist: session.checklist,
-          quickNote: session.quickNote,
-          syncStatus: "pending",
-        });
+      if (!session) {
+        // No local session row to complete (the DB never became ready during this session —
+        // narrow, but real). The treatment is still saved, but it can never sync without a
+        // completed session to gate on — don't claim success.
+        showToast("Saved locally, but couldn't find the session record. Contact support if this persists.");
+        return;
       }
+      await upsertSessionDraft(db, {
+        id: session.id,
+        appointmentId: session.appointmentId,
+        patientId: session.patientId,
+        patientName: session.patientName,
+        condition: session.condition,
+        type: session.type,
+        status: "completed",
+        startedAt: session.startedAt,
+        endedAt: Date.now(),
+        elapsedSeconds: session.elapsedSeconds,
+        checklist: session.checklist,
+        quickNote: session.quickNote,
+        syncStatus: "pending",
+      });
+      // Stops active.tsx's tick interval (it's still mounted underneath this screen) from
+      // re-persisting a stale "active" draft over the row just marked completed above.
+      useSessionStore.getState().completeSession();
 
       // Best-effort immediate push — if online this resolves in the background almost
       // instantly (same feel as the old direct call); if offline it silently no-ops and

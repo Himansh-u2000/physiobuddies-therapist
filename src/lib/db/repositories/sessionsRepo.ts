@@ -53,6 +53,13 @@ interface UpsertSessionInput {
 }
 
 export async function upsertSessionDraft(db: DrizzleDB, input: UpsertSessionInput): Promise<void> {
+  const existing = await getSessionById(db, input.id);
+  // The DB is the durability boundary, not the caller. Once a session is completed locally,
+  // nothing should be able to silently revert it — e.g. a background screen's timer tick
+  // that never got torn down still calling this with a stale "active" status. Only a write
+  // that keeps it completed is allowed through; everything else here is a no-op.
+  if (existing?.status === "completed" && input.status !== "completed") return;
+
   const now = Date.now();
   const values = {
     id: input.id,
@@ -112,4 +119,9 @@ export async function markSessionSyncResult(
   result: { syncStatus: Session["syncStatus"]; syncAttempts: number; nextRetryAt: number },
 ): Promise<void> {
   await db.update(sessions).set(result).where(eq(sessions.id, id));
+}
+
+/** Gives "error"-parked rows another chance on re-auth — see `syncEngine.ts`'s `requeueErroredSync`. */
+export async function requeueErroredSessions(db: DrizzleDB): Promise<void> {
+  await db.update(sessions).set({ syncStatus: "pending", nextRetryAt: 0 }).where(eq(sessions.syncStatus, "error"));
 }

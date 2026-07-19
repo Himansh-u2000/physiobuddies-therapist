@@ -27,6 +27,9 @@ export default function ActiveSessionScreen() {
   const setQuickNote = useSessionStore((s) => s.setQuickNote);
   const tick = useSessionStore((s) => s.tick);
   const endSession = useSessionStore((s) => s.endSession);
+  // Only flips twice per session lifecycle (start, complete/pause) — safe to subscribe to
+  // directly, unlike elapsedSeconds.
+  const isActive = useSessionStore((s) => s.isActive);
   const sheet = useBottomSheet();
   const { cameraRef, ensurePermission, takePhoto } = useCamera();
   const [cameraVisible, setCameraVisible] = useState(false);
@@ -35,9 +38,14 @@ export default function ActiveSessionScreen() {
   const [cameraPermissionBlocked, setCameraPermissionBlocked] = useState(false);
 
   useEffect(() => {
+    // This screen doesn't unmount when the flow navigates on to /session/treatment or
+    // /session/complete (both live in the same Stack, pushed/replaced on top) — the interval
+    // would otherwise keep firing after the session is done and re-persist a stale "active"
+    // draft over the completed row. Gating on isActive stops it the moment the session ends.
+    if (!isActive) return;
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [tick]);
+  }, [tick, isActive]);
 
   const handleOpenCamera = async () => {
     const status = await ensurePermission();

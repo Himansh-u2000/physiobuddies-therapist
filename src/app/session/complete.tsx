@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -9,10 +10,23 @@ import { formatTime } from "@/lib/utils/format";
 
 export default function SessionCompleteScreen() {
   const router = useRouter();
-  const { patientName, condition, elapsedSeconds, reset } = useSessionStore();
+  const reset = useSessionStore((s) => s.reset);
+  // Snapshot at mount, not a live subscription — the store is reset below as soon as this
+  // screen is reached (the data's already durable in SQLite by now), and this screen needs
+  // to keep showing it regardless. Previously reset() only ran from the "Return to
+  // dashboard" button, so leaving via either of the other two exits left the session
+  // "completed but never reset" — which used to matter when the tick interval could still
+  // revert it (fixed separately), and is worth keeping clean regardless.
+  const [{ patientName, elapsedSeconds }] = useState(() => {
+    const s = useSessionStore.getState();
+    return { patientName: s.patientName, elapsedSeconds: s.elapsedSeconds };
+  });
+
+  useEffect(() => {
+    reset();
+  }, [reset]);
 
   const handleDone = () => {
-    reset();
     router.replace("/(app)");
   };
 
