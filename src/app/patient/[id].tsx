@@ -1,4 +1,4 @@
-import { Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -7,6 +7,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Avatar, Button, Chip, Skeleton } from "@/components/ui";
 import { appointmentApi, patientApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
+import { callPatient as dialPatient } from "@/lib/services/callService";
 import { COLORS } from "@/constants/config";
 import { formatCurrency, getSessionTypeLabel } from "@/lib/utils/format";
 import type { Appointment } from "@/types";
@@ -34,7 +35,7 @@ export default function PatientProfileScreen() {
 
   const callPatient = async () => {
     const phone = patient?.phone ?? DUMMY_PHONE;
-    await Linking.openURL(`tel:${phone}`);
+    await dialPatient(phone, nextAppointment?.id);
   };
 
   if (isLoading || !patient) {

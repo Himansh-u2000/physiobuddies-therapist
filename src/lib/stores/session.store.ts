@@ -31,6 +31,9 @@ interface SessionStore {
   condition: string | null;
   type: Session["type"];
   isActive: boolean;
+  /** Wall-clock anchor `tick()` derives `elapsedSeconds` from — see the comment there for why
+   *  this can't just be a per-tick counter. */
+  startedAt: number | null;
   elapsedSeconds: number;
   checklist: SessionChecklistItem[];
   quickNote: string;
@@ -69,6 +72,7 @@ function persistDraft(state: SessionStore, overrides: Partial<{ status: Session[
     condition: state.condition ?? "",
     type: state.type,
     status: overrides.status ?? (state.isActive ? "active" : "paused"),
+    startedAt: state.startedAt ?? undefined,
     elapsedSeconds: state.elapsedSeconds,
     checklist: state.checklist,
     quickNote: state.quickNote,
@@ -87,6 +91,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   condition: null,
   type: "home",
   isActive: false,
+  startedAt: null,
   elapsedSeconds: 0,
   checklist: SESSION_CONFIG.checklistDefaults.map((c) => ({ ...c })),
   quickNote: "",
@@ -101,6 +106,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       condition,
       type: type ?? "home",
       isActive: true,
+      startedAt: Date.now(),
       elapsedSeconds: 0,
       checklist: SESSION_CONFIG.checklistDefaults.map((c) => ({ ...c })),
       quickNote: "",
@@ -118,13 +124,19 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       condition: draft.condition,
       type: draft.type,
       isActive: draft.status === "active",
+      startedAt: draft.startedAt ?? null,
       elapsedSeconds: draft.elapsedSeconds,
       checklist: draft.checklist,
       quickNote: draft.quickNote ?? "",
     }),
 
   tick: () => {
-    const elapsedSeconds = get().elapsedSeconds + 1;
+    const { startedAt, elapsedSeconds: previous } = get();
+    // Derived from the wall clock, not accumulated per tick. RN suspends JS timers while
+    // backgrounded, so a plain `+1` per tick would freeze during that time and silently
+    // under-count once the interval resumes — this recomputes the true elapsed time on
+    // every tick regardless of how long the gap since the last one was.
+    const elapsedSeconds = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : previous + 1;
     set({ elapsedSeconds });
     if (elapsedSeconds % ELAPSED_PERSIST_INTERVAL_SEC === 0) persistDraft(get());
   },
@@ -159,6 +171,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       condition: null,
       type: "home",
       isActive: false,
+      startedAt: null,
       elapsedSeconds: 0,
       checklist: SESSION_CONFIG.checklistDefaults.map((c) => ({ ...c })),
       quickNote: "",

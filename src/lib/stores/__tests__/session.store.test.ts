@@ -23,6 +23,7 @@ function resetStore() {
     condition: null,
     type: "home",
     isActive: false,
+    startedAt: null,
     elapsedSeconds: 0,
     checklist: [
       { id: "assessment", label: "Assessment and pain mapping", done: false },
@@ -57,13 +58,15 @@ describe("startSession", () => {
     expect(first).not.toBe(second);
   });
 
-  it("persists immediately as an active draft", () => {
+  it("persists immediately as an active draft, anchored with a startedAt timestamp", () => {
     useSessionStore.getState().startSession("s1", "a1", "Riya Sharma", "Lower back pain", "p1", "clinic");
     expect(mockUpsert).toHaveBeenCalledTimes(1);
     expect(mockUpsert).toHaveBeenCalledWith(
       FAKE_DB,
       expect.objectContaining({ id: "s1", status: "active", patientId: "p1", type: "clinic" }),
     );
+    const [, persisted] = mockUpsert.mock.calls[0];
+    expect(persisted.startedAt).toEqual(expect.any(Number));
   });
 
   it("resets the checklist to defaults, discarding any prior session's progress", () => {
@@ -75,21 +78,51 @@ describe("startSession", () => {
 
 describe("tick", () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     useSessionStore.getState().startSession("s1", "a1", "Riya Sharma", "Lower back pain");
     mockUpsert.mockClear(); // drop the startSession persist call
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it("does not persist on every tick", () => {
-    for (let i = 0; i < 9; i++) useSessionStore.getState().tick();
+    for (let i = 0; i < 9; i++) {
+      jest.advanceTimersByTime(1000);
+      useSessionStore.getState().tick();
+    }
     expect(useSessionStore.getState().elapsedSeconds).toBe(9);
     expect(mockUpsert).not.toHaveBeenCalled();
   });
 
   it("persists every 10th tick, not more often", () => {
-    for (let i = 0; i < 25; i++) useSessionStore.getState().tick();
+    for (let i = 0; i < 25; i++) {
+      jest.advanceTimersByTime(1000);
+      useSessionStore.getState().tick();
+    }
     expect(useSessionStore.getState().elapsedSeconds).toBe(25);
     // Ticks 10 and 20 — throttled, not on every one of the 25 calls.
     expect(mockUpsert).toHaveBeenCalledTimes(2);
+  });
+
+  it("derives elapsed time from the wall clock, not a per-tick counter — survives the app being backgrounded", () => {
+    // RN suspends JS timers while backgrounded: the interval simply doesn't fire for a
+    // while, then resumes with a single tick once foregrounded. A counter-based
+    // implementation would have silently missed all that time; this must not.
+    jest.advanceTimersByTime(5000); // 5 real seconds pass with no ticks at all — "backgrounded"
+    useSessionStore.getState().tick(); // the first tick on resume
+    expect(useSessionStore.getState().elapsedSeconds).toBe(5);
+  });
+
+  it("self-corrects even if a tick is skipped entirely", () => {
+    jest.advanceTimersByTime(1000);
+    useSessionStore.getState().tick();
+    expect(useSessionStore.getState().elapsedSeconds).toBe(1);
+
+    jest.advanceTimersByTime(3000); // three intervals' worth pass without a tick call
+    useSessionStore.getState().tick();
+    expect(useSessionStore.getState().elapsedSeconds).toBe(4);
   });
 });
 
@@ -146,7 +179,7 @@ describe("endSession", () => {
 });
 
 describe("resumeFromDraft", () => {
-  it("repopulates state from a cold-start draft without a fresh write", () => {
+  it("repopulates state from a cold-start draft without a fresh write, including startedAt", () => {
     const draft: Session = {
       id: "s9",
       appointmentId: "a9",
@@ -155,6 +188,7 @@ describe("resumeFromDraft", () => {
       condition: "Shoulder impingement",
       type: "home",
       status: "active",
+      startedAt: 1_700_000_000_000,
       elapsedSeconds: 612,
       checklist: [{ id: "manual", label: "Manual therapy", done: true }],
       quickNote: "draft note",
@@ -166,6 +200,7 @@ describe("resumeFromDraft", () => {
     expect(s.sessionId).toBe("s9");
     expect(s.elapsedSeconds).toBe(612);
     expect(s.isActive).toBe(true);
+    expect(s.startedAt).toBe(1_700_000_000_000);
     expect(s.checklist).toEqual(draft.checklist);
     expect(mockUpsert).not.toHaveBeenCalled();
   });

@@ -1,4 +1,4 @@
-import { Linking, View, Text, Pressable, ScrollView } from "react-native";
+import { View, Text, Pressable, ScrollView } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,6 +7,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Avatar, Chip, Button } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
+import { callPatient as dialPatient } from "@/lib/services/callService";
 import { COLORS } from "@/constants/config";
 import { formatCurrency, getSessionTypeLabel } from "@/lib/utils/format";
 
@@ -25,7 +26,7 @@ export default function AppointmentDetailScreen() {
 
   const callPatient = async () => {
     const phone = appointment.patientPhone ?? "+919876543210";
-    await Linking.openURL(`tel:${phone}`);
+    await dialPatient(phone, appointment.id);
   };
 
   const steps = [

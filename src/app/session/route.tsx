@@ -6,6 +6,7 @@ import { Avatar, Chip, Button, ErrorState } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useLocation } from "@/lib/hooks/useLocation";
+import { callPatient } from "@/lib/services/callService";
 import { COLORS } from "@/constants/config";
 
 export default function RouteScreen() {
@@ -37,7 +38,7 @@ export default function RouteScreen() {
       showToast("Patient phone unavailable");
       return;
     }
-    await Linking.openURL(`tel:${appointment.patientPhone}`);
+    await callPatient(appointment.patientPhone, appointment.id);
   };
 
   const checklist = [
