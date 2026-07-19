@@ -2,6 +2,7 @@ import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Platform } from "react-native";
+import { useRouter, type Href } from "expo-router";
 import { notificationApi } from "@/lib/api/services";
 
 Notifications.setNotificationHandler({
@@ -15,6 +16,7 @@ Notifications.setNotificationHandler({
 });
 
 export function useNotifications() {
+  const router = useRouter();
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [notification, setNotification] = useState<Notifications.Notification | null>(null);
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
@@ -51,12 +53,18 @@ export function useNotifications() {
     notificationListener.current = Notifications.addNotificationReceivedListener(setNotification);
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       setNotification(response.notification);
+      // Route by whatever the push payload's data.actionUrl says — mirrors
+      // AppNotification.actionUrl, the same field the in-app notification list is modeled
+      // around. Falls back to the notifications tab rather than doing nothing on tap, since
+      // a tap that goes nowhere reads as broken.
+      const actionUrl = response.notification.request.content.data?.actionUrl;
+      router.push((typeof actionUrl === "string" ? actionUrl : "/(app)/notifications") as Href);
     });
     return () => {
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };
-  }, []);
+  }, [router]);
 
   return { expoPushToken, notification, registerForPushNotifications };
 }

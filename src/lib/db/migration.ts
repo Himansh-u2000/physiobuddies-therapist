@@ -138,4 +138,19 @@ CREATE TABLE IF NOT EXISTS app_kv (
   key TEXT PRIMARY KEY NOT NULL,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS session_photos (
+  id TEXT PRIMARY KEY NOT NULL,
+  session_id TEXT NOT NULL,
+  local_uri TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  sync_status TEXT NOT NULL DEFAULT 'pending',
+  remote_url TEXT,
+  sync_attempts INTEGER NOT NULL DEFAULT 0,
+  next_retry_at INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_session_photos_session ON session_photos(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_photos_sync ON session_photos(sync_status);
 `;

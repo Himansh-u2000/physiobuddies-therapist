@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { View, Text, Pressable } from "react-native";
+import * as Notifications from "expo-notifications";
 import { FlashList } from "@shopify/flash-list";
 import { Calendar, IndianRupee, ClipboardList, Info, MessageSquare, BellOff, TriangleAlert } from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
@@ -26,6 +28,14 @@ export default function NotificationsScreen() {
     readCache: getCachedNotifications,
     writeCache: cacheNotifications,
   });
+
+  // The therapist looking at this screen is the "seen" signal — there's no per-notification
+  // read mutation yet (a separate, larger gap: nothing anywhere lets the user mark one
+  // notification read), so clearing the badge on arrival here is the honest scope for now
+  // rather than a half-built read-tracking system.
+  useEffect(() => {
+    Notifications.setBadgeCountAsync(0).catch(() => {});
+  }, []);
 
   const renderItem = ({ item }: { item: AppNotification }) => {
     const config = iconMap[item.type] ?? iconMap.system;

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useDatabase } from "@/lib/db/provider";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useAuthStore } from "@/lib/stores/auth.store";
-import { flushPendingSync, requeueErroredSync } from "@/lib/db/sync/syncEngine";
+import { flushPendingSync, flushPendingPhotoUploads, requeueErroredSync } from "@/lib/db/sync/syncEngine";
 
 const SAFETY_NET_INTERVAL_MS = 60_000;
 
@@ -29,12 +29,14 @@ export function useSyncEngine() {
   useEffect(() => {
     if (!ready || !db || !isOnline) return;
     flushPendingSync(db).catch(() => {});
+    flushPendingPhotoUploads(db).catch(() => {});
   }, [ready, db, isOnline]);
 
   useEffect(() => {
     if (!ready || !db || !isOnline) return;
     const interval = setInterval(() => {
       flushPendingSync(db).catch(() => {});
+      flushPendingPhotoUploads(db).catch(() => {});
     }, SAFETY_NET_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [ready, db, isOnline]);

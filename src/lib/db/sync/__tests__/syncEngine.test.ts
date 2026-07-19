@@ -1,5 +1,5 @@
-import { flushPendingSync, nextBackoffMs } from "@/lib/db/sync/syncEngine";
-import { sessionApi, treatmentApi } from "@/lib/api/services";
+import { flushPendingSync, flushPendingPhotoUploads, nextBackoffMs } from "@/lib/db/sync/syncEngine";
+import { sessionApi, treatmentApi, uploadApi } from "@/lib/api/services";
 import {
   getPendingSyncTreatments,
   markTreatmentSyncResult,
@@ -7,6 +7,8 @@ import {
   markSessionSyncResult,
   getSessionById,
   getTreatmentBySessionId,
+  getPendingPhotoUploads,
+  markPhotoSyncResult,
 } from "@/lib/db/repositories";
 
 /**
@@ -21,6 +23,7 @@ import {
 jest.mock("@/lib/api/services", () => ({
   sessionApi: { complete: jest.fn() },
   treatmentApi: { submit: jest.fn() },
+  uploadApi: { uploadSessionPhoto: jest.fn() },
 }));
 
 jest.mock("@/lib/db/repositories", () => ({
@@ -34,6 +37,8 @@ jest.mock("@/lib/db/repositories", () => ({
   getTreatmentBySessionId: jest.fn(async () => ({ syncStatus: "synced" })),
   requeueErroredSessions: jest.fn(async () => {}),
   requeueErroredTreatments: jest.fn(async () => {}),
+  getPendingPhotoUploads: jest.fn(async () => []),
+  markPhotoSyncResult: jest.fn(async () => {}),
 }));
 
 const FAKE_DB = {} as never;
@@ -207,5 +212,56 @@ describe("flushPendingSync — single-flight", () => {
     await flushPendingSync(FAKE_DB);
 
     expect(sessionApi.complete).toHaveBeenCalledTimes(2);
+  });
+});
+
+const photoRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
+  id: "photo1",
+  sessionId: "s1",
+  localUri: "file:///photo1.jpg",
+  fileName: "session-s1-1.jpg",
+  mimeType: "image/jpeg",
+  syncAttempts: 0,
+  ...overrides,
+});
+
+describe("flushPendingPhotoUploads", () => {
+  it("uploads a queued photo and marks it synced with the returned remote URL", async () => {
+    (getPendingPhotoUploads as jest.Mock).mockResolvedValue([photoRow()]);
+    (uploadApi.uploadSessionPhoto as jest.Mock).mockResolvedValue({ url: "https://cdn/photo1.jpg", id: "server-p1" });
+
+    const result = await flushPendingPhotoUploads(FAKE_DB);
+
+    expect(uploadApi.uploadSessionPhoto).toHaveBeenCalledWith("s1", "file:///photo1.jpg", "session-s1-1.jpg", "image/jpeg");
+    expect(markPhotoSyncResult).toHaveBeenCalledWith(
+      FAKE_DB,
+      "photo1",
+      expect.objectContaining({ syncStatus: "synced", remoteUrl: "https://cdn/photo1.jpg" }),
+    );
+    expect(result.uploaded).toBe(1);
+  });
+
+  it("on a retryable failure, stays pending with backoff — the file is never dropped", async () => {
+    (getPendingPhotoUploads as jest.Mock).mockResolvedValue([photoRow({ syncAttempts: 1 })]);
+    (uploadApi.uploadSessionPhoto as jest.Mock).mockRejectedValue(Object.assign(new Error("network"), { isAxiosError: true }));
+
+    const result = await flushPendingPhotoUploads(FAKE_DB);
+
+    expect(markPhotoSyncResult).toHaveBeenCalledWith(
+      FAKE_DB,
+      "photo1",
+      expect.objectContaining({ syncStatus: "pending", syncAttempts: 2 }),
+    );
+    expect(result.failed).toBe(1);
+  });
+
+  it("is single-flighted independently of the session/treatment queue", async () => {
+    (getPendingPhotoUploads as jest.Mock).mockResolvedValue([photoRow()]);
+    (uploadApi.uploadSessionPhoto as jest.Mock).mockResolvedValue({ url: "https://cdn/photo1.jpg", id: "server-p1" });
+
+    const [first, second] = await Promise.all([flushPendingPhotoUploads(FAKE_DB), flushPendingPhotoUploads(FAKE_DB)]);
+
+    expect(uploadApi.uploadSessionPhoto).toHaveBeenCalledTimes(1);
+    expect(first).toBe(second);
   });
 });

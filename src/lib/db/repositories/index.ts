@@ -5,6 +5,7 @@ export { getCachedTransactions, cacheTransactions } from "./transactionsRepo";
 export { getCachedEarningsSummary, cacheEarningsSummary } from "./earningsSummaryRepo";
 export { getCachedNotifications, cacheNotifications } from "./notificationsRepo";
 export { getKv, setKv } from "./appKvRepo";
+export { enqueuePhotoUpload, getPendingPhotoUploads, markPhotoSyncResult } from "./sessionPhotosRepo";
 export {
   getResumableSession,
   getSessionById,

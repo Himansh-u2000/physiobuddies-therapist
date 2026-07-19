@@ -3,13 +3,16 @@ import { View, Text, Pressable, ScrollView, TextInput, Modal, ActivityIndicator,
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { CameraView } from "expo-camera";
+import * as Crypto from "expo-crypto";
 import Svg, { Circle } from "react-native-svg";
 import { Camera, CameraOff, FileText, Pause, CheckCircle2, Circle as CircleIcon, X } from "lucide-react-native";
 import { Chip, Button, BottomSheet, useBottomSheet, ErrorState } from "@/components/ui";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useSessionStore } from "@/lib/stores/session.store";
 import { useCamera } from "@/lib/hooks/useCamera";
-import { uploadApi } from "@/lib/api/services";
+import { useDatabase } from "@/lib/db/provider";
+import { enqueuePhotoUpload } from "@/lib/db/repositories";
+import { flushPendingPhotoUploads } from "@/lib/db/sync/syncEngine";
 import { COLORS, SESSION_CONFIG } from "@/constants/config";
 import { formatTime } from "@/lib/utils/format";
 
@@ -31,6 +34,7 @@ export default function ActiveSessionScreen() {
   // directly, unlike elapsedSeconds.
   const isActive = useSessionStore((s) => s.isActive);
   const sheet = useBottomSheet();
+  const { db } = useDatabase();
   const { cameraRef, ensurePermission, takePhoto } = useCamera();
   const [cameraVisible, setCameraVisible] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -77,20 +81,34 @@ export default function ActiveSessionScreen() {
         return;
       }
       const sessionId = useSessionStore.getState().sessionId;
-      if (!sessionId) {
+      if (!sessionId || !db) {
         showToast("No active session");
         return;
       }
       const fileName = `session-${sessionId}-${Date.now()}.jpg`;
-      await uploadApi.uploadSessionPhoto(sessionId, photoUri, fileName, "image/jpeg");
-      showToast("Photo uploaded");
+      // Durable the moment this returns — the photo is already compressed and saved
+      // on-device (takePhoto), so queuing it locally can't fail the way a direct upload
+      // attempt used to. Previously this awaited uploadApi.uploadSessionPhoto() directly:
+      // offline, that threw, the toast claimed "will retry later" with nothing that ever
+      // did, and the file sat orphaned on-device with no record anywhere.
+      await enqueuePhotoUpload(db, {
+        id: Crypto.randomUUID(),
+        sessionId,
+        localUri: photoUri,
+        fileName,
+        mimeType: "image/jpeg",
+      });
       if (!checklist.find((item) => item.id === "photo")?.done) {
         toggleChecklistItem("photo");
       }
       setCameraVisible(false);
+      showToast("Photo saved — uploading");
+      // Best-effort immediate push, same pattern as treatment submission: resolves quickly
+      // if online, silently no-ops if not — useSyncEngine's queue picks it up on reconnect.
+      flushPendingPhotoUploads(db).catch(() => {});
     } catch (e) {
-      console.error("Photo upload failed:", e);
-      showToast("Upload failed. Will retry later.");
+      console.error("Photo capture failed:", e);
+      showToast("Couldn't save photo. Try again.");
     } finally {
       setUploadingPhoto(false);
     }

@@ -1,5 +1,5 @@
 import { isRetryable, normalizeError } from "@/lib/api/errors";
-import { sessionApi, treatmentApi } from "@/lib/api/services";
+import { sessionApi, treatmentApi, uploadApi } from "@/lib/api/services";
 import type { DrizzleDB } from "../provider";
 import {
   getPendingSyncTreatments,
@@ -12,6 +12,8 @@ import {
   getTreatmentBySessionId,
   requeueErroredSessions,
   requeueErroredTreatments,
+  getPendingPhotoUploads,
+  markPhotoSyncResult,
 } from "../repositories";
 
 const BASE_BACKOFF_MS = 30_000;
@@ -122,6 +124,53 @@ async function runFlush(db: DrizzleDB): Promise<SyncResult> {
   }
 
   return { treatmentsSynced, sessionsSynced, failed };
+}
+
+/**
+ * Flushes locally-queued session photo uploads. Deliberately separate from
+ * `flushPendingSync` — a photo has no completion-ordering constraint (it can upload any
+ * time during a live session, not just after submission) and no idempotency-key-on-payout
+ * stakes; it's "get this file to the server eventually", not "never double-charge". Same
+ * backoff policy and single-flight guard as the main queue, for the same reasons: capture
+ * (`active.tsx`'s handleCapturePhoto) can trigger an immediate flush that races
+ * `useSyncEngine`'s edge/interval triggers.
+ */
+export interface PhotoSyncResult {
+  uploaded: number;
+  failed: number;
+}
+
+let photoInFlight: Promise<PhotoSyncResult> | null = null;
+export function flushPendingPhotoUploads(db: DrizzleDB): Promise<PhotoSyncResult> {
+  photoInFlight ??= runPhotoFlush(db).finally(() => {
+    photoInFlight = null;
+  });
+  return photoInFlight;
+}
+
+async function runPhotoFlush(db: DrizzleDB): Promise<PhotoSyncResult> {
+  const now = Date.now();
+  let uploaded = 0;
+  let failed = 0;
+
+  const pending = await getPendingPhotoUploads(db, now);
+  for (const row of pending) {
+    try {
+      const result = await uploadApi.uploadSessionPhoto(row.sessionId, row.localUri, row.fileName, row.mimeType);
+      await markPhotoSyncResult(db, row.id, {
+        syncStatus: "synced",
+        syncAttempts: row.syncAttempts,
+        nextRetryAt: 0,
+        remoteUrl: result.url,
+      });
+      uploaded++;
+    } catch (e) {
+      await markPhotoSyncResult(db, row.id, resultFor(e, row.syncAttempts));
+      failed++;
+    }
+  }
+
+  return { uploaded, failed };
 }
 
 /**

@@ -133,6 +133,19 @@ export const appKv = sqliteTable("app_kv", {
   value: text("value").notNull(),
 });
 
+export const sessionPhotos = sqliteTable("session_photos", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  localUri: text("local_uri").notNull(),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  syncStatus: text("sync_status").notNull().default("pending"),
+  remoteUrl: text("remote_url"),
+  syncAttempts: integer("sync_attempts").notNull().default(0),
+  nextRetryAt: integer("next_retry_at").notNull().default(0),
+  createdAt: integer("created_at").notNull().default(0),
+});
+
 export type DbTherapistProfile = typeof therapistProfile.$inferSelect;
 export type DbPatient = typeof patients.$inferSelect;
 export type DbAppointment = typeof appointments.$inferSelect;
@@ -140,3 +153,4 @@ export type DbSession = typeof sessions.$inferSelect;
 export type DbTreatment = typeof treatments.$inferSelect;
 export type DbTransaction = typeof transactions.$inferSelect;
 export type DbNotification = typeof notifications.$inferSelect;
+export type DbSessionPhoto = typeof sessionPhotos.$inferSelect;
