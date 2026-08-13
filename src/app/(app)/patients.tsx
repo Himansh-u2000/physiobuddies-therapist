@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { FlashList } from "@shopify/flash-list";
 import { Users, TriangleAlert, SearchX } from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
-import { Avatar, Chip, Input, Skeleton, EmptyState, ErrorState } from "@/components/ui";
+import { Avatar, Badge, EmptyState, ErrorState, Input, Skeleton } from "@/components/ui";
 import { patientApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useSyncedQuery } from "@/lib/hooks/useSyncedQuery";
@@ -54,7 +54,7 @@ export default function PatientsScreen() {
               <Text className="text-[15px] font-extrabold text-fg" numberOfLines={1}>{item.name}</Text>
               <Text className="text-muted text-[11px] mt-0.5">{item.age}y | {item.gender}</Text>
             </View>
-            <Chip variant="info">{item.totalSessions} sessions</Chip>
+            <Badge variant="info" size="sm" dot={false}>{item.totalSessions} sessions</Badge>
           </View>
 
           <View className="rounded-[12px] bg-bg border border-border px-3 py-2">

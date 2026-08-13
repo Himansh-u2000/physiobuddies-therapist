@@ -13,8 +13,32 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://staging-api.physiobuddies.in/api/v1",
+        "EXPO_PUBLIC_API_URL": "https://api.dev.physiobuddies.in/api/v1",
         "EXPO_PUBLIC_USE_MOCK_API": "true"
+      }
+    },
+    "demo": {
+      "distribution": "internal",
+      "channel": "development",
+      "environment": "development",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.dev.physiobuddies.in/api/v1",
+        "EXPO_PUBLIC_USE_MOCK_API": "true",
+        "EXPO_PUBLIC_USE_MOCK_AUTH": "false",
+        "EXPO_PUBLIC_USE_MOCK_PROFILE": "false",
+        "EXPO_PUBLIC_USE_MOCK_DASHBOARD": "false",
+        "EXPO_PUBLIC_USE_MOCK_APPOINTMENTS": "false",
+        "EXPO_PUBLIC_USE_MOCK_EARNINGS": "false",
+        "EXPO_PUBLIC_USE_MOCK_PAYOUTS": "false",
+        "EXPO_PUBLIC_USE_MOCK_UPLOAD": "false",
+        "EXPO_PUBLIC_USE_MOCK_AVAILABILITY": "false",
+        "EXPO_PUBLIC_USE_MOCK_CONTENT": "false",
+        "EXPO_PUBLIC_USE_MOCK_SESSION": "false",
+        "EXPO_PUBLIC_USE_MOCK_TREATMENT": "false",
+        "EXPO_PUBLIC_USE_MOCK_PATIENTS": "false"
       }
     },
     "preview": {
@@ -25,7 +49,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://staging-api.physiobuddies.in/api/v1",
+        "EXPO_PUBLIC_API_URL": "https://api.dev.physiobuddies.in/api/v1",
         "EXPO_PUBLIC_USE_MOCK_API": "false"
       }
     },

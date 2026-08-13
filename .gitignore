@@ -30,15 +30,24 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
-.env.development
-.env.production
+# env files — ONLY .env.example is committed.
+#
+# The others were listed here but were also *tracked*, which does nothing: .gitignore is only
+# consulted for untracked paths, so an ignored-looking file that git already knows about is still
+# staged on every edit. They were untracked with `git rm --cached` (2026-08-13) so these rules
+# finally bite. `.env.staging` was never listed at all.
+#
+# Anything real — client IDs, keys — belongs in `.env*.local` or the EAS env store, never here.
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
 
-example
+# (Removed a stray bare `example` rule here — it matched any file or directory named exactly
+# `example` at any depth, which was almost certainly a typo for `.env.example` and would have
+# silently swallowed a real `example/` folder. It matched nothing, so dropping it is a no-op.)
 
 # generated native folders
 /ios

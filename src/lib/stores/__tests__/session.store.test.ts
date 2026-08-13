@@ -217,3 +217,40 @@ describe("reset", () => {
     expect(s.idempotencyKey).toBeNull();
   });
 });
+
+describe("resumeSession (re-entering a paused session)", () => {
+  it("re-anchors the wall clock so paused time isn't charged to the session", () => {
+    // A session paused at 10 minutes and resumed an hour later must still read 10 minutes.
+    // `tick()` derives elapsed as `now - startedAt`, so keeping the original anchor would
+    // have the timer jump straight to 70 minutes on the first tick after resuming.
+    useSessionStore.setState({
+      sessionId: "s1",
+      appointmentId: "a1",
+      isActive: false,
+      elapsedSeconds: 600,
+      startedAt: Date.now() - 70 * 60 * 1000,
+    });
+
+    useSessionStore.getState().resumeSession();
+    useSessionStore.getState().tick();
+
+    // One tick's worth of tolerance — the anchor is set from the live clock.
+    expect(useSessionStore.getState().elapsedSeconds).toBeGreaterThanOrEqual(600);
+    expect(useSessionStore.getState().elapsedSeconds).toBeLessThanOrEqual(601);
+  });
+
+  it("makes the session live again and persists it as active", () => {
+    useSessionStore.setState({
+      sessionId: "s1",
+      appointmentId: "a1",
+      isActive: false,
+      elapsedSeconds: 120,
+      startedAt: Date.now() - 500_000,
+    });
+
+    useSessionStore.getState().resumeSession();
+
+    expect(useSessionStore.getState().isActive).toBe(true);
+    expect(mockUpsert).toHaveBeenCalledWith(FAKE_DB, expect.objectContaining({ status: "active" }));
+  });
+});

@@ -6,6 +6,12 @@ import type {
   Transaction,
   EarningsSummary,
   AppNotification,
+  Payout,
+  WalletInfo,
+  TherapistReview,
+  AvailabilityDay,
+  TherapistArticle,
+  TherapistFaq,
 } from "@/types";
 
 export const mockTherapist: Therapist = {
@@ -252,4 +258,121 @@ export const mockNotifications: AppNotification[] = [
     timestamp: "2 days ago",
     read: true,
   },
+];
+
+/**
+ * Clinical question catalog for the treatment form. This is the exact shape
+ * `GET /treatment/form-config` will return (api_contract.md §6.3) — served by the
+ * backend so clinical questions can change without an app release. Until that
+ * endpoint exists, this bundled copy is both the mock response and the
+ * offline/loading fallback. Content mirrors the design prototype
+ * (treatment-form.html) verbatim, including per-finding sub-questions.
+ */
+
+// ---------------------------------------------------------------------------
+// Payouts / wallet
+// ---------------------------------------------------------------------------
+
+export const mockPayouts: Payout[] = [
+  {
+    id: "payout-3",
+    amount: 8400,
+    status: "processed",
+    transactionRef: "UTR-8891204471",
+    requestedAt: "2026-07-20T06:00:00.000Z",
+    processedAt: "2026-07-21T09:30:00.000Z",
+    dateLabel: "21 Jul",
+    account: { upi: "himanshu@okhdfcbank", bankName: "HDFC Bank" },
+  },
+  {
+    id: "payout-2",
+    amount: 6250,
+    status: "processing",
+    requestedAt: "2026-07-26T05:15:00.000Z",
+    dateLabel: "26 Jul",
+    account: { upi: "himanshu@okhdfcbank", bankName: "HDFC Bank" },
+  },
+  {
+    id: "payout-1",
+    amount: 3100,
+    status: "requested",
+    requestedAt: "2026-07-28T04:00:00.000Z",
+    dateLabel: "Today",
+    account: { upi: "himanshu@okhdfcbank", bankName: "HDFC Bank" },
+  },
+];
+
+export const mockWallet: WalletInfo = {
+  balance: 12480,
+  entries: [
+    { id: "w-3", amount: 639, type: "credit", balanceAfter: 12480, createdAt: "2026-07-27T10:00:00.000Z", dateLabel: "Yesterday" },
+    { id: "w-2", amount: 799, type: "credit", balanceAfter: 11841, createdAt: "2026-07-25T10:00:00.000Z", dateLabel: "25 Jul" },
+    { id: "w-1", amount: -6250, type: "payout", balanceAfter: 11042, createdAt: "2026-07-26T05:15:00.000Z", dateLabel: "26 Jul" },
+  ],
+};
+
+export const mockReviews: TherapistReview[] = [
+  {
+    rating: 5,
+    comment: "Excellent care, noticeable improvement after a few sessions.",
+    reviewerName: "Priya Sharma",
+    reviewerImage: null,
+    createdAt: "2026-07-22T14:07:58.600Z",
+    dateLabel: "22 Jul",
+  },
+  {
+    rating: 4,
+    comment: "Very professional and punctual. Explained every exercise clearly.",
+    reviewerName: "Rohit Verma",
+    reviewerImage: null,
+    createdAt: "2026-07-18T09:20:00.000Z",
+    dateLabel: "18 Jul",
+  },
+];
+
+/** Two days of hourly slots, matching the backend's 6am–8pm grid. */
+export const mockAvailability: AvailabilityDay[] = [0, 1].map((offset) => {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const raw = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+  return {
+    date: iso,
+    rawDate: raw,
+    label: d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }),
+    slots: Array.from({ length: 15 }, (_, i) => {
+      const startHour = 6 + i;
+      return {
+        startHour,
+        startTime: startHour * 60,
+        endTime: startHour * 60 + 40,
+        category: startHour < 12 ? "morning" : startHour < 17 ? "afternoon" : "evening",
+        status: offset === 0 && (startHour === 8 || startHour === 14) ? "booked" : "open",
+      };
+    }),
+  };
+});
+
+export const mockArticles: TherapistArticle[] = [
+  {
+    id: "article-1",
+    title: "5 safe desk stretches for lower back stiffness",
+    content:
+      "Sitting for long stretches shortens the hip flexors and loads the lumbar spine. These five stretches take four minutes and can be done at a desk.",
+    createdAt: "2026-07-21T08:00:00.000Z",
+    dateLabel: "21 Jul",
+  },
+  {
+    id: "article-2",
+    title: "ACL rehab milestones after week six",
+    content:
+      "Week six is where controlled loading begins. Progress is measured by quad activation and single-leg balance, not by pain alone.",
+    createdAt: "2026-07-24T08:00:00.000Z",
+    dateLabel: "24 Jul",
+  },
+];
+
+export const mockFaqs: TherapistFaq[] = [
+  { id: "faq-1", question: "How many sessions will I need?", answer: "It depends on your condition, typically 6-10 sessions." },
+  { id: "faq-2", question: "Do you provide home visits?", answer: "Yes, within a 10 km radius of Pitampura." },
 ];

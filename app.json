@@ -17,7 +17,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "in.physiobuddies.therapist",
-      "icon": "./assets/expo.icon",
       "infoPlist": {
         "NSCameraUsageDescription": "Physiobuddies needs camera access to capture session photos and document scans.",
         "NSLocationWhenInUseUsageDescription": "Physiobuddies uses your location to navigate to patient home visits and calculate ETA.",
@@ -77,6 +76,13 @@
           "cameraPermission": "Allow Physiobuddies to access your camera for session photos and document scans.",
           "microphonePermission": "Allow Physiobuddies to access your microphone for video calls.",
           "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Physiobuddies to access your photos so you can set a profile picture and attach credential documents.",
+          "cameraPermission": "Allow Physiobuddies to use your camera to photograph credential documents and set a profile picture."
         }
       ],
       [

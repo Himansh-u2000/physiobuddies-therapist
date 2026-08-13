@@ -1,23 +1,25 @@
 import { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView, TextInput, Modal, ActivityIndicator, Linking } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { CameraView } from "expo-camera";
 import * as Crypto from "expo-crypto";
 import Svg, { Circle } from "react-native-svg";
-import { Camera, CameraOff, FileText, Pause, CheckCircle2, Circle as CircleIcon, X } from "lucide-react-native";
-import { Chip, Button, BottomSheet, useBottomSheet, ErrorState } from "@/components/ui";
+import { Camera, CameraOff, FileText, Pause, CheckCircle2, Circle as CircleIcon, X, ArrowRight } from "lucide-react-native";
+import { Badge, BottomSheet, Button, ErrorState, useBottomSheet } from "@/components/ui";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useSessionStore } from "@/lib/stores/session.store";
 import { useCamera } from "@/lib/hooks/useCamera";
 import { useDatabase } from "@/lib/db/provider";
 import { enqueuePhotoUpload } from "@/lib/db/repositories";
 import { flushPendingPhotoUploads } from "@/lib/db/sync/syncEngine";
-import { COLORS, SESSION_CONFIG } from "@/constants/config";
+import { COLORS, GRADIENTS, SESSION_CONFIG } from "@/constants/config";
 import { formatTime } from "@/lib/utils/format";
 
 export default function ActiveSessionScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const showToast = useAppStore((s) => s.showToast);
   // Selectors, not a bare `useSessionStore()` — this screen must not re-subscribe to
   // `elapsedSeconds`, or the once-a-second `tick()` re-renders the checklist, note input,
@@ -129,10 +131,10 @@ export default function ActiveSessionScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerClassName="px-3.5 pt-3 pb-8">
+      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 14, paddingTop: insets.top + 8, paddingBottom: 32 }}>
         <View className="flex-row items-center justify-between mb-2">
           <Text className="text-[20px] font-extrabold text-fg">Active session</Text>
-          <Chip variant="active">● Running</Chip>
+          <Badge variant="success" tone="solid" size="sm">Running</Badge>
         </View>
 
         <LinearGradient colors={["#00486b", "#006071"]} className="rounded-md p-5 items-center" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.28, shadowRadius: 32, elevation: 10 }}>
@@ -150,7 +152,7 @@ export default function ActiveSessionScreen() {
         <View className="mt-2.5">
           <View className="flex-row items-center justify-between mb-2.5">
             <Text className="text-[17px] font-bold text-fg">Treatment checklist</Text>
-            <Chip variant={doneCount === checklist.length ? "active" : "pending"}>{doneCount}/{checklist.length} done</Chip>
+            <Badge variant={doneCount === checklist.length ? "success" : "warning"} size="sm">{doneCount}/{checklist.length} done</Badge>
           </View>
           <View style={{ gap: 8 }}>
             {checklist.map((item) => (
@@ -195,16 +197,29 @@ export default function ActiveSessionScreen() {
               textAlignVertical="top"
             />
           </View>
-          <View className="flex-row" style={{ gap: 10 }}>
-            <Button variant="secondary" onPress={handleOpenCamera} disabled={uploadingPhoto}>
-              <Camera size={16} color={COLORS.accent} />
-              <Text className="text-accent font-bold text-[14px]">{uploadingPhoto ? "Uploading..." : "Upload photo"}</Text>
-            </Button>
-            <Button onPress={() => router.push("/session/treatment")}>
-              <FileText size={16} color="#fff" />
-              <Text className="text-white font-bold text-[14px]">End & document</Text>
-            </Button>
-          </View>
+          <Button variant="secondary" onPress={handleOpenCamera} disabled={uploadingPhoto}>
+            <Camera size={16} color={COLORS.accent} />
+            <Text className="text-accent font-bold text-[14px]">{uploadingPhoto ? "Uploading..." : "Upload session photo"}</Text>
+          </Button>
+
+          {/* Primary forward action — takes the therapist to the treatment form (the 6
+              assessment/treatment sections). Full-width and clearly the "next step" so it
+              isn't mistaken for a minor action. */}
+          <Pressable onPress={() => router.push("/session/treatment")} className="active:opacity-90 rounded-md overflow-hidden" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.22, shadowRadius: 14, elevation: 4 }}>
+            <LinearGradient colors={GRADIENTS.success} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} className="flex-row items-center justify-between px-4 py-3.5">
+              <View className="flex-row items-center" style={{ gap: 10 }}>
+                <View className="w-8 h-8 rounded-full bg-white/20 items-center justify-center">
+                  <FileText size={16} color="#fff" />
+                </View>
+                <View>
+                  <Text className="text-white font-extrabold text-[15px]">Continue to treatment form</Text>
+                  <Text className="text-white/75 text-[11px]">Fill assessment, then submit &amp; end session</Text>
+                </View>
+              </View>
+              <ArrowRight size={20} color="#fff" />
+            </LinearGradient>
+          </Pressable>
+
           <Button variant="danger" onPress={handlePause}>
             <Pause size={16} color={COLORS.danger} />
             <Text className="text-danger font-bold text-[14px]">Pause / Emergency stop</Text>
@@ -223,7 +238,7 @@ export default function ActiveSessionScreen() {
         <Button variant="secondary" onPress={sheet.close}>Continue treatment</Button>
       </BottomSheet>
 
-      <Modal visible={cameraVisible} animationType="slide" onRequestClose={() => setCameraVisible(false)}>
+      <Modal visible={cameraVisible} animationType="slide" onRequestClose={() => setCameraVisible(false)} statusBarTranslucent>
         <View className="flex-1 bg-black">
           <CameraView
             ref={cameraRef}
@@ -233,17 +248,31 @@ export default function ActiveSessionScreen() {
             onMountError={() => showToast("Camera failed to start")}
             style={{ flex: 1 }}
           />
-          <View className="absolute left-0 right-0 top-0 px-4 pt-12 flex-row justify-between items-center">
-            <Pressable onPress={() => setCameraVisible(false)} className="w-11 h-11 rounded-full bg-black/45 items-center justify-center">
+          {/* Top bar — padded for the status bar so the close button never sits under the
+              battery/clock. */}
+          <View className="absolute left-0 right-0 top-0 px-4 flex-row justify-between items-center" style={{ paddingTop: insets.top + 8 }}>
+            <Pressable onPress={() => setCameraVisible(false)} className="w-11 h-11 rounded-full bg-black/50 items-center justify-center">
               <X size={22} color="#fff" />
             </Pressable>
-            <Chip variant="neutral">{cameraReady ? "Ready" : "Starting"}</Chip>
+            <View className="rounded-full bg-black/50 px-3 py-1.5 flex-row items-center" style={{ gap: 6 }}>
+              <View className={`w-2 h-2 rounded-full ${cameraReady ? "bg-success" : "bg-warning"}`} />
+              <Text className="text-white text-[12px] font-bold">{cameraReady ? "Ready" : "Starting camera…"}</Text>
+            </View>
           </View>
-          <View className="absolute left-0 right-0 bottom-0 px-6 pb-10 pt-6 bg-black/45">
-            <Button onPress={handleCapturePhoto} disabled={!cameraReady || uploadingPhoto}>
-              {uploadingPhoto ? <ActivityIndicator color="#fff" /> : <Camera size={18} color="#fff" />}
-              <Text className="text-white font-bold text-[14px]">{uploadingPhoto ? "Uploading..." : "Capture session photo"}</Text>
-            </Button>
+          {/* Bottom bar with a classic round shutter button — unmistakably the capture
+              control, and padded for the gesture-nav bar so it's never clipped. */}
+          <View className="absolute left-0 right-0 bottom-0 items-center bg-black/50" style={{ paddingBottom: insets.bottom + 24, paddingTop: 20 }}>
+            <Text className="text-white/70 text-[12px] mb-4">Frame the treatment area, then tap to capture</Text>
+            <Pressable
+              onPress={handleCapturePhoto}
+              disabled={!cameraReady || uploadingPhoto}
+              className="w-[76px] h-[76px] rounded-full items-center justify-center"
+              style={{ backgroundColor: "rgba(255,255,255,0.28)", opacity: !cameraReady || uploadingPhoto ? 0.5 : 1 }}
+            >
+              <View className="w-[62px] h-[62px] rounded-full bg-white items-center justify-center">
+                {uploadingPhoto ? <ActivityIndicator color={COLORS.accent} /> : <View className="w-[52px] h-[52px] rounded-full border-2 border-black/10" style={{ backgroundColor: "#fff" }} />}
+              </View>
+            </Pressable>
           </View>
         </View>
       </Modal>

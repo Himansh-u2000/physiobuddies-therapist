@@ -1,3 +1,5 @@
+export { Badge, StatusBadge, PaymentBadge } from "./Badge";
+export type { BadgeVariant, BadgeTone, BadgeSize } from "./Badge";
 export { Button } from "./Button";
 export { Card } from "./Card";
 export { Chip } from "./Chip";
@@ -6,7 +8,10 @@ export { Avatar, Portrait } from "./Avatar";
 export { OTPInput } from "./OTPInput";
 export { Toggle } from "./Toggle";
 export { Skeleton } from "./Skeleton";
+export { Slider, PainSlider, painSeverityColor } from "./Slider";
 export { EmptyState } from "./EmptyState";
 export { ErrorState } from "./ErrorState";
 export { ToastContainer } from "./Toast";
 export { BottomSheet, useBottomSheet } from "./BottomSheet";
+export { MarkdownText } from "./MarkdownText";
+export { RichTextEditor } from "./RichTextEditor";

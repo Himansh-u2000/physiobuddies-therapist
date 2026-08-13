@@ -12,7 +12,9 @@ import {
   clearAllSecureData,
 } from "@/lib/storage/secure";
 import { authApi } from "@/lib/api/services";
+import { clearNetLog } from "@/lib/api/netlog";
 import { signOutGoogle } from "@/lib/auth/googleSignIn";
+import { useAppStore } from "@/lib/stores/app.store";
 
 interface AuthStore {
   isAuthenticated: boolean;
@@ -26,10 +28,14 @@ interface AuthStore {
 
   hydrate: () => Promise<void>;
   setSession: (tokens: AuthTokens, therapist: Therapist, phone?: string) => Promise<void>;
+  /** Replace the cached therapist profile (persisted) — used after a profile edit. */
+  setTherapist: (therapist: Therapist) => Promise<void>;
   setBiometric: (enabled: boolean) => Promise<void>;
   lock: () => void;
   unlock: () => void;
   logout: () => Promise<void>;
+  /** The server rejected our refresh token — end the session locally. See `sessionExpired`. */
+  sessionExpired: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
@@ -71,6 +77,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     });
   },
 
+  setTherapist: async (therapist) => {
+    await saveTherapistProfile(therapist);
+    set({ therapist });
+  },
+
   setBiometric: async (enabled) => {
     await setBiometricEnabled(enabled);
     set({ biometricEnabled: enabled });
@@ -89,6 +100,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     await authApi.logout().catch(() => {});
     await signOutGoogle();
     await clearAllSecureData();
+    // The network log holds request/response bodies — i.e. patient data — in memory. Signing
+    // out has to drop it too, or handing the phone to the next person leaves it readable.
+    clearNetLog();
     set({
       isAuthenticated: false,
       therapist: null,
@@ -97,5 +111,28 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       phone: null,
       isLocked: false,
     });
+  },
+
+  /**
+   * The refresh token was rejected outright by the server (not merely unreachable — the API
+   * client only calls this on a real rejection, so going offline never lands here). Local
+   * teardown only: no `authApi.logout()`, because the credential that would authorize it is
+   * exactly what just died, and no `signOutGoogle()`, so re-signing in stays one tap.
+   *
+   * Guarded on `isAuthenticated` — a rejected refresh for an already-signed-out user must not
+   * re-fire the "session expired" toast on a login screen.
+   */
+  sessionExpired: async () => {
+    if (!get().isAuthenticated) return;
+    await clearAllSecureData();
+    set({
+      isAuthenticated: false,
+      therapist: null,
+      tokens: null,
+      biometricEnabled: false,
+      phone: null,
+      isLocked: false,
+    });
+    useAppStore.getState().showToast("Your session expired. Please sign in again.", "error");
   },
 }));

@@ -24,6 +24,12 @@ export function Input({ label, error, invalid, className, ...props }: InputProps
 
 interface TextAreaProps extends TextInputProps {
   label?: string;
+  /**
+   * Declared explicitly because React 19 passes `ref` to function components as an ordinary
+   * prop (no `forwardRef` needed) — it just isn't in `TextInputProps`, so TS needs telling.
+   * Used to move focus from a question field into its answer field.
+   */
+  ref?: React.Ref<TextInput>;
 }
 
 export function TextArea({ label, className, ...props }: TextAreaProps) {

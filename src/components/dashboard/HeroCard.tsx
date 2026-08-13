@@ -34,19 +34,21 @@ export function HeroCard({ therapist, stats, isOnline, onToggleOnline }: HeroCar
       </View>
 
       <View className="flex-row mt-3.5" style={{ gap: 8 }}>
-        <StatBox value={String(stats.todaySessions)} label="Today's sessions" color={COLORS.accent} />
-        <StatBox value={formatCurrency(stats.earnedToday)} label="Earned today" color={COLORS.success} />
-        <StatBox value={`${stats.rating} ⭐`} label="Rating" color={COLORS.fg} />
+        <StatBox value={String(stats.todaySessions)} label="Today's sessions" color={COLORS.info} bg="rgba(0,134,168,0.09)" />
+        <StatBox value={formatCurrency(stats.earnedToday)} label="Earned today" color={COLORS.success} bg="rgba(35,145,73,0.10)" />
+        <StatBox value={`${stats.rating} ⭐`} label="Rating" color={COLORS.warning} bg="rgba(209,154,18,0.10)" />
       </View>
     </View>
   );
 }
 
-function StatBox({ value, label, color }: { value: string; label: string; color: string }) {
+/** Colour-coded stat tiles — each metric gets its own tint (teal / green / amber) so the
+ *  hero reads as lively rather than three identical grey boxes. All within the brand palette. */
+function StatBox({ value, label, color, bg }: { value: string; label: string; color: string; bg: string }) {
   return (
-    <View className="flex-1 rounded-[10px] py-2.5 items-center" style={{ backgroundColor: "rgba(0,64,96,0.04)" }}>
+    <View className="flex-1 rounded-[12px] py-2.5 items-center" style={{ backgroundColor: bg }}>
       <Text className="text-[18px] font-extrabold" style={{ color }}>{value}</Text>
-      <Text className="text-muted text-[10px]">{label}</Text>
+      <Text className="text-muted text-[10px] mt-0.5">{label}</Text>
     </View>
   );
 }

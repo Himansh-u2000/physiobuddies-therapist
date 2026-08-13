@@ -1,4 +1,4 @@
-import { View, Text } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { FlashList } from "@shopify/flash-list";
 import { LinearGradient } from "expo-linear-gradient";
@@ -110,6 +110,14 @@ export default function EarningsScreen() {
                   </View>
                 </View>
                 <Text className="text-white/60 text-[11px] mt-2.5">Next payout: {earnings.nextPayoutDate}</Text>
+                <Pressable
+                  onPress={() => router.push("/payouts")}
+                  className="mt-3 h-10 rounded-[12px] bg-white/15 flex-row items-center justify-center active:opacity-80"
+                  style={{ gap: 8 }}
+                >
+                  <ArrowDownCircle size={16} color="#fff" />
+                  <Text className="text-white font-bold text-[13px]">Payouts & wallet</Text>
+                </Pressable>
               </LinearGradient>
               <WeeklyChart data={earnings.weeklyChart} />
               <PayoutTrendChart

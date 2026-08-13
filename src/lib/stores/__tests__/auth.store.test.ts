@@ -2,6 +2,7 @@ import type { AuthTokens, Therapist } from "@/types";
 import * as secure from "@/lib/storage/secure";
 import { authApi } from "@/lib/api/services";
 import { signOutGoogle } from "@/lib/auth/googleSignIn";
+import ToastMessage from "react-native-toast-message";
 import { useAuthStore } from "@/lib/stores/auth.store";
 
 /**
@@ -33,7 +34,19 @@ jest.mock("@/lib/auth/googleSignIn", () => ({
   signOutGoogle: jest.fn(async () => {}),
 }));
 
+jest.mock("@/lib/api/netlog", () => ({
+  clearNetLog: jest.fn(),
+}));
+
+// Toasts render through react-native-toast-message now, so "did the user get told?" is
+// asserted on the imperative call rather than on store state.
+jest.mock("react-native-toast-message", () => ({
+  __esModule: true,
+  default: { show: jest.fn(), hide: jest.fn() },
+}));
+
 const mocked = secure as jest.Mocked<typeof secure>;
+const toastShow = ToastMessage.show as jest.Mock;
 
 const TOKENS: AuthTokens = {
   accessToken: "access",
@@ -211,5 +224,50 @@ describe("logout", () => {
     await expect(useAuthStore.getState().logout()).resolves.toBeUndefined();
     expect(mocked.clearAllSecureData).toHaveBeenCalled();
     expect(useAuthStore.getState().isAuthenticated).toBe(false);
+  });
+});
+
+describe("sessionExpired (refresh token rejected by the server)", () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      isAuthenticated: true,
+      therapist: THERAPIST,
+      tokens: TOKENS,
+      biometricEnabled: true,
+      phone: "9999999999",
+      isLocked: false,
+    });
+  });
+
+  it("clears the session locally without calling the server or Google", async () => {
+    await useAuthStore.getState().sessionExpired();
+
+    // The credential that would authorize a server-side revoke is exactly what just died,
+    // and staying signed into Google keeps re-signing in one tap.
+    expect(authApi.logout).not.toHaveBeenCalled();
+    expect(signOutGoogle).not.toHaveBeenCalled();
+
+    expect(mocked.clearAllSecureData).toHaveBeenCalled();
+    const s = useAuthStore.getState();
+    expect(s.isAuthenticated).toBe(false);
+    expect(s.tokens).toBeNull();
+    expect(s.therapist).toBeNull();
+  });
+
+  it("tells the user why they were signed out", async () => {
+    await useAuthStore.getState().sessionExpired();
+    expect(toastShow).toHaveBeenCalledTimes(1);
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "error", text1: expect.stringMatching(/sign in again/i) }),
+    );
+  });
+
+  it("is a no-op when already signed out — no toast on a login screen", async () => {
+    useAuthStore.setState({ isAuthenticated: false, tokens: null, therapist: null });
+
+    await useAuthStore.getState().sessionExpired();
+
+    expect(mocked.clearAllSecureData).not.toHaveBeenCalled();
+    expect(toastShow).not.toHaveBeenCalled();
   });
 });

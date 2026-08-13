@@ -1,4 +1,25 @@
-# Physiobuddies Therapist App - Implementation Status
+# Physiobuddies Therapist App — Implementation Status
+
+> ## ⚠️ SUPERSEDED — this is a historical audit, not current status
+>
+> **Last audited 2026-06-24.** It is kept for the record of what the codebase looked like before
+> backend integration, and because its per-screen inventory is still a useful map. **Do not read
+> the completion percentages, the "mock data" claims, or the endpoint expectations below as
+> current** — most were overtaken between 2026-07-17 and 2026-08-11.
+>
+> **For current status, read [`../progress.md`](../progress.md).** For the API, read
+> [`../api_contract.md`](../api_contract.md).
+>
+> The headline differences as of 2026-08-11:
+>
+> | This document says | Reality |
+> |---|---|
+> | "mock data until the MERN therapist APIs are connected" | **12 of 13 domains run on the real backend** (`api.dev.physiobuddies.in`). Only notifications is mocked — its controllers hang |
+> | "about 75% complete" / "55% production readiness" | ~85% of buildable app work; ~65% production readiness |
+> | "auth, dashboard, session flow" as MVP focus | All shipped. Session lifecycle, clinical assessment, availability + weekly schedule, payouts, KYC/avatar upload and support are also live |
+> | "No runtime device/emulator QA" | Device QA is **in progress** on a real Android as of 2026-08-11 |
+> | Treatment form collects the app's own shape | Rebuilt against the backend's real `ClinicalAssessment` model, with sliders for numeric fields |
+> | Auth is Google → phone/OTP | **No phone-OTP login exists.** Email/password + Google. The app's phone path is mock-only and pending a product decision |
 
 Last audited: 2026-06-24
 

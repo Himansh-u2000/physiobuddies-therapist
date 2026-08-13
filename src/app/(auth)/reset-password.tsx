@@ -53,7 +53,7 @@ export default function ResetPasswordScreen() {
     try {
       await authApi.resetPassword(email.trim(), otp, newPassword);
       showToast("Password updated — sign in with your new password", "success");
-      setTimeout(() => router.replace("/(auth)/email-login"), 500);
+      setTimeout(() => router.replace("/(auth)/login"), 500);
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Reset failed. Check the code and try again.", "error");
     } finally {

@@ -1,91 +1,140 @@
-import { useState } from "react";
 import { View, Text, ScrollView, Pressable } from "react-native";
-import { BookOpenText, Clock3, Eye, PencilLine, Plus, Send } from "lucide-react-native";
+import { useRouter } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { BookOpenText, PencilLine, Plus, Trash2, TriangleAlert } from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
-import { Button, Chip } from "@/components/ui";
+import { Button, Skeleton, EmptyState, ErrorState } from "@/components/ui";
+import { contentApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
+import type { TherapistArticle } from "@/types";
 
-const categories = ["All", "Back pain", "Post-op", "Senior care", "Ergonomics"] as const;
+/**
+ * Patient-education articles, backed by real endpoints: read via GET /therapist/:id/articles,
+ * written via POST/PATCH/DELETE /therapist/articles. Create/edit happens on a full-screen
+ * Markdown editor (`/article-editor`); content is stored as Markdown.
+ */
 
-const articles = [
-  {
-    title: "5 safe desk stretches for lower back stiffness",
-    category: "Back pain",
-    status: "Published",
-    views: 1240,
-    readTime: "4 min",
-    updated: "Updated 21 Jun",
-  },
-  {
-    title: "ACL rehab milestones after week six",
-    category: "Post-op",
-    status: "Draft",
-    views: 0,
-    readTime: "6 min",
-    updated: "Edited today",
-  },
-  {
-    title: "Fall-prevention exercises for older adults",
-    category: "Senior care",
-    status: "Review",
-    views: 380,
-    readTime: "5 min",
-    updated: "Submitted 24 Jun",
-  },
-] as const;
+/** Strip Markdown markers for a plain-text card preview. */
+function stripMarkdown(md: string): string {
+  return md
+    .replace(/^#{1,3}\s+/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/^>\s?/gm, "")
+    .replace(/(\*\*|__|\*|_|`)/g, "")
+    .replace(/\n{2,}/g, "  ")
+    .trim();
+}
 
 export default function ArticlesScreen() {
+  const router = useRouter();
   const therapist = useAuthStore((s) => s.therapist);
   const showToast = useAppStore((s) => s.showToast);
-  const [selectedCategory, setSelectedCategory] = useState<(typeof categories)[number]>("All");
-  const visibleArticles =
-    selectedCategory === "All" ? articles : articles.filter((article) => article.category === selectedCategory);
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["articles"],
+    queryFn: contentApi.listArticles,
+  });
+  const articles = data ?? [];
+
+  const openCreate = () => router.push("/article-editor");
+
+  const openEdit = (article: TherapistArticle) => {
+    if (!article.id) {
+      showToast("This article can't be edited — the server didn't return its id.", "error");
+      return;
+    }
+    router.push({
+      pathname: "/article-editor",
+      params: { edit: "1", id: article.id, title: article.title, content: article.content },
+    });
+  };
+
+  const handleDelete = async (article: TherapistArticle) => {
+    if (!article.id) {
+      showToast("This article can't be deleted — the server didn't return its id.", "error");
+      return;
+    }
+    try {
+      await contentApi.deleteArticle(article.id);
+      showToast("Article deleted", "success");
+      await queryClient.invalidateQueries({ queryKey: ["articles"] });
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Couldn't delete the article.", "error");
+    }
+  };
 
   return (
     <View className="flex-1 bg-bg">
-      <TopBar therapist={therapist} title="Articles" subtitle="Health content" showNotification={false} />
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerClassName="px-3.5 pb-8">
-        <View className="bg-white border border-border rounded-md p-4" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
+      <TopBar
+        therapist={therapist}
+        title="Articles"
+        subtitle="Health content"
+        showNotification={false}
+      />
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        contentContainerClassName="px-3.5 pb-8"
+        contentContainerStyle={{ gap: 12 }}
+      >
+        <View
+          className="bg-white border border-border rounded-md p-4"
+          style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
+        >
           <View className="flex-row items-center justify-between">
             <View className="flex-1">
               <Text className="text-[18px] font-extrabold text-fg">Patient education library</Text>
-              <Text className="text-muted text-[12px] mt-1">Create short rehab articles to share after sessions.</Text>
+              <Text className="text-muted text-[12px] mt-1">
+                Write formatted rehab articles to share after sessions.
+              </Text>
             </View>
             <View className="w-12 h-12 rounded-[14px] bg-primary-soft items-center justify-center">
               <BookOpenText size={24} color={COLORS.accent} />
             </View>
           </View>
           <View className="flex-row mt-4" style={{ gap: 8 }}>
-            <Metric value="2" label="Published" />
-            <Metric value="1" label="Draft" />
-            <Metric value="1.6k" label="Views" />
+            <Metric value={isLoading ? "—" : String(articles.length)} label="Published" />
           </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3">
-          <View className="flex-row" style={{ gap: 8 }}>
-            {categories.map((category) => (
-              <Chip
-                key={category}
-                selectable
-                selected={selectedCategory === category}
-                onPress={() => setSelectedCategory(category)}
-              >
-                {category}
-              </Chip>
+        {isLoading ? (
+          <View style={{ gap: 10 }}>
+            <Skeleton height={110} radius={12} />
+            <Skeleton height={110} radius={12} />
+          </View>
+        ) : isError ? (
+          <ErrorState
+            icon={TriangleAlert}
+            title="Couldn't load your articles"
+            badge="Error"
+            description="We couldn't reach the server right now. This is usually temporary."
+            action={{ label: "Try again", onPress: () => refetch() }}
+          />
+        ) : articles.length === 0 ? (
+          <EmptyState
+            icon={BookOpenText}
+            title="No articles yet"
+            description="Write a short piece your patients can read after a session — posture tips, recovery milestones, home exercises."
+            action={{ label: "Create article", onPress: openCreate }}
+          />
+        ) : (
+          <View style={{ gap: 10 }}>
+            {articles.map((article, i) => (
+              <ArticleCard
+                key={article.id ?? `${article.title}-${i}`}
+                article={article}
+                onEdit={() => openEdit(article)}
+                onDelete={() => handleDelete(article)}
+              />
             ))}
           </View>
-        </ScrollView>
+        )}
 
-        <View className="mt-3" style={{ gap: 10 }}>
-          {visibleArticles.map((article) => (
-            <ArticleCard key={article.title} {...article} onPress={() => showToast(`Opening ${article.title}`)} />
-          ))}
-        </View>
-
-        <Button onPress={() => showToast("Article editor will open")}>
+        <Button onPress={openCreate}>
           <Plus size={16} color="#fff" />
           <Text className="text-white font-bold text-[14px]">Create article</Text>
         </Button>
@@ -97,55 +146,62 @@ export default function ArticlesScreen() {
 function Metric({ value, label }: { value: string; label: string }) {
   return (
     <View className="flex-1 rounded-[12px] bg-bg p-2.5">
-      <Text className="text-[18px] font-black text-fg" style={{ fontFamily: "monospace" }}>{value}</Text>
+      <Text className="text-[18px] font-black text-fg" style={{ fontFamily: "monospace" }}>
+        {value}
+      </Text>
       <Text className="text-muted text-[10px] font-bold uppercase">{label}</Text>
     </View>
   );
 }
 
 function ArticleCard({
-  title,
-  category,
-  status,
-  views,
-  readTime,
-  updated,
-  onPress,
+  article,
+  onEdit,
+  onDelete,
 }: {
-  title: string;
-  category: string;
-  status: "Published" | "Draft" | "Review";
-  views: number;
-  readTime: string;
-  updated: string;
-  onPress: () => void;
+  article: TherapistArticle;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} className="bg-white border border-border rounded-md p-3.5 active:opacity-80" style={{ gap: 12 }}>
+    <Pressable
+      onPress={onEdit}
+      className="bg-white border border-border rounded-md p-3.5 active:opacity-90"
+      style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
+    >
       <View className="flex-row items-start" style={{ gap: 12 }}>
         <View className="w-11 h-11 rounded-[13px] bg-primary-soft items-center justify-center">
           <PencilLine size={20} color={COLORS.accent} />
         </View>
         <View className="flex-1">
-          <View className="flex-row items-center justify-between">
-            <Chip variant="info">{category}</Chip>
-            <Chip variant={status === "Published" ? "active" : status === "Review" ? "pending" : "neutral"}>{status}</Chip>
-          </View>
-          <Text className="text-[14px] font-bold text-fg mt-2 leading-5">{title}</Text>
-          <Text className="text-muted text-[11px] mt-1">{updated}</Text>
+          <Text className="text-[14px] font-bold text-fg leading-5">{article.title}</Text>
+          {article.dateLabel ? (
+            <Text className="text-muted text-[11px] mt-1">{article.dateLabel}</Text>
+          ) : null}
+          <Text className="text-muted text-[12px] mt-1.5 leading-4" numberOfLines={3}>
+            {stripMarkdown(article.content)}
+          </Text>
         </View>
       </View>
-      <View className="flex-row border-t border-border pt-2.5" style={{ gap: 12 }}>
-        <View className="flex-row items-center" style={{ gap: 4 }}>
-          <Eye size={14} color={COLORS.muted} />
-          <Text className="text-muted text-[11px] font-semibold">{views} views</Text>
-        </View>
-        <View className="flex-row items-center" style={{ gap: 4 }}>
-          <Clock3 size={14} color={COLORS.muted} />
-          <Text className="text-muted text-[11px] font-semibold">{readTime}</Text>
-        </View>
-        <View className="flex-1" />
-        <Send size={14} color={COLORS.accent} />
+      <View className="flex-row border-t border-border pt-2.5" style={{ gap: 16 }}>
+        <Pressable
+          onPress={onEdit}
+          className="flex-row items-center active:opacity-70"
+          style={{ gap: 5 }}
+          hitSlop={6}
+        >
+          <PencilLine size={14} color={COLORS.accent} />
+          <Text className="text-accent text-[12px] font-bold">Edit</Text>
+        </Pressable>
+        <Pressable
+          onPress={onDelete}
+          className="flex-row items-center active:opacity-70"
+          style={{ gap: 5 }}
+          hitSlop={6}
+        >
+          <Trash2 size={14} color={COLORS.danger} />
+          <Text className="text-danger text-[12px] font-bold">Delete</Text>
+        </Pressable>
       </View>
     </Pressable>
   );

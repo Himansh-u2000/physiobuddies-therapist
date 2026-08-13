@@ -52,6 +52,87 @@ export const USE_MOCK_API = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_API, true);
  */
 export const USE_MOCK_AUTH = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_AUTH, USE_MOCK_API);
 
+/**
+ * Per-domain mock switches (Phase 5 backend integration). Domains whose backend endpoints
+ * are implemented fall back to the global flag, so `EXPO_PUBLIC_USE_MOCK_API=false` turns them
+ * all real at once. Each can also be pinned independently for staged rollout / debugging.
+ */
+export const USE_MOCK_PROFILE = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_PROFILE, USE_MOCK_API);
+export const USE_MOCK_DASHBOARD = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_DASHBOARD, USE_MOCK_API);
+export const USE_MOCK_APPOINTMENTS = envFlag(
+  process.env.EXPO_PUBLIC_USE_MOCK_APPOINTMENTS,
+  USE_MOCK_API,
+);
+export const USE_MOCK_EARNINGS = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_EARNINGS, USE_MOCK_API);
+/** Payouts: GET /therapist/payout (+ /:id) and POST /therapist/payout/request — all verified live. */
+export const USE_MOCK_PAYOUTS = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_PAYOUTS, USE_MOCK_API);
+/** Uploads: POST /file-upload/single (multer field `file`) — verified live. */
+export const USE_MOCK_UPLOAD = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_UPLOAD, USE_MOCK_API);
+/** Availability: GET /therapist/:id/availability, POST/DELETE /therapist/slots/block, /leaves. */
+export const USE_MOCK_AVAILABILITY = envFlag(
+  process.env.EXPO_PUBLIC_USE_MOCK_AVAILABILITY,
+  USE_MOCK_API,
+);
+/** Therapist-authored content: /therapist/articles + /therapist/faqs CRUD, read via /therapist/:id/*. */
+export const USE_MOCK_CONTENT = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_CONTENT, USE_MOCK_API);
+
+/**
+ * Session lifecycle — REAL as of the `api.dev.physiobuddies.in` backend. The whole chain is
+ * implemented and was probed live: PATCH /therapist/sessions/my-bookings/:id/accept,
+ * POST .../generate-otp, .../verify-otp (flips the session to `active`), .../end, plus
+ * POST /treatment-session/:id/{start,complete,cancel,no-show,add-docs}. Follows the global flag.
+ */
+export const USE_MOCK_SESSION = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_SESSION, USE_MOCK_API);
+/**
+ * Clinical assessment — REAL: GET/POST /treatment-session/:id/assessment against the
+ * `ClinicalAssessment` model. The form's option lists are app-side (`constants/clinical.ts`),
+ * mirroring the backend's Prisma enums — there is no form-config endpoint and never was.
+ */
+export const USE_MOCK_TREATMENT = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_TREATMENT, USE_MOCK_API);
+/**
+ * Patients — no dedicated therapist-patients endpoint exists, but the therapist's own patient
+ * roster is derivable from GET /therapist/sessions/my-bookings (one treatment plan per patient
+ * engagement, with visit counts and last-visit dates). Follows the global flag; the derivation
+ * lives in `mappers.buildPatientsFromBookings`.
+ */
+export const USE_MOCK_PATIENTS = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_PATIENTS, USE_MOCK_API);
+
+/**
+ * STILL MOCKED regardless of the global flag. `/notification/*` controllers are literally empty
+ * method bodies (`async getUserNotifications(_req, _res, _next) {}`) — the request never gets a
+ * response and HANGS until the client timeout, which is worse than a 404. Verified again against
+ * api.dev.physiobuddies.in on 2026-08-10. Flip only once those controllers return data.
+ */
+export const USE_MOCK_NOTIFICATIONS = envFlag(
+  process.env.EXPO_PUBLIC_USE_MOCK_NOTIFICATIONS,
+  true,
+);
+
+/**
+ * In-app network log (`/network-log`, entry point in Profile → Support).
+ *
+ * Defaults to ON in dev and OFF otherwise, but the local review APK
+ * (`scripts/build-local-apk.ps1`) turns it on explicitly: that build is a *release* build with
+ * no Metro attached, so `console.log` and Chrome DevTools are both unavailable — the in-app log
+ * is the only way to see a request payload on the device. Keep it OFF for store builds: it
+ * holds patient data in memory, and the screen can share it out.
+ */
+export const NETWORK_LOG_ENABLED = envFlag(
+  process.env.EXPO_PUBLIC_ENABLE_NETWORK_LOG,
+  typeof __DEV__ !== "undefined" && __DEV__,
+);
+
+/**
+ * In-app subscription billing switch. OFF because the backend does not yet charge for or activate
+ * a therapist subscription: it's created for free during final onboarding (a literal
+ * `// TODO: payment for subscription` in `therapistMeta.service`), and `payment.verifyPayment` only
+ * finalizes patient session bookings — a `purpose:"subscription"` payment would take money and
+ * activate nothing. The subscription screen's checkout is scaffolded behind this single flag so no
+ * therapist is ever charged for a subscription that wouldn't turn on. Flip to `true` only once the
+ * backend links a subscription-purpose payment to creating/extending the `Subscription` record.
+ */
+export const SUBSCRIPTION_PAYMENT_ENABLED = false;
+
 /** Auth / Google Sign-In configuration. */
 export const AUTH_CONFIG = {
   /**
@@ -64,6 +145,41 @@ export const AUTH_CONFIG = {
   /** Re-lock the app (require biometric again) after this long in the background. */
   biometricRelockMs: 2 * 60 * 1000,
 } as const;
+
+/** Where "Help & support" writes to. Single source so the address can't drift between screens. */
+export const SUPPORT_EMAIL = "support@physiobuddies.in";
+
+/**
+ * The backend's slot grid, mirrored from `src/core/constants/slots.ts` server-side.
+ * 16 slots a day, each 40 min of session + 20 min break, starting on the hour from 06:00 to
+ * 21:00. `startHour` is the identifier every slot endpoint speaks in.
+ */
+export const SLOT_CONFIG = {
+  startHour: 6,
+  endHour: 21,
+  durationMin: 40,
+  /** Shift buckets, matching the backend's `getCategoryForHour`. */
+  shifts: [
+    { id: "morning", label: "Morning", from: 6, to: 11 },
+    { id: "evening", label: "Afternoon", from: 12, to: 17 },
+    { id: "night", label: "Evening", from: 18, to: 21 },
+  ],
+} as const;
+
+export type SlotShiftId = (typeof SLOT_CONFIG.shifts)[number]["id"];
+
+/** Weekday keys as the weekly-schedule endpoint spells them, Monday-first for display. */
+export const WEEKDAYS = [
+  { id: "monday", short: "Mon" },
+  { id: "tuesday", short: "Tue" },
+  { id: "wednesday", short: "Wed" },
+  { id: "thursday", short: "Thu" },
+  { id: "friday", short: "Fri" },
+  { id: "saturday", short: "Sat" },
+  { id: "sunday", short: "Sun" },
+] as const;
+
+export type WeekdayId = (typeof WEEKDAYS)[number]["id"];
 
 export const STORAGE_KEYS = {
   accessToken: "pb_access_token",

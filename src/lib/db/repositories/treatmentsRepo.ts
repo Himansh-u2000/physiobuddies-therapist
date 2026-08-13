@@ -14,7 +14,7 @@ export function treatmentRowToDomain(row: TreatmentRow): Treatment {
     patientName: row.patientName,
     chiefComplaint: row.chiefComplaint,
     painRegions: row.painRegions ? JSON.parse(row.painRegions) : [],
-    painScale: row.painScale,
+    painScales: row.painScales ? JSON.parse(row.painScales) : {},
     assessmentFindings: row.assessmentFindings ? JSON.parse(row.assessmentFindings) : [],
     treatmentsGiven: row.treatmentsGiven ? JSON.parse(row.treatmentsGiven) : [],
     exercises: row.exercises ? JSON.parse(row.exercises) : [],
@@ -23,6 +23,9 @@ export function treatmentRowToDomain(row: TreatmentRow): Treatment {
     followUpRequired: row.followUpRequired,
     followUpDate: row.followUpDate ?? undefined,
     attachments: row.attachments ? JSON.parse(row.attachments) : [],
+    // Absent on rows written before the clinical block existed — left undefined rather than
+    // defaulted so `buildAssessmentInput` can tell "old draft" from "empty assessment".
+    clinical: row.clinical ? JSON.parse(row.clinical) : undefined,
     syncStatus: row.syncStatus as Treatment["syncStatus"],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -50,7 +53,7 @@ export async function upsertTreatmentDraft(db: DrizzleDB, input: UpsertTreatment
     patientName: input.patientName,
     chiefComplaint: input.chiefComplaint,
     painRegions: JSON.stringify(input.painRegions),
-    painScale: input.painScale,
+    painScales: JSON.stringify(input.painScales ?? {}),
     assessmentFindings: JSON.stringify(input.assessmentFindings),
     treatmentsGiven: JSON.stringify(input.treatmentsGiven),
     exercises: JSON.stringify(input.exercises),
@@ -59,6 +62,7 @@ export async function upsertTreatmentDraft(db: DrizzleDB, input: UpsertTreatment
     followUpRequired: input.followUpRequired,
     followUpDate: input.followUpDate ?? null,
     attachments: JSON.stringify(input.attachments),
+    clinical: input.clinical ? JSON.stringify(input.clinical) : null,
     syncStatus: input.syncStatus,
     updatedAt: now,
   };

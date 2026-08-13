@@ -1,8 +1,9 @@
 import { View, Text, Pressable, ScrollView, Linking } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { Phone, MessageSquare, Lock, ChevronLeft, MapPinOff } from "lucide-react-native";
-import { Avatar, Chip, Button, ErrorState } from "@/components/ui";
+import { Avatar, Badge, Button, ErrorState } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useLocation } from "@/lib/hooks/useLocation";
@@ -11,6 +12,7 @@ import { COLORS } from "@/constants/config";
 
 export default function RouteScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { appointmentId } = useLocalSearchParams<{ appointmentId: string }>();
   const showToast = useAppStore((s) => s.showToast);
   const { getCurrentLocation, openInMaps, permissionBlocked } = useLocation();
@@ -53,7 +55,7 @@ export default function RouteScreen() {
         <View className="h-[240px] relative overflow-hidden" style={{ backgroundColor: "#e8f0f8" }}>
           <View className="absolute inset-0" style={{ backgroundColor: "rgba(0,64,96,0.04)" }} />
           <View className="absolute inset-0" style={{ backgroundColor: "rgba(233,246,254,0.5)" }} />
-          <Pressable onPress={() => router.back()} className="absolute top-3 left-3.5 w-10 h-10 rounded-md bg-white/90 items-center justify-center z-10">
+          <Pressable onPress={() => router.back()} className="absolute left-3.5 w-10 h-10 rounded-md bg-white/90 items-center justify-center z-10" style={{ top: insets.top + 8 }}>
             <ChevronLeft size={18} color={COLORS.accent} />
           </Pressable>
           <View className="absolute" style={{ bottom: 55, left: "38%" }}>
@@ -132,7 +134,7 @@ export default function RouteScreen() {
             <View className="mx-4 mt-3.5 bg-surface-strong rounded-md border-[1.5px] border-border overflow-hidden">
               <View className="px-4 py-3.5 border-b border-border flex-row items-center justify-between">
                 <Text className="text-[14px] font-extrabold text-fg">Before you enter OTP</Text>
-                <Chip variant="pending">Step 1 of 3</Chip>
+                <Badge variant="warning" size="sm" dot={false}>Step 1 of 3</Badge>
               </View>
               {checklist.map((step) => (
                 <View key={step.num} className="flex-row px-4 py-3.5 border-b border-border last:border-b-0" style={{ gap: 14 }}>

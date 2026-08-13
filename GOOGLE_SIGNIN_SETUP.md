@@ -94,9 +94,26 @@ for iOS Google Sign-In.)
 
 ---
 
+> **Client IDs are not written down in this repo.** The live values live in
+> `.env.development.local` (git-ignored) and the EAS project env store. This file refers to them by
+> Google Cloud **project number** only — enough to tell two clients apart in a checklist, useless on
+> its own. Read the real value with `eas env:list` or from `.env.development.local`.
+
 ### Status checklist
-- [ ] Web OAuth client ID matches backend `GOOGLE_CLIENT_ID` (verify the value equals backend `.env`)
-- [ ] Android OAuth client created with `in.physiobuddies.therapist` + EAS SHA-1
-- [x] `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` provided out-of-git — `.env.development.local` (local) + EAS env var (all 3 environments); tracked `.env.*`/`eas.json` intentionally blank
+- [x] Web OAuth client ID matches backend `GOOGLE_CLIENT_ID` — both are the **Web** client from
+  Google Cloud project `22438999008` (backend value confirmed by the user 2026-07-30; app
+  `.env.development.local` updated to match — it previously held a client from a DIFFERENT project
+  `252219918789`, which would have 500'd the code exchange).
+- [ ] **Android OAuth client** created in the **same Google Cloud project** (`22438999008`) with:
+  - Package name: `in.physiobuddies.therapist`
+  - SHA-1 (local `npm run apk` debug-signing cert): `5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25`
+  - Also add the **EAS** keystore SHA-1 for cloud builds (`eas credentials -p android`).
+  - This is the only remaining blocker for Google login — without it the native sign-in fails with `DEVELOPER_ERROR`.
+- [x] `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` provided out-of-git — `.env.development.local` (local) + forwarded into `npm run apk` by `scripts/build-local-apk.ps1`.
+- [ ] **EAS env var** still holds the OLD client (from project `252219918789`) — update it for cloud
+  builds: `eas env:update` (or delete + `eas env:create`) → set to the project-`22438999008` Web
+  client. Not needed for local `npm run apk`.
 - [ ] (Phase 8) iOS client created + `iosUrlScheme` placeholder replaced
-- [ ] Google login verified end-to-end on a dev build
+- [ ] Google login verified end-to-end on a dev build. **Tester's Google email must be a registered
+  therapist** (backend rejects unknown Google accounts: "please sign up first") — register your real
+  Google email via email/OTP signup first, since the seed logins aren't real Google accounts.

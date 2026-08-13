@@ -1,8 +1,8 @@
-import { and, eq, lte } from "drizzle-orm";
+import { and, asc, eq, lte } from "drizzle-orm";
 import type { DrizzleDB } from "../provider";
 import { sessionPhotos } from "../schema";
 
-type SessionPhotoRow = typeof sessionPhotos.$inferSelect;
+export type SessionPhotoRow = typeof sessionPhotos.$inferSelect;
 
 interface EnqueuePhotoInput {
   id: string;
@@ -24,6 +24,16 @@ export async function enqueuePhotoUpload(db: DrizzleDB, input: EnqueuePhotoInput
     syncStatus: "pending",
     createdAt: Date.now(),
   });
+}
+
+/** Every photo captured during one session, uploaded or not — what the treatment form's
+ *  attachments list shows, in capture order. */
+export async function getPhotosForSession(db: DrizzleDB, sessionId: string): Promise<SessionPhotoRow[]> {
+  return db
+    .select()
+    .from(sessionPhotos)
+    .where(eq(sessionPhotos.sessionId, sessionId))
+    .orderBy(asc(sessionPhotos.createdAt));
 }
 
 export async function getPendingPhotoUploads(db: DrizzleDB, now: number): Promise<SessionPhotoRow[]> {

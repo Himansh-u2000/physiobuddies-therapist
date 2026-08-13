@@ -1,87 +1,320 @@
-import { useState } from "react";
-import { View, Text, Pressable, TextInput, ScrollView } from "react-native";
-import { useRouter } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
+import { View, Text, Pressable, ScrollView, KeyboardAvoidingView, Platform } from "react-native";
+import { useRouter, useFocusEffect } from "expo-router";
+import { Image } from "expo-image";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Crypto from "expo-crypto";
-import { ChevronLeft, Plus, X, Upload, Save, CheckCircle2 } from "lucide-react-native";
-import { Avatar, Chip, Button, TextArea, Input, BottomSheet, useBottomSheet } from "@/components/ui";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  Plus,
+  X,
+  Check,
+  Upload,
+  Save,
+  CheckCircle2,
+  FileText,
+  Activity,
+  Stethoscope,
+  ClipboardList,
+  NotebookPen,
+  Calendar,
+  TriangleAlert,
+} from "lucide-react-native";
+import {
+  Avatar,
+  Badge,
+  Button,
+  TextArea,
+  BottomSheet,
+  useBottomSheet,
+  Slider,
+  PainSlider,
+  painSeverityColor,
+} from "@/components/ui";
+import { BodyMap } from "@/components/session/BodyMap";
+import { DatePickerSheet } from "@/components/session/DatePickerSheet";
+import {
+  Field,
+  SegmentedField,
+  MultiSelectField,
+  BooleanField,
+  TextField,
+} from "@/components/session/FormFields";
 import { useSessionStore } from "@/lib/stores/session.store";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useDatabase } from "@/lib/db/provider";
-import { upsertTreatmentDraft, upsertSessionDraft, getSessionById } from "@/lib/db/repositories";
+import {
+  upsertTreatmentDraft,
+  upsertSessionDraft,
+  getSessionById,
+  getPhotosForSession,
+} from "@/lib/db/repositories";
+import type { SessionPhotoRow } from "@/lib/db/repositories";
 import { flushPendingSync } from "@/lib/db/sync/syncEngine";
 import { COLORS } from "@/constants/config";
-import type { AssessmentFinding, TreatmentGiven, ExercisePrescribed } from "@/types";
+import {
+  ASSESSMENT_TYPES,
+  ASSISTIVE_DEVICES,
+  CHIEF_COMPLAINTS,
+  DURATIONS,
+  FALL_RISK_OPTIONS,
+  FUNCTIONAL_LIMITATIONS,
+  MOBILITY_STATUSES,
+  PAIN_CHARACTERISTICS,
+  PROBLEMS_IDENTIFIED,
+  ROM_OPTIONS,
+  STRENGTH_OPTIONS,
+  TREATMENT_ITEMS,
+  VISIT_FREQUENCIES,
+  conditionalBlockFor,
+} from "@/constants/clinical";
+import { toIsoDate, formatDateLabel } from "@/lib/utils/format";
+import type {
+  AssessmentType,
+  ClinicalAssessmentInput,
+  DurationOfSymptoms,
+  ExercisePrescribed,
+  FallRisk,
+  MuscleStrength,
+  RangeOfMotion,
+  VisitFrequency,
+} from "@/types";
 
-const PAIN_REGIONS = ["Lower back", "Upper back", "Neck", "Left shoulder", "Right shoulder", "Left knee", "Right knee", "Hip", "Ankle", "Wrist"];
-const ASSESSMENT_TYPES = [
-  { type: "rom", label: "📐 ROM Limited" },
-  { type: "slr", label: "🦵 SLR+" },
-  { type: "spasm", label: "💪 Spasm" },
-  { type: "weakness", label: "⚡ Weakness" },
-  { type: "swelling", label: "🔴 Swelling" },
-  { type: "tenderness", label: "👆 Tenderness" },
-];
-const TREATMENT_TYPES = [
-  { type: "mobilisation", label: "🤲 Mobilisation" },
-  { type: "manipulation", label: "🔧 Manipulation" },
-  { type: "tens", label: "⚡ TENS" },
-  { type: "heat", label: "🔥 Heat" },
-  { type: "massage", label: "💆 Massage" },
-  { type: "taping", label: "🩹 Taping" },
-  { type: "ultrasound", label: "🔊 Ultrasound" },
-  { type: "exercise", label: "🏋️ Exercise Therapy" },
-];
-const EXERCISE_OPTIONS = ["Cat-Camel Stretch", "Knee-to-Chest", "Pelvic Tilt", "Bridges", "Bird-Dog", "McKenzie Extension", "Clamshell", "Wall Sit", "SLR", "Plank"];
+/**
+ * The clinical assessment / treatment form.
+ *
+ * Rebuilt around the backend's real `ClinicalAssessment` model. The previous version collected
+ * a shape of the app's own invention and POSTed it to an endpoint that was an unimplemented
+ * stub — so none of it was ever stored. Now every field here maps to a real column (see
+ * `mapAssessmentToPayload`), and the enum-valued fields offer exactly the values the schema
+ * accepts.
+ *
+ * Usability changes, in rough order of how much time they save mid-session:
+ *  - **Numbers are sliders.** Pain score, treatment days, reps, sets and the cardiopulmonary
+ *    vitals were all number-pad `TextInput`s: tap, wait for keyboard, type, dismiss. Now they're
+ *    one drag, with ± buttons for exact values.
+ *  - **Nothing is pre-filled with fake data.** It used to open with an invented chief complaint,
+ *    a 7/10 pain score, three findings and three exercises already selected, all describing a
+ *    fictional patient. A therapist skimming to the end would have filed that as a real record.
+ *  - **Conditional sections follow the assessment type.** Surgery details only appear for a
+ *    post-surgical assessment, vitals only for cardiopulmonary — matching what the backend
+ *    actually persists, instead of asking for data it silently drops.
+ *  - **The step you're on can't be skipped past silently.** Required fields are validated per
+ *    step, and the header shows what's still missing rather than failing at submit.
+ */
 
-/** The form only captures which types were picked, not the prototype's per-finding
- *  detail sub-fields (ROM degrees, tenderness location, etc.) — nothing to lose by wrapping
- *  them with empty `details` here; that's already all the UI collects today. */
-function toFindings(types: string[], labels: { type: string; label: string }[]): AssessmentFinding[] {
-  return types.map((type) => ({ id: type, type, label: labels.find((l) => l.type === type)?.label ?? type, details: {} }));
+interface Phase {
+  key: string;
+  label: string;
+  icon: typeof FileText;
 }
-function toTreatmentsGiven(types: string[], labels: { type: string; label: string }[]): TreatmentGiven[] {
-  return types.map((type) => ({ id: type, type, label: labels.find((l) => l.type === type)?.label ?? type, details: {} }));
+
+const PHASES: Phase[] = [
+  { key: "assessment", label: "Assessment", icon: FileText },
+  { key: "pain", label: "Pain", icon: Activity },
+  { key: "findings", label: "Findings", icon: Stethoscope },
+  { key: "plan", label: "Plan", icon: ClipboardList },
+  { key: "notes", label: "Notes", icon: NotebookPen },
+  { key: "review", label: "Review", icon: CheckCircle2 },
+];
+const LAST_PHASE = PHASES.length - 1;
+
+function defaultFollowUpDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 3);
+  return toIsoDate(d);
 }
 
 export default function TreatmentFormScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const showToast = useAppStore((s) => s.showToast);
   const { db } = useDatabase();
   const { sessionId, appointmentId, patientId, patientName, condition } = useSessionStore();
   const safeName = patientName ?? "Patient";
-  const safeCondition = condition ?? "condition";
   const sheet = useBottomSheet();
 
-  const [chiefComplaint, setChiefComplaint] = useState(`Chronic ${safeCondition.toLowerCase()} for 6 months. Worsens after prolonged sitting. L4-L5 disc bulge on MRI.`);
-  const [painRegions, setPainRegions] = useState<string[]>(["Lower back"]);
-  const [painScale, setPainScale] = useState(7);
-  const [assessments, setAssessments] = useState<string[]>(["rom", "slr", "spasm"]);
-  const [treatments, setTreatments] = useState<string[]>(["mobilisation", "tens", "massage"]);
-  const [exercises, setExercises] = useState<ExercisePrescribed[]>([
-    { id: Crypto.randomUUID(), name: "Cat-Camel Stretch", reps: 10, sets: 2 },
-    { id: Crypto.randomUUID(), name: "Knee-to-Chest", reps: 15, sets: 2 },
-    { id: Crypto.randomUUID(), name: "Pelvic Tilt", reps: 15, sets: 3 },
-  ]);
-  const [clinicalNotes, setClinicalNotes] = useState("Patient responded well, reported 30% relief post-session. Anterior pelvic tilt observed — consider core strengthening focus next visit.");
-  const [precautions, setPrecautions] = useState("Avoid forward bending, prolonged sitting. Use lumbar roll.");
+  const [phase, setPhase] = useState(0);
+
+  // --- Step 1: core assessment ---
+  const [assessmentType, setAssessmentType] = useState<AssessmentType>("ORTHO");
+  const [chiefComplaint, setChiefComplaint] = useState<string[]>([]);
+  const [complaintNote, setComplaintNote] = useState("");
+  const [durationOfSymptoms, setDurationOfSymptoms] =
+    useState<DurationOfSymptoms>("ONE_TO_FOUR_WEEKS");
+
+  // --- Step 2: pain ---
+  const [painRegions, setPainRegions] = useState<string[]>([]);
+  const [painScore, setPainScore] = useState(0);
+  const [painCharacteristics, setPainCharacteristics] = useState<string[]>([]);
+
+  // --- Step 3: objective findings ---
+  const [rom, setRom] = useState<RangeOfMotion>("Full");
+  const [muscleStrength, setMuscleStrength] = useState<MuscleStrength>("Normal");
+  const [mobilityStatus, setMobilityStatus] = useState<string>("Independent");
+  const [assistiveDevice, setAssistiveDevice] = useState<string>("None");
+  const [fallRisk, setFallRisk] = useState<FallRisk>("Low");
+  const [functionalLimitations, setFunctionalLimitations] = useState<string[]>([]);
+  // Conditional blocks — only one is ever persisted, chosen by assessmentType.
+  const [surgeryType, setSurgeryType] = useState("");
+  const [dateOfSurgery, setDateOfSurgery] = useState<string>("");
+  const [surgeryDatePickerOpen, setSurgeryDatePickerOpen] = useState(false);
+  const [sportPlayed, setSportPlayed] = useState("");
+  const [mechanismOfInjury, setMechanismOfInjury] = useState("");
+  const [cognitiveStatus, setCognitiveStatus] = useState("");
+  const [muscleTone, setMuscleTone] = useState("");
+  const [heartRateBpm, setHeartRateBpm] = useState(72);
+  const [bloodPressureSys, setBloodPressureSys] = useState(120);
+  const [bloodPressureDia, setBloodPressureDia] = useState(80);
+  const [spo2Percentage, setSpo2Percentage] = useState(98);
+  const [oxygenSupportType, setOxygenSupportType] = useState("");
+
+  // --- Step 4: plan ---
+  const [problemsIdentified, setProblemsIdentified] = useState<string[]>([]);
+  const [treatmentPlanItems, setTreatmentPlanItems] = useState<string[]>([]);
+  const [visitFrequency, setVisitFrequency] = useState<VisitFrequency>("Alternate_Days");
+  const [suggestedTreatmentDays, setSuggestedTreatmentDays] = useState(6);
+  const [hepGiven, setHepGiven] = useState(false);
+  const [exercises, setExercises] = useState<ExercisePrescribed[]>([]);
+  const [pickingExerciseId, setPickingExerciseId] = useState<string | null>(null);
+
+  // --- Step 5: notes ---
+  const [therapistNotes, setTherapistNotes] = useState("");
+  const [precautions, setPrecautions] = useState("");
   const [followUpRequired, setFollowUpRequired] = useState(true);
-  const [followUpDate, setFollowUpDate] = useState("In 3–4 days — Jun 21, 2026");
+  const [followUpDate, setFollowUpDate] = useState(defaultFollowUpDate);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const togglePainRegion = (region: string) => {
-    setPainRegions((prev) => prev.includes(region) ? prev.filter((r) => r !== region) : [...prev, region]);
-  };
-  const toggleAssessment = (type: string) => {
-    setAssessments((prev) => prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]);
-  };
-  const toggleTreatment = (type: string) => {
-    setTreatments((prev) => prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]);
-  };
-  const addExercise = () => setExercises((prev) => [...prev, { id: Crypto.randomUUID(), name: EXERCISE_OPTIONS[0], reps: 10, sets: 2 }]);
-  const removeExercise = (idx: number) => setExercises((prev) => prev.filter((_, i) => i !== idx));
+  const conditionalBlock = conditionalBlockFor(assessmentType);
 
-  /** Builds the row to persist. Local-first — this always succeeds regardless of connectivity. */
+  // The session's captured photos ARE its attachments. Re-read on focus so a photo taken via
+  // the session camera is here on the way back.
+  const [photos, setPhotos] = useState<SessionPhotoRow[]>([]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!db || !sessionId) return;
+      let cancelled = false;
+      getPhotosForSession(db, sessionId)
+        .then((rows) => {
+          if (!cancelled) setPhotos(rows);
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [db, sessionId]),
+  );
+
+  const togglePainRegion = (region: string) => {
+    setPainRegions((prev) =>
+      prev.includes(region) ? prev.filter((r) => r !== region) : [...prev, region],
+    );
+  };
+
+  const addExercise = () =>
+    setExercises((prev) => [...prev, { id: Crypto.randomUUID(), name: "", reps: 10, sets: 3 }]);
+  const removeExercise = (id: string) =>
+    setExercises((prev) => prev.filter((ex) => ex.id !== id));
+  const setExerciseName = (id: string, name: string) =>
+    setExercises((prev) => prev.map((ex) => (ex.id === id ? { ...ex, name } : ex)));
+  const setExerciseCount = (id: string, key: "reps" | "sets", value: number) =>
+    setExercises((prev) => prev.map((ex) => (ex.id === id ? { ...ex, [key]: value } : ex)));
+
+  /**
+   * What's still missing on each step. Surfaced as you go rather than at submit — discovering
+   * on the last screen that step 1 was incomplete means paging back through five steps.
+   */
+  const missingByPhase = useMemo<Record<number, string[]>>(() => {
+    const missing: Record<number, string[]> = {};
+    const step1: string[] = [];
+    if (chiefComplaint.length === 0) step1.push("a chief complaint");
+    if (step1.length) missing[0] = step1;
+
+    const step4: string[] = [];
+    if (problemsIdentified.length === 0) step4.push("at least one problem identified");
+    if (treatmentPlanItems.length === 0) step4.push("at least one treatment given");
+    if (step4.length) missing[3] = step4;
+
+    return missing;
+  }, [chiefComplaint, problemsIdentified, treatmentPlanItems]);
+
+  const blockingIssues = useMemo(
+    () => Object.values(missingByPhase).flat(),
+    [missingByPhase],
+  );
+
+  /** Assemble the exact payload the backend stores. */
+  const buildClinical = useCallback((): ClinicalAssessmentInput => {
+    const notes = [therapistNotes.trim(), precautions.trim() && `Precautions: ${precautions.trim()}`]
+      .filter(Boolean)
+      .join("\n\n");
+
+    return {
+      assessmentType,
+      // The free-text elaboration rides along as an extra complaint entry so it isn't lost —
+      // the backend has no separate narrative field for it.
+      chiefComplaint: complaintNote.trim()
+        ? [...chiefComplaint, complaintNote.trim()]
+        : chiefComplaint,
+      durationOfSymptoms,
+      painScore,
+      painCharacteristics,
+      rom,
+      muscleStrength,
+      mobilityStatus,
+      assistiveDevice,
+      fallRisk,
+      functionalLimitations,
+      // Only the block matching the assessment type is sent — the backend drops the others.
+      ...(conditionalBlock === "surgical"
+        ? { surgeryType: surgeryType.trim() || undefined, dateOfSurgery: dateOfSurgery || undefined }
+        : {}),
+      ...(conditionalBlock === "sports"
+        ? {
+            sportPlayed: sportPlayed.trim() || undefined,
+            mechanismOfInjury: mechanismOfInjury.trim() || undefined,
+          }
+        : {}),
+      ...(conditionalBlock === "neuro"
+        ? {
+            cognitiveStatus: cognitiveStatus.trim() || undefined,
+            muscleTone: muscleTone.trim() || undefined,
+          }
+        : {}),
+      ...(conditionalBlock === "cardiopulmonary"
+        ? {
+            heartRateBpm,
+            bloodPressureSys,
+            bloodPressureDia,
+            spo2Percentage,
+            oxygenSupportType: oxygenSupportType.trim() || undefined,
+          }
+        : {}),
+      problemsIdentified,
+      treatmentPlanItems,
+      visitFrequency,
+      suggestedTreatmentDays,
+      hepGiven,
+      therapistNotes: notes || undefined,
+      // Only photos that have finished uploading have a server URL to reference. The rest are
+      // still in the upload queue and will be on the server shortly, but this record can't
+      // point at a URL that doesn't exist yet.
+      documentUrls: photos.map((p) => p.remoteUrl).filter((u): u is string => !!u),
+    };
+  }, [
+    assessmentType, chiefComplaint, complaintNote, durationOfSymptoms, painScore,
+    painCharacteristics, rom, muscleStrength, mobilityStatus, assistiveDevice, fallRisk,
+    functionalLimitations, conditionalBlock, surgeryType, dateOfSurgery, sportPlayed,
+    mechanismOfInjury, cognitiveStatus, muscleTone, heartRateBpm, bloodPressureSys,
+    bloodPressureDia, spo2Percentage, oxygenSupportType, problemsIdentified, treatmentPlanItems,
+    visitFrequency, suggestedTreatmentDays, hepGiven, therapistNotes, precautions, photos,
+  ]);
+
+  /** Persist locally. Local-first — this succeeds regardless of connectivity. */
   const persistTreatment = async () => {
     if (!db || !sessionId || !appointmentId) return false;
     await upsertTreatmentDraft(db, {
@@ -90,17 +323,32 @@ export default function TreatmentFormScreen() {
       appointmentId,
       patientId: patientId ?? "",
       patientName: safeName,
-      chiefComplaint,
+      chiefComplaint: [...chiefComplaint, complaintNote.trim()].filter(Boolean).join(", "),
       painRegions,
-      painScale,
-      assessmentFindings: toFindings(assessments, ASSESSMENT_TYPES),
-      treatmentsGiven: toTreatmentsGiven(treatments, TREATMENT_TYPES),
-      exercises,
-      clinicalNotes,
+      painScales: painRegions.length ? { [painRegions[0]]: painScore } : {},
+      assessmentFindings: problemsIdentified.map((label) => ({
+        id: label,
+        type: label,
+        label,
+        details: {},
+      })),
+      treatmentsGiven: treatmentPlanItems.map((label) => ({
+        id: label,
+        type: label,
+        label,
+        details: {},
+      })),
+      exercises: exercises
+        .filter((ex) => ex.name.trim())
+        .map((ex) => ({ ...ex, reps: ex.reps || 1, sets: ex.sets || 1 })),
+      clinicalNotes: therapistNotes,
       precautions,
       followUpRequired,
-      followUpDate,
-      attachments: [],
+      followUpDate: followUpRequired ? followUpDate : undefined,
+      // Photos upload on their own queue, so the treatment record references them by file name
+      // — unique per capture, and what `uploadSessionPhoto` sends as the multipart `name`.
+      attachments: photos.map((p) => p.fileName),
+      clinical: buildClinical(),
       syncStatus: "pending",
       idempotencyKey: Crypto.randomUUID(),
     });
@@ -118,14 +366,11 @@ export default function TreatmentFormScreen() {
       const saved = await persistTreatment();
       if (!saved || !db || !sessionId) throw new Error("No active session to complete");
 
-      // Mark the session completed locally FIRST — this is what makes it (and its
-      // treatment) eligible for the sync queue. Durable the moment this line returns,
-      // independent of whatever happens to the network call right after.
+      // Mark the session completed locally FIRST — that's what makes it (and its treatment)
+      // eligible for the sync queue. Durable the moment this returns, independent of the
+      // network call right after.
       const session = await getSessionById(db, sessionId);
       if (!session) {
-        // No local session row to complete (the DB never became ready during this session —
-        // narrow, but real). The treatment is still saved, but it can never sync without a
-        // completed session to gate on — don't claim success.
         showToast("Saved locally, but couldn't find the session record. Contact support if this persists.");
         return;
       }
@@ -144,17 +389,15 @@ export default function TreatmentFormScreen() {
         quickNote: session.quickNote,
         syncStatus: "pending",
       });
-      // Stops active.tsx's tick interval (it's still mounted underneath this screen) from
-      // re-persisting a stale "active" draft over the row just marked completed above.
+      // Stops active.tsx's tick interval (still mounted underneath) from re-persisting a stale
+      // "active" draft over the row just marked completed.
       useSessionStore.getState().completeSession();
 
-      // Best-effort immediate push — if online this resolves in the background almost
-      // instantly (same feel as the old direct call); if offline it silently no-ops and
-      // useSyncEngine picks the row up on reconnect. Either way the data's already safe.
+      // Best-effort immediate push; offline it no-ops and useSyncEngine picks it up on reconnect.
       flushPendingSync(db).catch(() => {});
 
       sheet.close();
-      showToast("Session completed — payout queued");
+      showToast("Session completed — assessment saved");
       setTimeout(() => router.replace("/session/complete"), 500);
     } catch {
       showToast("Couldn't complete session. It's saved locally — try again from here.");
@@ -163,182 +406,568 @@ export default function TreatmentFormScreen() {
     }
   };
 
-  const painDescs: Record<number, string> = {
-    1: "No significant pain", 3: "Mild pain, manageable", 5: "Moderate, noticeable",
-    7: "Severe. Activities limited", 10: "Emergency level pain",
-  };
+  const isLastPhase = phase === LAST_PHASE;
+  const goNext = () => setPhase((p) => Math.min(p + 1, LAST_PHASE));
+  const goBack = () => setPhase((p) => Math.max(p - 1, 0));
+  const stepMissing = missingByPhase[phase];
 
   return (
-    <View className="flex-1 bg-bg">
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <LinearGradient colors={["#003554", "#004060"]} className="h-[140px] relative overflow-hidden">
-          <View className="absolute top-0 left-0 right-0 p-3 flex-row items-center justify-between">
-            <Pressable onPress={() => router.back()} className="w-10 h-10 rounded-md bg-white/90 items-center justify-center">
-              <ChevronLeft size={18} color={COLORS.accent} />
-            </Pressable>
-            <Chip variant="pending">Draft</Chip>
-          </View>
-          <View className="absolute bottom-3 left-3.5">
-            <Text className="text-white text-[19px] font-extrabold">Treatment form</Text>
-          </View>
-        </LinearGradient>
-
-        <View className="px-3.5 pt-3" style={{ paddingBottom: 100 }}>
-          <View className="bg-white border border-border rounded-md p-3 flex-row items-center mb-2" style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
-            <Avatar name={safeName} size={44} radius={12} />
-            <View>
-              <Text className="text-[14px] font-bold text-fg">{safeName}</Text>
-              <Text className="text-muted text-[12px]">Home visit · Today · Rs 1,200</Text>
-            </View>
-          </View>
-
-          <Section title="1 · Chief Complaint">
-            <TextArea value={chiefComplaint} onChangeText={setChiefComplaint} placeholder="Chief complaint..." />
-          </Section>
-
-          <Section title="2 · Pain Location">
-            <Text className="text-muted text-[11px] mb-2">Tap body region to mark pain area</Text>
-            <View className="flex-row flex-wrap" style={{ gap: 7 }}>
-              {PAIN_REGIONS.map((region) => (
-                <Chip key={region} selectable selected={painRegions.includes(region)} onPress={() => togglePainRegion(region)}>
-                  {region}
-                </Chip>
-              ))}
-            </View>
-            <Text className="text-muted text-[11px] mt-2">Selected: {painRegions.join(", ")}</Text>
-          </Section>
-
-          <Section title="3 · Pain Scale (VAS)">
-            <View className="flex-row justify-between mb-2">
-              <Text className="text-muted text-[12px]">No pain</Text>
-              <Text className="text-muted text-[12px]">Worst pain</Text>
-            </View>
-            <View className="flex-row" style={{ gap: 4 }}>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
-                const sev = n <= 3 ? "low" : n <= 6 ? "med" : "high";
-                const active = painScale === n;
-                return (
-                  <Pressable
-                    key={n}
-                    onPress={() => setPainScale(n)}
-                    className="flex-1 h-9 rounded-[9px] border-[1.5px] items-center justify-center"
-                    style={{
-                      borderColor: active ? (sev === "high" ? COLORS.danger : sev === "med" ? COLORS.warning : COLORS.accent) : COLORS.border,
-                      backgroundColor: active ? (sev === "high" ? COLORS.danger : sev === "med" ? COLORS.warning : COLORS.accent) : "white",
-                    }}
-                  >
-                    <Text className="text-[13px] font-extrabold" style={{ color: active ? "white" : COLORS.muted, fontFamily: "monospace" }}>{n}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Text className="text-muted text-[12px] mt-2">Current: {painScale}/10 — {painDescs[painScale] ?? "Moderate"}</Text>
-          </Section>
-
-          <Section title="4 · Assessment & Treatment">
-            <Text className="text-[12px] font-bold text-fg mb-1">Assessment findings</Text>
-            <View className="flex-row flex-wrap mb-2" style={{ gap: 7 }}>
-              {ASSESSMENT_TYPES.map((a) => (
-                <Chip key={a.type} selectable selected={assessments.includes(a.type)} onPress={() => toggleAssessment(a.type)}>
-                  {a.label}
-                </Chip>
-              ))}
-            </View>
-            <Text className="text-[12px] font-bold text-fg mb-1 mt-2">Treatment given</Text>
-            <View className="flex-row flex-wrap" style={{ gap: 7 }}>
-              {TREATMENT_TYPES.map((t) => (
-                <Chip key={t.type} selectable selected={treatments.includes(t.type)} onPress={() => toggleTreatment(t.type)}>
-                  {t.label}
-                </Chip>
-              ))}
-            </View>
-          </Section>
-
-          <Section title="Exercises prescribed">
-            {exercises.map((ex, idx) => (
-              <View key={idx} className="flex-row items-center p-2 rounded-[10px] border border-border mb-2" style={{ gap: 6, backgroundColor: "rgba(0,64,96,0.02)" }}>
-                <View className="flex-1 min-h-[30px] rounded-lg border border-border bg-white px-2 justify-center">
-                  <Text className="text-[12px] font-semibold text-fg">{ex.name}</Text>
-                </View>
-                <View className="flex-row items-center" style={{ gap: 3 }}>
-                  <Text className="text-[12px] font-bold text-fg">{ex.reps}</Text>
-                  <Text className="text-muted text-[11px]">×</Text>
-                  <Text className="text-[12px] font-bold text-fg">{ex.sets}</Text>
-                </View>
-                <Pressable onPress={() => removeExercise(idx)} className="w-6 h-6 rounded-lg items-center justify-center" style={{ backgroundColor: "rgba(207,66,56,0.08)" }}>
-                  <X size={14} color={COLORS.danger} />
-                </Pressable>
-              </View>
-            ))}
-            <Pressable onPress={addExercise} className="h-[34px] rounded-[10px] border-[1.5px] border-dashed border-border items-center justify-center flex-row" style={{ gap: 5 }}>
-              <Plus size={14} color={COLORS.accent} />
-              <Text className="text-accent font-bold text-[12px]">Add exercise</Text>
-            </Pressable>
-          </Section>
-
-          <Section title="Clinical notes">
-            <TextArea value={clinicalNotes} onChangeText={setClinicalNotes} placeholder="Anything else..." />
-          </Section>
-
-          <Section title="5 · Precautions & Follow-up">
-            <Input label="Precautions" value={precautions} onChangeText={setPrecautions} />
-            <View className="mt-2">
-              <Text className="text-[12px] font-bold text-fg mb-1.5">Follow-up required?</Text>
-              <View className="flex-row rounded-[13px] border border-border p-[3px]" style={{ backgroundColor: "rgba(0,64,96,0.02)" }}>
-                <Pressable
-                  onPress={() => setFollowUpRequired(true)}
-                  className={`flex-1 h-[34px] rounded-[10px] items-center justify-center ${followUpRequired ? "bg-white" : ""}`}
-                  style={followUpRequired ? { shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 } : {}}
-                >
-                  <Text className={`text-[13px] font-bold ${followUpRequired ? "text-accent" : "text-muted"}`}>Yes</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setFollowUpRequired(false)}
-                  className={`flex-1 h-[34px] rounded-[10px] items-center justify-center ${!followUpRequired ? "bg-white" : ""}`}
-                  style={!followUpRequired ? { shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 } : {}}
-                >
-                  <Text className={`text-[13px] font-bold ${!followUpRequired ? "text-accent" : "text-muted"}`}>No</Text>
-                </Pressable>
-              </View>
-            </View>
-            {followUpRequired && (
-              <Input label="Recommended next session" value={followUpDate} onChangeText={setFollowUpDate} />
-            )}
-          </Section>
-
-          <Section title="6 · Attachments">
-            <View className="flex-row items-center p-2.5 rounded-md border border-border mb-2.5" style={{ gap: 10 }}>
-              <View className="w-14 h-14 rounded-[10px]" style={{ backgroundColor: COLORS.primarySoft }} />
-              <View className="flex-1">
-                <Text className="text-[13px] font-bold text-fg">session-photo-01.jpg</Text>
-                <Text className="text-muted text-[12px]">2.1 MB · Uploaded</Text>
-              </View>
-              <Chip variant="active">✓</Chip>
-            </View>
-            <Pressable className="min-h-[90px] rounded-[14px] border-[1.5px] border-dashed items-center justify-center" style={{ backgroundColor: "rgba(0,64,96,0.02)", borderColor: "rgba(0,64,96,0.15)" }}>
-              <Upload size={28} color={COLORS.muted} />
-              <Text className="text-[12px] font-bold text-fg mt-1.5">Add more files</Text>
-              <Text className="text-muted text-[11px]">Photo, PDF, MRI report</Text>
-            </Pressable>
-          </Section>
-
-          <View style={{ gap: 10, paddingBottom: 20 }}>
-            <Button variant="secondary" onPress={handleSaveDraft}>
-              <Save size={16} color={COLORS.accent} />
-              <Text className="text-accent font-bold text-[14px]">Save draft</Text>
-            </Button>
-            <Button variant="success" onPress={sheet.open}>
-              <CheckCircle2 size={16} color="#fff" />
-              <Text className="text-white font-bold text-[14px]">Submit & complete session</Text>
-            </Button>
-          </View>
+    <KeyboardAvoidingView
+      className="flex-1 bg-bg"
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <LinearGradient colors={["#003554", "#004060"]} className="relative overflow-hidden" style={{ paddingTop: insets.top }}>
+        <View className="px-3.5 py-3 flex-row items-center justify-between">
+          <Pressable onPress={() => router.back()} className="w-10 h-10 rounded-md bg-white/90 items-center justify-center">
+            <ChevronLeft size={18} color={COLORS.accent} />
+          </Pressable>
+          <Text className="text-white text-[16px] font-extrabold">Clinical assessment</Text>
+          <Pressable onPress={handleSaveDraft} className="rounded-md bg-white/15 px-2.5 py-2">
+            <Save size={16} color="#fff" />
+          </Pressable>
         </View>
+        <PhaseStepper phase={phase} onSelect={setPhase} missing={missingByPhase} />
+      </LinearGradient>
+
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 28 }}
+      >
+        <View
+          className="bg-white border border-border rounded-md p-3 flex-row items-center mb-2"
+          style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
+        >
+          <Avatar name={safeName} size={44} radius={12} />
+          <View className="flex-1">
+            <Text className="text-[14px] font-bold text-fg">{safeName}</Text>
+            <Text className="text-muted text-[12px]">{condition ?? "Therapy session"}</Text>
+          </View>
+          <Badge variant="info" size="sm" dot={false}>
+            {ASSESSMENT_TYPES.find((t) => t.value === assessmentType)?.label ?? "Assessment"}
+          </Badge>
+        </View>
+
+        {stepMissing && (
+          <View className="flex-row bg-warning/8 border border-warning/30 rounded-md p-2.5 mb-2" style={{ gap: 8 }}>
+            <TriangleAlert size={15} color={COLORS.warning} style={{ marginTop: 1 }} />
+            <Text className="flex-1 text-[11.5px] text-fg/80">
+              Still needed on this step: {stepMissing.join(", ")}.
+            </Text>
+          </View>
+        )}
+
+        {phase === 0 && (
+          <Section title="What are you assessing?">
+            <Field label="Assessment type" hint="Decides which extra clinical details are recorded" required>
+              <SegmentedField options={ASSESSMENT_TYPES} value={assessmentType} onChange={setAssessmentType} />
+            </Field>
+            <Field label="Chief complaint" hint="Pick everything that applies" required>
+              <MultiSelectField
+                options={CHIEF_COMPLAINTS}
+                values={chiefComplaint}
+                onChange={setChiefComplaint}
+                addPlaceholder="Other complaint…"
+              />
+            </Field>
+            <Field label="In the patient's words (optional)">
+              <TextArea
+                value={complaintNote}
+                onChangeText={setComplaintNote}
+                placeholder="e.g. Worsens after prolonged sitting; L4-L5 disc bulge on MRI"
+              />
+            </Field>
+            <Field label="How long have symptoms lasted?" required>
+              <SegmentedField options={DURATIONS} value={durationOfSymptoms} onChange={setDurationOfSymptoms} />
+            </Field>
+          </Section>
+        )}
+
+        {phase === 1 && (
+          <>
+            <Section title="Pain">
+              <Field label="Pain score" hint="Ask the patient to rate their pain right now">
+                <PainSlider value={painScore} onChange={setPainScore} label="" />
+                <View className="flex-row items-center mt-1" style={{ gap: 6 }}>
+                  <View
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: painSeverityColor(painScore) }}
+                  />
+                  <Text className="text-[11.5px] font-semibold" style={{ color: painSeverityColor(painScore) }}>
+                    {painScore === 0
+                      ? "No pain reported"
+                      : painScore <= 3
+                        ? "Mild"
+                        : painScore <= 6
+                          ? "Moderate"
+                          : "Severe"}
+                  </Text>
+                </View>
+              </Field>
+              <Field label="Pain character" hint="How the patient describes it">
+                <MultiSelectField
+                  options={PAIN_CHARACTERISTICS}
+                  values={painCharacteristics}
+                  onChange={setPainCharacteristics}
+                />
+              </Field>
+            </Section>
+
+            <Section title="Pain location">
+              <Text className="text-muted text-[11.5px] -mt-1">
+                Tap body regions to mark pain areas — tap again to unmark
+              </Text>
+              <BodyMap selected={painRegions} onToggle={togglePainRegion} />
+            </Section>
+          </>
+        )}
+
+        {phase === 2 && (
+          <>
+            <Section title="Objective findings">
+              <Field label="Range of motion" required>
+                <SegmentedField options={ROM_OPTIONS} value={rom} onChange={setRom} />
+              </Field>
+              <Field label="Muscle strength" required>
+                <SegmentedField options={STRENGTH_OPTIONS} value={muscleStrength} onChange={setMuscleStrength} />
+              </Field>
+            </Section>
+
+            <Section title="Mobility">
+              <Field label="Mobility status">
+                <SegmentedField
+                  options={MOBILITY_STATUSES.map((v) => ({ value: v, label: v }))}
+                  value={mobilityStatus}
+                  onChange={setMobilityStatus}
+                />
+              </Field>
+              <Field label="Assistive device">
+                <SegmentedField
+                  options={ASSISTIVE_DEVICES.map((v) => ({ value: v, label: v }))}
+                  value={assistiveDevice}
+                  onChange={setAssistiveDevice}
+                />
+              </Field>
+              <Field label="Fall risk">
+                <SegmentedField options={FALL_RISK_OPTIONS} value={fallRisk} onChange={setFallRisk} />
+              </Field>
+              <Field label="Functional limitations">
+                <MultiSelectField
+                  options={FUNCTIONAL_LIMITATIONS}
+                  values={functionalLimitations}
+                  onChange={setFunctionalLimitations}
+                />
+              </Field>
+            </Section>
+
+            {conditionalBlock === "surgical" && (
+              <Section title="Surgical details">
+                <Field label="Surgery type">
+                  <TextField value={surgeryType} onChangeText={setSurgeryType} placeholder="e.g. ACL reconstruction" />
+                </Field>
+                <Field label="Date of surgery">
+                  <Pressable
+                    onPress={() => setSurgeryDatePickerOpen(true)}
+                    className="h-[42px] rounded-[11px] border border-border bg-white px-3 flex-row items-center justify-between"
+                  >
+                    <Text className={`text-[13.5px] ${dateOfSurgery ? "text-fg font-semibold" : "text-muted"}`}>
+                      {dateOfSurgery ? formatDateLabel(dateOfSurgery) : "Select a date"}
+                    </Text>
+                    <Calendar size={16} color={COLORS.accent} />
+                  </Pressable>
+                </Field>
+              </Section>
+            )}
+
+            {conditionalBlock === "sports" && (
+              <Section title="Sports details">
+                <Field label="Sport played">
+                  <TextField value={sportPlayed} onChangeText={setSportPlayed} placeholder="e.g. Cricket" />
+                </Field>
+                <Field label="Mechanism of injury">
+                  <TextField
+                    value={mechanismOfInjury}
+                    onChangeText={setMechanismOfInjury}
+                    placeholder="e.g. Twisting fall while fielding"
+                  />
+                </Field>
+              </Section>
+            )}
+
+            {conditionalBlock === "neuro" && (
+              <Section title="Neurological details">
+                <Field label="Cognitive status">
+                  <TextField value={cognitiveStatus} onChangeText={setCognitiveStatus} placeholder="e.g. Alert and oriented" />
+                </Field>
+                <Field label="Muscle tone">
+                  <TextField value={muscleTone} onChangeText={setMuscleTone} placeholder="e.g. Spasticity, MAS 2" />
+                </Field>
+              </Section>
+            )}
+
+            {conditionalBlock === "cardiopulmonary" && (
+              <Section title="Vitals">
+                <Slider
+                  label="Heart rate"
+                  unit=" bpm"
+                  value={heartRateBpm}
+                  onChange={setHeartRateBpm}
+                  min={30}
+                  max={200}
+                />
+                <Slider
+                  label="Blood pressure (systolic)"
+                  unit=" mmHg"
+                  value={bloodPressureSys}
+                  onChange={setBloodPressureSys}
+                  min={70}
+                  max={220}
+                />
+                <Slider
+                  label="Blood pressure (diastolic)"
+                  unit=" mmHg"
+                  value={bloodPressureDia}
+                  onChange={setBloodPressureDia}
+                  min={40}
+                  max={140}
+                />
+                <Slider
+                  label="SpO₂"
+                  unit="%"
+                  value={spo2Percentage}
+                  onChange={setSpo2Percentage}
+                  min={70}
+                  max={100}
+                  colorForValue={(v) => (v >= 95 ? COLORS.success : v >= 90 ? COLORS.warning : COLORS.danger)}
+                />
+                <Field label="Oxygen support">
+                  <TextField
+                    value={oxygenSupportType}
+                    onChangeText={setOxygenSupportType}
+                    placeholder="e.g. Room air, nasal cannula 2L"
+                  />
+                </Field>
+              </Section>
+            )}
+          </>
+        )}
+
+        {phase === 3 && (
+          <>
+            <Section title="Problems & treatment">
+              <Field label="Problems identified" required>
+                <MultiSelectField
+                  options={PROBLEMS_IDENTIFIED}
+                  values={problemsIdentified}
+                  onChange={setProblemsIdentified}
+                />
+              </Field>
+              <Field label="Treatment given" hint="Techniques used in this session" required>
+                <MultiSelectField
+                  options={TREATMENT_ITEMS}
+                  values={treatmentPlanItems}
+                  onChange={setTreatmentPlanItems}
+                />
+              </Field>
+            </Section>
+
+            <Section title="Recommended schedule">
+              <Field label="Visit frequency">
+                <SegmentedField options={VISIT_FREQUENCIES} value={visitFrequency} onChange={setVisitFrequency} />
+              </Field>
+              <Slider
+                label="Suggested treatment days"
+                unit=" days"
+                value={suggestedTreatmentDays}
+                onChange={setSuggestedTreatmentDays}
+                min={1}
+                max={30}
+              />
+              <Field label="Home exercise programme given?">
+                <BooleanField value={hepGiven} onChange={setHepGiven} />
+              </Field>
+            </Section>
+
+            {hepGiven && (
+              <Section title="Exercises prescribed">
+                {exercises.length === 0 && (
+                  <Text className="text-muted text-[11.5px] -mt-1">
+                    Add the exercises you demonstrated, with their reps and sets.
+                  </Text>
+                )}
+                {exercises.map((ex, index) => (
+                  <View
+                    key={ex.id}
+                    className="rounded-[13px] border border-border p-3"
+                    style={{ gap: 12, backgroundColor: "rgba(0,64,96,0.02)" }}
+                  >
+                    <View className="flex-row items-center" style={{ gap: 8 }}>
+                      <Text className="text-muted text-[11px] font-extrabold">{index + 1}</Text>
+                      <Pressable
+                        onPress={() => setPickingExerciseId(ex.id)}
+                        className="flex-1 h-[38px] rounded-[11px] border border-border bg-white px-3 flex-row items-center justify-between"
+                      >
+                        <Text className={`text-[13px] ${ex.name ? "font-semibold text-fg" : "text-muted"}`}>
+                          {ex.name || "Choose an exercise"}
+                        </Text>
+                        <ChevronDown size={15} color={COLORS.muted} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => removeExercise(ex.id)}
+                        accessibilityLabel="Remove exercise"
+                        className="w-8 h-8 rounded-[10px] items-center justify-center"
+                        style={{ backgroundColor: "rgba(207,66,56,0.08)" }}
+                      >
+                        <X size={15} color={COLORS.danger} />
+                      </Pressable>
+                    </View>
+                    {/* Reps and sets were 2-3 character number inputs. Sliders here are
+                        strictly faster: the values live in a narrow, well-known range. */}
+                    <Slider
+                      label="Reps"
+                      value={ex.reps}
+                      onChange={(v) => setExerciseCount(ex.id, "reps", v)}
+                      min={1}
+                      max={30}
+                    />
+                    <Slider
+                      label="Sets"
+                      value={ex.sets}
+                      onChange={(v) => setExerciseCount(ex.id, "sets", v)}
+                      min={1}
+                      max={10}
+                    />
+                  </View>
+                ))}
+                <Pressable
+                  onPress={addExercise}
+                  className="h-[38px] rounded-[11px] border-[1.5px] border-dashed border-border items-center justify-center flex-row"
+                  style={{ gap: 5 }}
+                >
+                  <Plus size={14} color={COLORS.accent} />
+                  <Text className="text-accent font-bold text-[12px]">Add exercise</Text>
+                </Pressable>
+              </Section>
+            )}
+          </>
+        )}
+
+        {phase === 4 && (
+          <>
+            <Section title="Clinical notes">
+              <TextArea
+                value={therapistNotes}
+                onChangeText={setTherapistNotes}
+                placeholder="Patient response, reasoning, anything the next session should know…"
+              />
+            </Section>
+
+            <Section title="Precautions & follow-up">
+              <Field label="Precautions">
+                <TextField
+                  value={precautions}
+                  onChangeText={setPrecautions}
+                  placeholder="e.g. Avoid forward bending; use lumbar roll"
+                />
+              </Field>
+              <Field label="Follow-up required?">
+                <BooleanField value={followUpRequired} onChange={setFollowUpRequired} />
+              </Field>
+              {followUpRequired && (
+                <Field label="Recommended next session">
+                  <Pressable
+                    onPress={() => setDatePickerOpen(true)}
+                    className="h-[42px] rounded-[11px] border border-border bg-white px-3 flex-row items-center justify-between"
+                  >
+                    <Text className="text-[13.5px] font-semibold text-fg">{formatDateLabel(followUpDate)}</Text>
+                    <Calendar size={16} color={COLORS.accent} />
+                  </Pressable>
+                </Field>
+              )}
+            </Section>
+
+            <Section title="Attachments">
+              {photos.length === 0 ? (
+                <Text className="text-muted text-[11.5px] -mt-1">
+                  No photos captured during this session yet.
+                </Text>
+              ) : (
+                photos.map((photo) => {
+                  const uploaded = photo.syncStatus === "synced";
+                  const stuck = photo.syncStatus === "error";
+                  return (
+                    <View
+                      key={photo.id}
+                      className="flex-row items-center p-2.5 rounded-md border border-border"
+                      style={{ gap: 10 }}
+                    >
+                      <Image
+                        source={{ uri: photo.remoteUrl ?? photo.localUri }}
+                        style={{ width: 52, height: 52, borderRadius: 10, backgroundColor: COLORS.primarySoft }}
+                        contentFit="cover"
+                      />
+                      <View className="flex-1">
+                        <Text className="text-[12.5px] font-bold text-fg" numberOfLines={1}>
+                          {photo.fileName}
+                        </Text>
+                        <Text className="text-muted text-[11.5px]">
+                          {uploaded ? "Uploaded" : stuck ? "Couldn't upload — will retry" : "Saved on device — uploading"}
+                        </Text>
+                      </View>
+                      <View
+                        className={`w-6 h-6 rounded-full items-center justify-center ${uploaded ? "bg-success/15" : stuck ? "bg-danger/15" : "bg-warning/15"}`}
+                      >
+                        {uploaded ? (
+                          <Check size={13} color={COLORS.success} />
+                        ) : (
+                          <Upload size={12} color={stuck ? COLORS.danger : COLORS.warning} />
+                        )}
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+              <Pressable
+                onPress={() => router.push("/session/active")}
+                className="min-h-[82px] rounded-[14px] border-[1.5px] border-dashed items-center justify-center active:opacity-80"
+                style={{ backgroundColor: "rgba(0,64,96,0.02)", borderColor: "rgba(0,64,96,0.15)" }}
+              >
+                <Upload size={26} color={COLORS.muted} />
+                <Text className="text-[12px] font-bold text-fg mt-1.5">Add a photo</Text>
+                <Text className="text-muted text-[11px]">Opens the session camera</Text>
+              </Pressable>
+            </Section>
+          </>
+        )}
+
+        {phase === 5 && (
+          <Section title="Review before submitting">
+            <ReviewRow
+              label="Assessment"
+              value={ASSESSMENT_TYPES.find((t) => t.value === assessmentType)?.label ?? assessmentType}
+              onEdit={() => setPhase(0)}
+            />
+            <ReviewRow
+              label="Chief complaint"
+              value={
+                [...chiefComplaint, complaintNote.trim()].filter(Boolean).join(", ") || "Not recorded"
+              }
+              onEdit={() => setPhase(0)}
+            />
+            <ReviewRow
+              label="Duration"
+              value={DURATIONS.find((d) => d.value === durationOfSymptoms)?.label ?? "—"}
+              onEdit={() => setPhase(0)}
+            />
+            <ReviewRow
+              label="Pain"
+              value={`${painScore}/10${painCharacteristics.length ? ` · ${painCharacteristics.join(", ")}` : ""}${painRegions.length ? ` · ${painRegions.join(", ")}` : ""}`}
+              onEdit={() => setPhase(1)}
+            />
+            <ReviewRow
+              label="ROM / strength"
+              value={`${ROM_OPTIONS.find((r) => r.value === rom)?.label} ROM · ${STRENGTH_OPTIONS.find((s) => s.value === muscleStrength)?.label} strength`}
+              onEdit={() => setPhase(2)}
+            />
+            <ReviewRow
+              label="Problems"
+              value={problemsIdentified.join(", ") || "None recorded"}
+              onEdit={() => setPhase(3)}
+            />
+            <ReviewRow
+              label="Treatment"
+              value={treatmentPlanItems.join(", ") || "None recorded"}
+              onEdit={() => setPhase(3)}
+            />
+            <ReviewRow
+              label="Plan"
+              value={`${VISIT_FREQUENCIES.find((v) => v.value === visitFrequency)?.label} · ${suggestedTreatmentDays} days · HEP ${hepGiven ? `given (${exercises.filter((e) => e.name.trim()).length} exercises)` : "not given"}`}
+              onEdit={() => setPhase(3)}
+            />
+            <ReviewRow
+              label="Follow-up"
+              value={followUpRequired ? formatDateLabel(followUpDate) : "Not required"}
+              onEdit={() => setPhase(4)}
+              isLast
+            />
+          </Section>
+        )}
       </ScrollView>
+
+      <View className="px-3.5 pt-2.5 border-t border-border bg-white" style={{ paddingBottom: insets.bottom + 12, gap: 8 }}>
+        <View className="flex-row" style={{ gap: 8 }}>
+          <Button
+            variant="secondary"
+            fullWidth={false}
+            style={{ flex: 1, opacity: phase === 0 ? 0.4 : 1 }}
+            onPress={goBack}
+            disabled={phase === 0}
+          >
+            <ChevronLeft size={16} color={COLORS.accent} />
+            <Text className="text-accent font-bold text-[14px]">Back</Text>
+          </Button>
+          {isLastPhase ? (
+            <Button
+              variant="success"
+              fullWidth={false}
+              style={{ flex: 2, opacity: blockingIssues.length ? 0.5 : 1 }}
+              onPress={sheet.open}
+              disabled={blockingIssues.length > 0}
+            >
+              <CheckCircle2 size={16} color="#fff" />
+              <Text className="text-white font-bold text-[14px]">Submit & complete</Text>
+            </Button>
+          ) : (
+            <Button fullWidth={false} style={{ flex: 2 }} onPress={goNext}>
+              <Text className="text-white font-bold text-[14px]">Next · {PHASES[phase + 1].label}</Text>
+              <ChevronRight size={16} color="#fff" />
+            </Button>
+          )}
+        </View>
+      </View>
+
+      <BottomSheet visible={pickingExerciseId !== null} onClose={() => setPickingExerciseId(null)}>
+        <Text className="text-[16px] font-bold text-fg">Choose exercise</Text>
+        <ScrollView style={{ maxHeight: 360 }}>
+          {EXERCISE_LIBRARY.map((name) => {
+            const active = exercises.find((ex) => ex.id === pickingExerciseId)?.name === name;
+            return (
+              <Pressable
+                key={name}
+                onPress={() => {
+                  if (pickingExerciseId) setExerciseName(pickingExerciseId, name);
+                  setPickingExerciseId(null);
+                }}
+                className={`flex-row items-center justify-between rounded-[10px] px-3 py-3 ${active ? "bg-accent/5" : ""}`}
+              >
+                <Text className={`text-[14px] ${active ? "font-bold text-accent" : "font-semibold text-fg"}`}>{name}</Text>
+                {active && <CheckCircle2 size={16} color={COLORS.accent} />}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </BottomSheet>
+
+      <DatePickerSheet
+        visible={datePickerOpen}
+        initialDate={followUpDate}
+        onClose={() => setDatePickerOpen(false)}
+        onSelect={setFollowUpDate}
+      />
+
+      <DatePickerSheet
+        visible={surgeryDatePickerOpen}
+        initialDate={dateOfSurgery || toIsoDate(new Date())}
+        onClose={() => setSurgeryDatePickerOpen(false)}
+        onSelect={setDateOfSurgery}
+      />
 
       <BottomSheet visible={sheet.visible} onClose={sheet.close}>
         <Text className="text-[18px] font-bold text-fg">Complete this session?</Text>
         <Text className="text-muted text-[13px]">
-          Treatment notes will be locked and sent to {safeName}. Payment of Rs 1,200 will move to payout review.
+          The assessment will be saved to {safeName}&apos;s treatment plan and this visit will be
+          marked complete. You won&apos;t be able to edit it afterwards.
         </Text>
         <Button variant="success" onPress={handleSubmit} disabled={submitting}>
           <CheckCircle2 size={16} color="#fff" />
@@ -346,15 +975,120 @@ export default function TreatmentFormScreen() {
         </Button>
         <Button variant="secondary" onPress={sheet.close}>Continue editing</Button>
       </BottomSheet>
+    </KeyboardAvoidingView>
+  );
+}
+
+/** Common physiotherapy home-exercise prescriptions. Client-side — there's no backend catalog. */
+const EXERCISE_LIBRARY = [
+  "Cat-Camel Stretch",
+  "Knee-to-Chest",
+  "Pelvic Tilt",
+  "Bridging",
+  "Bird Dog",
+  "Clamshell",
+  "Straight Leg Raise",
+  "Wall Squat",
+  "Heel Slides",
+  "Quadriceps Setting",
+  "Calf Raises",
+  "Shoulder Pendulum",
+  "Scapular Retraction",
+  "Neck Isometrics",
+  "Ankle Pumps",
+];
+
+/**
+ * The step rail. Steps with something outstanding get a warning dot, so an incomplete step is
+ * visible from any other step rather than only when you reach it.
+ */
+function PhaseStepper({
+  phase,
+  onSelect,
+  missing,
+}: {
+  phase: number;
+  onSelect: (i: number) => void;
+  missing: Record<number, string[]>;
+}) {
+  return (
+    <View className="px-3.5 pb-3">
+      <View className="flex-row items-center">
+        {PHASES.map((p, i) => {
+          const done = i < phase;
+          const current = i === phase;
+          const incomplete = !!missing[i];
+          const Icon = p.icon;
+          return (
+            <View key={p.key} className="flex-1 flex-row items-center">
+              <Pressable onPress={() => onSelect(i)} accessibilityLabel={`Go to ${p.label}`}>
+                <View
+                  className="w-8 h-8 rounded-full items-center justify-center"
+                  style={{
+                    backgroundColor: done && !incomplete ? COLORS.successLight : current ? "#fff" : "rgba(255,255,255,0.15)",
+                  }}
+                >
+                  {done && !incomplete ? (
+                    <Check size={15} color="#fff" />
+                  ) : (
+                    <Icon size={15} color={current ? COLORS.accent : "#fff"} />
+                  )}
+                </View>
+                {incomplete && (
+                  <View
+                    className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-[1.5px]"
+                    style={{ backgroundColor: COLORS.warning, borderColor: COLORS.nav }}
+                  />
+                )}
+              </Pressable>
+              {i < PHASES.length - 1 && (
+                <View
+                  className="flex-1 h-[2px]"
+                  style={{ backgroundColor: done ? COLORS.successLight : "rgba(255,255,255,0.15)" }}
+                />
+              )}
+            </View>
+          );
+        })}
+      </View>
+      <Text className="text-white text-[13px] font-bold mt-2">
+        Step {phase + 1} of {PHASES.length} · {PHASES[phase].label}
+      </Text>
     </View>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View className="bg-white border border-border rounded-md p-3.5 mt-2">
-      <Text className="text-[14px] font-bold text-accent mb-3">{title}</Text>
+    <View className="bg-white border border-border rounded-md p-3.5 mt-2" style={{ gap: 16 }}>
+      <Text className="text-[14px] font-bold text-accent">{title}</Text>
       {children}
+    </View>
+  );
+}
+
+function ReviewRow({
+  label,
+  value,
+  onEdit,
+  isLast,
+}: {
+  label: string;
+  value: string;
+  onEdit: () => void;
+  isLast?: boolean;
+}) {
+  return (
+    <View className={`pb-2.5 ${isLast ? "" : "border-b border-border"}`}>
+      <View className="flex-row items-center justify-between">
+        <Text className="text-muted text-[11px] font-bold uppercase" style={{ letterSpacing: 0.5 }}>
+          {label}
+        </Text>
+        <Pressable onPress={onEdit} hitSlop={6}>
+          <Text className="text-accent text-[11px] font-bold">Edit</Text>
+        </Pressable>
+      </View>
+      <Text className="text-[13px] text-fg mt-1">{value}</Text>
     </View>
   );
 }

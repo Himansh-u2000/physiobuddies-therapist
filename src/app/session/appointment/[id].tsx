@@ -2,20 +2,23 @@ import { View, Text, Pressable, ScrollView } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, Share2, Phone, MessageSquare, Navigation, Play, CheckCircle2 } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Share2, Phone, MessageSquare, Navigation, Play, CheckCircle2 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Avatar, Chip, Button } from "@/components/ui";
+import { Avatar, Badge, Button, PaymentBadge, StatusBadge } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
+import { useSessionStore } from "@/lib/stores/session.store";
 import { callPatient as dialPatient } from "@/lib/services/callService";
 import { COLORS } from "@/constants/config";
-import { formatCurrency, getSessionTypeLabel } from "@/lib/utils/format";
+import { getSessionTypeLabel } from "@/lib/utils/format";
 
 export default function AppointmentDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const showToast = useAppStore((s) => s.showToast);
+  const sessionIsActive = useSessionStore((s) => s.isActive);
+  const activeAppointmentId = useSessionStore((s) => s.appointmentId);
   const { data: appointment } = useQuery({
     queryKey: ["appointment", id],
     queryFn: () => appointmentApi.getById(id),
@@ -27,6 +30,28 @@ export default function AppointmentDetailScreen() {
   const callPatient = async () => {
     const phone = appointment.patientPhone ?? "+919876543210";
     await dialPatient(phone, appointment.id);
+  };
+
+  // Steps 3–4 need a running session (started via OTP) — the screens exist behind
+  // /session/active and /session/treatment but only make sense once the timer runs.
+  const sessionActiveHere = sessionIsActive && activeAppointmentId === appointment.id;
+  const goToStep = (num: number) => {
+    switch (num) {
+      case 1:
+        router.push(`/session/route?appointmentId=${appointment.id}`);
+        break;
+      case 2:
+        router.push(`/session/otp?appointmentId=${appointment.id}`);
+        break;
+      case 3:
+      case 4:
+        if (sessionActiveHere) {
+          router.push(num === 3 ? "/session/active" : "/session/treatment");
+        } else {
+          showToast("Start the session first — enter the patient's OTP (step 2)");
+        }
+        break;
+    }
   };
 
   const steps = [
@@ -50,7 +75,10 @@ export default function AppointmentDetailScreen() {
           </View>
           <View className="absolute bottom-3 left-3.5">
             <Text className="text-white text-[20px] font-extrabold">Session details</Text>
-            <Chip variant="active">● {getSessionTypeLabel(appointment.type)} · Today {appointment.timeLabel} {appointment.meridiem}</Chip>
+            <View className="flex-row mt-1.5" style={{ gap: 6 }}>
+              <Badge variant="info" tone="solid" size="sm">{getSessionTypeLabel(appointment.type)}</Badge>
+              <Badge variant="neutral" tone="solid" size="sm" dot={false}>{appointment.dateLabel ?? "Scheduled"} · {appointment.timeLabel} {appointment.meridiem}</Badge>
+            </View>
           </View>
         </LinearGradient>
 
@@ -61,10 +89,10 @@ export default function AppointmentDetailScreen() {
               <View className="flex-1" style={{ gap: 5 }}>
                 <View className="flex-row items-center justify-between">
                   <Text className="text-[17px] font-bold text-fg">{appointment.patientName}</Text>
-                  <Chip variant="active">Confirmed</Chip>
+                  <StatusBadge status={appointment.status} size="sm" />
                 </View>
                 <Text className="text-muted text-[12px]">{appointment.patientAge} years · {appointment.patientGender} · {appointment.condition}</Text>
-                <Text className="text-muted text-[12px]">📅 Today, {appointment.timeLabel} {appointment.meridiem} · {getSessionTypeLabel(appointment.type)} · {formatCurrency(appointment.amount)}</Text>
+                <Text className="text-muted text-[12px]">📅 {appointment.dateLabel ?? "Scheduled"}, {appointment.timeLabel} {appointment.meridiem} · {getSessionTypeLabel(appointment.type)}</Text>
               </View>
             </View>
             <View className="h-px bg-border my-3" />
@@ -88,7 +116,7 @@ export default function AppointmentDetailScreen() {
                   <Text className="text-[12px] font-bold text-fg">📍 {appointment.address?.split(",")[0]}</Text>
                 </View>
                 <View className="absolute bottom-2.5 right-2.5">
-                  <Chip variant="info">{appointment.distanceKm} km · {appointment.etaMin} min ETA</Chip>
+                  <Badge variant="info" tone="solid" size="sm" dot={false}>{appointment.distanceKm} km · {appointment.etaMin} min</Badge>
                 </View>
               </View>
               <View className="p-3" style={{ gap: 8 }}>
@@ -108,10 +136,10 @@ export default function AppointmentDetailScreen() {
           <View className="mt-3 bg-white border border-border rounded-md p-3.5">
             <View className="flex-row items-center justify-between mb-2.5">
               <Text className="text-[14px] font-bold text-fg">Session workflow</Text>
-              <Chip variant="neutral">Step {appointment.workflowStep} of 4</Chip>
+              <Badge variant="neutral" size="sm" dot={false}>Step {appointment.workflowStep} of 4</Badge>
             </View>
             {steps.map((step) => (
-              <View key={step.num} className="flex-row py-3 border-b border-border" style={{ gap: 10 }}>
+              <Pressable key={step.num} onPress={() => goToStep(step.num)} className="flex-row items-center py-3 border-b border-border active:opacity-70" style={{ gap: 10 }}>
                 <View className={`w-7 h-7 rounded-full items-center justify-center ${step.done ? "bg-success/15" : step.current ? "bg-accent" : "bg-muted/10"}`}>
                   {step.done ? <CheckCircle2 size={16} color={COLORS.success} /> : <Text className={`text-[11px] font-extrabold ${step.current ? "text-white" : "text-muted"}`}>{step.num}</Text>}
                 </View>
@@ -119,9 +147,10 @@ export default function AppointmentDetailScreen() {
                   <Text className="text-[13px] font-bold text-fg">{step.title}</Text>
                   <Text className="text-muted text-[12px]">{step.sub}</Text>
                 </View>
-                {step.done && <Chip variant="active">Done</Chip>}
-                {step.current && <Chip variant="pending">Now</Chip>}
-              </View>
+                {step.done && <Badge variant="success" size="sm">Done</Badge>}
+                {step.current && <Badge variant="warning" tone="solid" size="sm">Now</Badge>}
+                <ChevronRight size={15} color={COLORS.muted} />
+              </Pressable>
             ))}
           </View>
 
@@ -133,7 +162,7 @@ export default function AppointmentDetailScreen() {
               </View>
               <View className="flex-row items-center justify-between">
                 <Text className="text-muted text-[12px]">Payment</Text>
-                <Chip variant="active">Paid · {formatCurrency(appointment.amount)}</Chip>
+                <PaymentBadge status={appointment.paymentStatus} size="sm" />
               </View>
               {appointment.insurance && (
                 <View className="flex-row items-center justify-between">

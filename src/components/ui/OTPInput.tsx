@@ -3,14 +3,18 @@ import { useOtp } from "@/lib/hooks/useOtp";
 
 interface OTPInputProps {
   length: number;
+  /** Fires only once every box is filled. */
   onComplete?: (code: string) => void;
+  /** Fires on every change, including deletions — use this to mirror the code into state. */
+  onChangeCode?: (code: string) => void;
   textContentType?: TextInputProps["textContentType"];
 }
 
-export function OTPInput({ length, onComplete, textContentType }: OTPInputProps) {
-  const { values, refs, setValue, handleBackspace, handlePaste, isComplete } = useOtp({
+export function OTPInput({ length, onComplete, onChangeCode, textContentType }: OTPInputProps) {
+  const { values, refs, setValue, handleBackspace, handlePaste } = useOtp({
     length,
     onComplete,
+    onChangeCode,
   });
 
   return (

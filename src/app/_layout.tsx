@@ -12,6 +12,7 @@ import { QueryProvider } from "@/lib/query/provider";
 import { ToastContainer } from "@/components/ui/Toast";
 import { OfflineBanner } from "@/components/shared/OfflineBanner";
 import { useAuthStore } from "@/lib/stores/auth.store";
+import { setSessionDeadHandler } from "@/lib/api/client";
 import { useNetwork } from "@/lib/hooks/useNetwork";
 import { useNotifications } from "@/lib/hooks/useNotifications";
 import { useAppLock } from "@/lib/hooks/useAppLock";
@@ -71,6 +72,11 @@ function RootLayoutNav() {
         <Stack.Screen name="(app)" />
         <Stack.Screen name="session" />
         <Stack.Screen name="patient" />
+        <Stack.Screen name="payouts" />
+        <Stack.Screen name="availability" />
+        <Stack.Screen name="reviews" />
+        <Stack.Screen name="change-password" />
+        <Stack.Screen name="network-log" />
         <Stack.Screen name="delete-account" options={{ presentation: "modal" }} />
         <Stack.Screen name="+not-found" />
       </Stack>
@@ -84,6 +90,16 @@ export default function RootLayout() {
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  // The API client can't import the auth store (auth.store → services → client would cycle),
+  // so it publishes "the refresh token was rejected" through a callback instead. Without this
+  // the app stays visibly signed in while every request 401s until the next cold start.
+  useEffect(() => {
+    setSessionDeadHandler(() => {
+      void useAuthStore.getState().sessionExpired();
+    });
+    return () => setSessionDeadHandler(null);
+  }, []);
 
   return (
     <SafeAreaProvider>

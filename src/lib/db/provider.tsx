@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/expo-sqlite";
 import { openDatabaseAsync, type SQLiteDatabase } from "expo-sqlite";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import * as schema from "./schema";
-import { MIGRATION_SQL } from "./migration";
+import { MIGRATION_SQL, POST_MIGRATION_ALTERS } from "./migration";
 import { getOrCreateDbKey, sqlCipherKeyPragma } from "./encryption";
 
 const DB_NAME = "physiobuddies.db";
@@ -33,6 +33,13 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
       const key = await getOrCreateDbKey();
       await sqlite.execAsync(sqlCipherKeyPragma(key));
       await sqlite.execAsync(MIGRATION_SQL);
+      // Best-effort, one statement at a time: on a fresh DB the column already exists (the
+      // CREATE TABLE above just made it) and this errors harmlessly; on an existing DB from
+      // before the column was added, this is what actually adds it. Either way must not
+      // abort startup — a single execAsync running all of MIGRATION_SQL as one script would.
+      for (const alter of POST_MIGRATION_ALTERS) {
+        await sqlite.execAsync(alter).catch(() => {});
+      }
       if (!mounted) return;
       setDb(createDrizzle(sqlite));
       setReady(true);

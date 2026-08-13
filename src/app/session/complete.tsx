@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { CheckCircle2 } from "lucide-react-native";
 import { Avatar, Button } from "@/components/ui";
@@ -10,6 +11,7 @@ import { formatTime } from "@/lib/utils/format";
 
 export default function SessionCompleteScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const reset = useSessionStore((s) => s.reset);
   // Snapshot at mount, not a live subscription — the store is reset below as soon as this
   // screen is reached (the data's already durable in SQLite by now), and this screen needs
@@ -35,7 +37,7 @@ export default function SessionCompleteScreen() {
   return (
     <View className="flex-1 bg-bg">
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerClassName="pb-8">
-        <LinearGradient colors={["#003554", "#006071"]} className="pt-12 pb-16 px-6 items-center relative overflow-hidden">
+        <LinearGradient colors={["#003554", "#006071"]} className="pb-16 px-6 items-center relative overflow-hidden" style={{ paddingTop: insets.top + 32 }}>
           <View className="absolute inset-0 opacity-5" style={{ backgroundColor: "white" }} />
           <View className="w-[72px] h-[72px] rounded-full bg-white/15 border-2 border-white/30 items-center justify-center mb-4">
             <CheckCircle2 size={36} color="#fff" />

@@ -4,12 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { CalendarDays, ChevronLeft, FileText, MessageSquare, Phone, Stethoscope } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Avatar, Button, Chip, Skeleton } from "@/components/ui";
+import { Avatar, Badge, Button, PaymentBadge, Skeleton } from "@/components/ui";
 import { appointmentApi, patientApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { callPatient as dialPatient } from "@/lib/services/callService";
 import { COLORS } from "@/constants/config";
-import { formatCurrency, getSessionTypeLabel } from "@/lib/utils/format";
+import { getSessionTypeLabel } from "@/lib/utils/format";
 import type { Appointment } from "@/types";
 
 const DUMMY_PHONE = "+919876543210";
@@ -56,7 +56,7 @@ export default function PatientProfileScreen() {
             <Pressable onPress={() => router.back()} className="w-10 h-10 rounded-md bg-white/90 items-center justify-center">
               <ChevronLeft size={18} color={COLORS.accent} />
             </Pressable>
-            <Chip variant="active">{patient.totalSessions} sessions</Chip>
+            <Badge variant="success" size="sm" dot={false}>{patient.totalSessions} sessions</Badge>
           </View>
 
           <View className="flex-row items-center" style={{ gap: 14 }}>
@@ -136,7 +136,7 @@ function AppointmentRow({ appointment, onPress }: { appointment: Appointment; on
     <Pressable onPress={onPress} className="rounded-[14px] bg-bg border border-border p-3 active:opacity-85" style={{ gap: 8 }}>
       <View className="flex-row items-center justify-between">
         <Text className="text-[14px] font-extrabold text-fg">{appointment.timeLabel} {appointment.meridiem}</Text>
-        <Chip variant={appointment.paymentStatus === "paid" ? "active" : "pending"}>{formatCurrency(appointment.amount)}</Chip>
+        <PaymentBadge status={appointment.paymentStatus} size="sm" />
       </View>
       <Text className="text-muted text-[12px]">{getSessionTypeLabel(appointment.type)} | {appointment.condition}</Text>
       {appointment.address && <Text className="text-muted text-[11px]" numberOfLines={2}>{appointment.address}</Text>}

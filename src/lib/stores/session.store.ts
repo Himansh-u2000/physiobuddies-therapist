@@ -49,6 +49,8 @@ interface SessionStore {
   ) => void;
   /** Cold-start resume — populates the store from a draft found in SQLite, no fresh persist. */
   resumeFromDraft: (draft: Session) => void;
+  /** Re-enter a paused session from the UI: makes it live again and marks it `active` in SQLite. */
+  resumeSession: () => void;
   tick: () => void;
   toggleChecklistItem: (id: string) => void;
   setQuickNote: (note: string) => void;
@@ -129,6 +131,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       checklist: draft.checklist,
       quickNote: draft.quickNote ?? "",
     }),
+
+  resumeSession: () => {
+    // Re-anchor the wall clock instead of keeping the original `startedAt`. `tick()` derives
+    // elapsed time as `now - startedAt`, so resuming an hour after a pause would otherwise
+    // charge that whole hour to the session. Anchoring to `now - elapsed` preserves the time
+    // actually worked and drops the paused gap.
+    const { elapsedSeconds } = get();
+    set({ isActive: true, startedAt: Date.now() - elapsedSeconds * 1000 });
+    persistDraft(get(), { status: "active" });
+  },
 
   tick: () => {
     const { startedAt, elapsedSeconds: previous } = get();

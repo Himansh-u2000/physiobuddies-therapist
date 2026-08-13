@@ -89,7 +89,7 @@ export default function BiometricUnlockScreen() {
 
         <View className="w-full max-w-[300px]" style={{ gap: 10 }}>
           <Pressable
-            onPress={() => router.replace("/(auth)/email-login")}
+            onPress={() => router.replace("/(auth)/login")}
             className="h-[46px] rounded-[13px] items-center justify-center"
             style={{ backgroundColor: "rgba(255,255,255,0.16)", borderWidth: 1, borderColor: "rgba(255,255,255,0.24)" }}
           >

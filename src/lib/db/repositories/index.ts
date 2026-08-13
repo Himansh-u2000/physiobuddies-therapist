@@ -3,11 +3,21 @@ export { getCachedPatients, cachePatients } from "./patientsRepo";
 export { getCachedAppointments, getCachedAppointmentById, cacheAppointments } from "./appointmentsRepo";
 export { getCachedTransactions, cacheTransactions } from "./transactionsRepo";
 export { getCachedEarningsSummary, cacheEarningsSummary } from "./earningsSummaryRepo";
+export { getCachedDashboardStats, cacheDashboardStats } from "./dashboardStatsRepo";
 export { getCachedNotifications, cacheNotifications } from "./notificationsRepo";
 export { getKv, setKv } from "./appKvRepo";
-export { enqueuePhotoUpload, getPendingPhotoUploads, markPhotoSyncResult } from "./sessionPhotosRepo";
+export {
+  enqueuePhotoUpload,
+  getPendingPhotoUploads,
+  getPhotosForSession,
+  markPhotoSyncResult,
+} from "./sessionPhotosRepo";
+export type { SessionPhotoRow } from "./sessionPhotosRepo";
+export { getSyncQueueCounts } from "./syncQueueRepo";
+export type { SyncQueueCounts } from "./syncQueueRepo";
 export {
   getResumableSession,
+  getInterruptedSession,
   getSessionById,
   upsertSessionDraft,
   deleteSession,
@@ -24,3 +34,5 @@ export {
   treatmentRowToDomain,
   requeueErroredTreatments,
 } from "./treatmentsRepo";
+export { getKycDocuments, saveKycDocument, removeKycDocument } from "./kycRepo";
+export type { KycDocumentRecord } from "./kycRepo";

@@ -88,7 +88,12 @@ export const treatments = sqliteTable("treatments", {
   patientName: text("patient_name").notNull(),
   chiefComplaint: text("chief_complaint").notNull(),
   painRegions: text("pain_regions"),
+  // `pain_scale` (singular, integer) is a retired column — kept in the table (default 0,
+  // never read/written by the app) rather than dropped, since SQLite DROP COLUMN support
+  // varies and there's nothing to gain from removing an inert, defaulted column. Replaced
+  // by `pain_scales`, a JSON map of region -> optional severity (see Treatment.painScales).
   painScale: integer("pain_scale").notNull().default(0),
+  painScales: text("pain_scales"),
   assessmentFindings: text("assessment_findings"),
   treatmentsGiven: text("treatments_given"),
   exercises: text("exercises"),
@@ -97,6 +102,7 @@ export const treatments = sqliteTable("treatments", {
   followUpRequired: integer("follow_up_required", { mode: "boolean" }).notNull().default(false),
   followUpDate: text("follow_up_date"),
   attachments: text("attachments"),
+  clinical: text("clinical"),
   syncStatus: text("sync_status").notNull().default("pending"),
   idempotencyKey: text("idempotency_key").notNull(),
   syncAttempts: integer("sync_attempts").notNull().default(0),

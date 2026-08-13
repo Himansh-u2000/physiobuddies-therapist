@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS treatments (
   chief_complaint TEXT NOT NULL,
   pain_regions TEXT,
   pain_scale INTEGER NOT NULL DEFAULT 0,
+  pain_scales TEXT,
   assessment_findings TEXT,
   treatments_given TEXT,
   exercises TEXT,
@@ -101,6 +102,7 @@ CREATE TABLE IF NOT EXISTS treatments (
   follow_up_required INTEGER NOT NULL DEFAULT 0,
   follow_up_date TEXT,
   attachments TEXT,
+  clinical TEXT,
   sync_status TEXT NOT NULL DEFAULT 'pending',
   idempotency_key TEXT NOT NULL DEFAULT '',
   sync_attempts INTEGER NOT NULL DEFAULT 0,
@@ -154,3 +156,17 @@ CREATE TABLE IF NOT EXISTS session_photos (
 CREATE INDEX IF NOT EXISTS idx_session_photos_session ON session_photos(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_photos_sync ON session_photos(sync_status);
 `;
+
+/**
+ * Columns added after the initial `treatments` table shipped. `CREATE TABLE IF NOT EXISTS`
+ * above is a no-op on a device that already has the table, so a fresh column needs its own
+ * `ALTER TABLE` here. Each is run individually and its "duplicate column" error swallowed
+ * (SQLite has no `ADD COLUMN IF NOT EXISTS`) — see provider.tsx.
+ */
+export const POST_MIGRATION_ALTERS = [
+  "ALTER TABLE treatments ADD COLUMN pain_scales TEXT;",
+  // The structured clinical assessment the backend stores, as one JSON blob rather than ~25
+  // columns. It's written and read whole (the form fills it, the sync queue posts it) and never
+  // queried by field, so columns would buy nothing and cost an ALTER per future clinical field.
+  "ALTER TABLE treatments ADD COLUMN clinical TEXT;",
+];

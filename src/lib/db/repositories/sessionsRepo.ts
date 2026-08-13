@@ -1,4 +1,4 @@
-import { and, eq, lte } from "drizzle-orm";
+import { and, desc, eq, inArray, lte } from "drizzle-orm";
 import type { DrizzleDB } from "../provider";
 import { sessions } from "../schema";
 import type { Session } from "@/types";
@@ -26,6 +26,24 @@ export function sessionRowToDomain(row: SessionRow): Session {
 /** Draft/active session to resume on cold start, if the app was killed mid-session. */
 export async function getResumableSession(db: DrizzleDB): Promise<Session | null> {
   const rows = await db.select().from(sessions).where(eq(sessions.status, "active")).limit(1);
+  return rows[0] ? sessionRowToDomain(rows[0]) : null;
+}
+
+/**
+ * The most recently touched session the therapist never finished — killed mid-session
+ * (`active`) or explicitly paused. Unlike `getResumableSession` this includes `paused`,
+ * because those are precisely the ones no screen could reach: "Pause / Emergency stop"
+ * persisted them safely and then left them sitting in SQLite with no way back in.
+ *
+ * Ordered by `updatedAt` so the newest wins if more than one is somehow open.
+ */
+export async function getInterruptedSession(db: DrizzleDB): Promise<Session | null> {
+  const rows = await db
+    .select()
+    .from(sessions)
+    .where(inArray(sessions.status, ["active", "paused"]))
+    .orderBy(desc(sessions.updatedAt))
+    .limit(1);
   return rows[0] ? sessionRowToDomain(rows[0]) : null;
 }
 
