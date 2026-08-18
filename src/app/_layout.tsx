@@ -74,6 +74,7 @@ function RootLayoutNav() {
         <Stack.Screen name="patient" />
         <Stack.Screen name="payouts" />
         <Stack.Screen name="availability" />
+        <Stack.Screen name="leave" />
         <Stack.Screen name="reviews" />
         <Stack.Screen name="change-password" />
         <Stack.Screen name="network-log" />

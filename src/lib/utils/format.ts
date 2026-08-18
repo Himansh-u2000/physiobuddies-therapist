@@ -90,6 +90,49 @@ export function formatDateLabel(iso: string): string {
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
+/**
+ * 'YYYY-MM-DD' -> "Today" / "Yesterday" / "4 days ago" / "3 weeks ago" / "24 Jul 2026".
+ *
+ * Same local-midnight parse as `formatDateLabel` for the same reason. Days are compared on
+ * calendar boundaries, not elapsed milliseconds: a visit at 21:00 yesterday is "Yesterday" at
+ * 08:00 today, which is how a person reads it, whereas an hours/24 division calls it "Today".
+ */
+export function formatRelativeDay(iso: string): string {
+  const date = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return iso;
+
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOfDay(new Date()) - startOfDay(date)) / 86_400_000);
+
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 0) return formatDateLabel(iso);
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) {
+    const weeks = Math.floor(days / 7);
+    return weeks === 1 ? "1 week ago" : `${weeks} weeks ago`;
+  }
+  return formatDateLabel(iso);
+}
+
+/**
+ * A full ISO timestamp -> "Just now" / "12m ago" / "5h ago" / "3d ago" / "24 Jul 2026".
+ *
+ * For things posted at a time of day, where `formatRelativeDay`'s calendar-day granularity is
+ * too coarse — a comment written ten minutes ago reading "Today" is less useful than "10m ago".
+ */
+export function relativeCommentTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+
+  const seconds = Math.floor((Date.now() - then) / 1000);
+  if (seconds < 60) return "Just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 604_800) return `${Math.floor(seconds / 86_400)}d ago`;
+  return formatDateLabel(toIsoDate(new Date(then)));
+}
+
 export function debounce<T extends (...args: never[]) => void>(
   fn: T,
   delayMs: number,

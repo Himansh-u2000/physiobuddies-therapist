@@ -3,19 +3,22 @@ import { View, Text, Pressable } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, Lock, Send, ShieldCheck } from "lucide-react-native";
+import { ChevronLeft, HelpCircle, Lock, Send, ShieldCheck } from "lucide-react-native";
 import { Avatar, Badge, Button, OTPInput, PaymentBadge } from "@/components/ui";
 import { appointmentApi, sessionApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
+import { useAuthStore } from "@/lib/stores/auth.store";
 import { useSessionStore } from "@/lib/stores/session.store";
-import { COLORS, OTP_CONFIG, SLOT_CONFIG } from "@/constants/config";
+import { COLORS, OTP_CONFIG, SLOT_CONFIG, SUPPORT_EMAIL } from "@/constants/config";
 import { getSessionTypeLabel } from "@/lib/utils/format";
+import { openSupportEmail } from "@/lib/utils/support";
 
 export default function SessionOtpScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { appointmentId } = useLocalSearchParams<{ appointmentId: string }>();
   const showToast = useAppStore((s) => s.showToast);
+  const therapist = useAuthStore((s) => s.therapist);
   const startSession = useSessionStore((s) => s.startSession);
   const [code, setCode] = useState("");
   const [error, setError] = useState(false);
@@ -90,19 +93,17 @@ export default function SessionOtpScreen() {
     }
   };
 
-  const handleFlaggedStart = async () => {
-    if (!appointment) return;
-    setLoading(true);
-    try {
-      const { sessionId } = await sessionApi.startFlagged(appointmentId);
-      startSession(sessionId, appointment.id, appointment.patientName, appointment.condition, appointment.patientId, appointment.type);
-      showToast("Supervisor notified - flagged start recorded");
-      setTimeout(() => router.replace("/session/active"), 500);
-    } catch {
-      showToast("Unable to start flagged session");
-    } finally {
-      setLoading(false);
-    }
+  /**
+   * Opens the mail composer pre-filled with the therapist's identity and build, and falls back
+   * to showing the address when no mail client answers — a support link that silently does
+   * nothing is worse than no link, and this one is offered at the exact moment a visit is stuck.
+   */
+  const handleContactSupport = async () => {
+    const opened = await openSupportEmail(
+      therapist,
+      `Physiobuddies Therapist — patient can't share session OTP (${appointment?.patientName ?? "visit"})`,
+    );
+    if (!opened) showToast(`Email us at ${SUPPORT_EMAIL}`, "info");
   };
 
   if (!appointment) return <View className="flex-1 bg-bg" />;
@@ -210,14 +211,30 @@ export default function SessionOtpScreen() {
           )}
         </View>
 
-        <View className="bg-danger/5 border border-danger/10 rounded-md p-3 mt-2.5">
-          <Text className="text-danger text-[12px] font-bold">⚠️ Patient can&apos;t share OTP?</Text>
-          <Text className="text-muted text-[12px] mt-1">
-            Only proceed without OTP if the patient is unable (elderly, emergency). This will be flagged for review.
+        {/* The "Start without OTP (flagged)" escape hatch that used to live here is gone
+            (2026-08-17, on request). It was never real: no backend endpoint accepts a flagged
+            start, nothing server-side flipped the session to `active`, and no supervisor was
+            ever notified despite the toast saying so — the therapist was told the visit had
+            begun while the server still considered it pending. What replaces it is the honest
+            version: what to actually do when the patient can't read out a code. */}
+        <View className="bg-info/5 border border-info/15 rounded-md p-3 mt-2.5">
+          <View className="flex-row items-center" style={{ gap: 6 }}>
+            <HelpCircle size={14} color={COLORS.info} />
+            <Text className="text-info text-[12px] font-bold">Patient can&apos;t share the OTP?</Text>
+          </View>
+          <Text className="text-muted text-[12px] mt-1.5 leading-[18px]">
+            The code arrives in the patient&apos;s own Physiobuddies app. If they can&apos;t find
+            it, resend it above — a fresh code replaces the old one. If they still can&apos;t
+            receive it, call the support desk and they can verify the visit for you; the session
+            cannot be started without a verified code.
           </Text>
-          <Button variant="danger" size="small" onPress={handleFlaggedStart} disabled={loading}>
-            <Text className="text-danger font-bold text-[12px]">{loading ? "Starting..." : "Start without OTP (flagged)"}</Text>
-          </Button>
+          <Pressable
+            onPress={handleContactSupport}
+            hitSlop={6}
+            className="mt-2.5 self-start active:opacity-70"
+          >
+            <Text className="text-accent text-[12px] font-bold">Contact support</Text>
+          </Pressable>
         </View>
       </View>
     </View>

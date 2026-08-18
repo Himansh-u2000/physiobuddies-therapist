@@ -120,13 +120,21 @@ export default function PayoutsScreen() {
             <Pressable
               onPress={() => setSheetOpen(true)}
               disabled={balance <= 0}
-              className={`mt-4 h-11 rounded-[13px] bg-white flex-row items-center justify-center ${
-                balance <= 0 ? "opacity-50" : "active:opacity-80"
+              // Disabled is a different fill, not a dimmed copy: `opacity-50` on a white button
+              // sitting on the navy card washed the whole control — label included — down to
+              // something barely there. A translucent box with a white label keeps the text
+              // legible while still reading as unavailable.
+              className={`mt-4 h-11 rounded-[13px] flex-row items-center justify-center ${
+                balance <= 0 ? "bg-white/15" : "bg-white active:opacity-80"
               }`}
               style={{ gap: 8 }}
             >
-              <ArrowDownCircle size={18} color={COLORS.accent} />
-              <Text className="text-accent font-bold text-[14px]">Request payout</Text>
+              <ArrowDownCircle size={18} color={balance <= 0 ? "rgba(255,255,255,0.75)" : COLORS.accent} />
+              <Text
+                className={`font-bold text-[14px] ${balance <= 0 ? "text-white/75" : "text-accent"}`}
+              >
+                Request payout
+              </Text>
             </Pressable>
             {balance <= 0 && (
               <Text className="text-white/60 text-[11px] mt-2 text-center">

@@ -13,7 +13,6 @@ import {
 } from "@/lib/storage/secure";
 import { authApi } from "@/lib/api/services";
 import { clearNetLog } from "@/lib/api/netlog";
-import { signOutGoogle } from "@/lib/auth/googleSignIn";
 import { useAppStore } from "@/lib/stores/app.store";
 
 interface AuthStore {
@@ -98,7 +97,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   logout: async () => {
     // Best-effort server + native sign-out, then clear all local state.
     await authApi.logout().catch(() => {});
-    await signOutGoogle();
     await clearAllSecureData();
     // The network log holds request/response bodies — i.e. patient data — in memory. Signing
     // out has to drop it too, or handing the phone to the next person leaves it readable.
@@ -117,7 +115,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
    * The refresh token was rejected outright by the server (not merely unreachable — the API
    * client only calls this on a real rejection, so going offline never lands here). Local
    * teardown only: no `authApi.logout()`, because the credential that would authorize it is
-   * exactly what just died, and no `signOutGoogle()`, so re-signing in stays one tap.
+   * exactly what just died.
    *
    * Guarded on `isAuthenticated` — a rejected refresh for an already-signed-out user must not
    * re-fire the "session expired" toast on a login screen.

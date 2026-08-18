@@ -71,9 +71,21 @@ describe("treatmentApi.submit", () => {
     post.mockResolvedValue({ data: null });
   });
 
-  it("posts to the session's assessment endpoint", async () => {
+  /**
+   * The plan id, not the session id. The endpoint moved to `/treatment-plan/:planId/assessment`
+   * (verified live 2026-08-17: the old `/treatment-session/:id/assessment` now 404s), and the
+   * two ids sit side by side on the payload, so posting the wrong one is a one-character
+   * mistake that only shows up as a lost clinical form at the end of a visit.
+   */
+  it("posts to the treatment PLAN's assessment endpoint, keyed by appointmentId", async () => {
     await treatmentApi.submit(draft());
-    expect(post.mock.calls[0][0]).toBe("/treatment-session/6a79c0e6f0a3fb9b8f59ab42/assessment");
+    expect(post.mock.calls[0][0]).toBe("/treatment-plan/6a79a0f2af91e546c60bd28b/assessment");
+  });
+
+  it("never addresses the assessment by the session id", async () => {
+    await treatmentApi.submit(draft());
+    expect(post.mock.calls[0][0]).not.toContain("6a79c0e6f0a3fb9b8f59ab42");
+    expect(post.mock.calls[0][0]).not.toContain("/treatment-session/");
   });
 
   it("renames treatmentPlanItems to treatmentPlan, which is what the backend reads", async () => {
@@ -156,5 +168,75 @@ describe("treatmentApi.submit", () => {
       await treatmentApi.submit(draft({ exercises: [{ id: "e", name: "Bridging", reps: 10, sets: 2 }] }));
       expect(post.mock.calls[0][1].hepGiven).toBe(true);
     });
+  });
+});
+
+/**
+ * The assessment URL is addressed by the treatment-SESSION id, and nothing in the app may
+ * decorate or substitute it.
+ *
+ * This used to be pinned against `sessionApi.startFlagged` — the emergency no-OTP start, which
+ * minted `flagged-session-${appointmentId}` and carried it through the whole visit, so the
+ * completed assessment POSTed to `/treatment-session/flagged-session-<id>/assessment` and died
+ * on `400 Invalid ObjectId format` at the worst possible moment. That entry point was deleted on
+ * 2026-08-17, so the rule is pinned here instead, on the path that remains: whatever session id
+ * a submit is handed is the id that reaches the wire.
+ */
+describe("assessment URL addressing", () => {
+  const PLAN_ID = "6a7e0a3e3da564be59d868ad";
+
+  beforeEach(() => {
+    post.mockReset();
+    post.mockResolvedValue({ data: null });
+  });
+
+  it("posts to the plan id it was given, undecorated", async () => {
+    await treatmentApi.submit(draft({ appointmentId: PLAN_ID }));
+
+    const url = post.mock.calls[0][0] as string;
+    expect(url).toBe(`/treatment-plan/${PLAN_ID}/assessment`);
+    // 24-char hex — what Mongo will accept as an ObjectId. A fabricated id failed both halves.
+    expect(url.split("/")[2]).toMatch(/^[0-9a-f]{24}$/);
+    expect(url).not.toContain("flagged-session-");
+  });
+});
+
+/**
+ * The visit outcome is SESSION-scoped, the opposite of the assessment above — mixing the two up
+ * is the single easiest mistake to make in this module, so both are pinned.
+ */
+describe("treatmentApi.submitImprovementRecord", () => {
+  beforeEach(() => {
+    post.mockReset();
+    post.mockResolvedValue({ data: null });
+  });
+
+  it("posts to the SESSION id, and clamps pain scores into the server's 0–10 range", async () => {
+    await treatmentApi.submitImprovementRecord("6a79c0e6f0a3fb9b8f59ab42", {
+      painScoreBefore: 12.4,
+      painScoreAfter: -3,
+      improvementNotes: "Better range at the hip",
+      exercisesGiven: ["Bridging"],
+    });
+
+    expect(post.mock.calls[0][0]).toBe(
+      "/treatment-session/6a79c0e6f0a3fb9b8f59ab42/improvement-record",
+    );
+    const body = post.mock.calls[0][1];
+    expect(body.painScoreBefore).toBe(10);
+    expect(body.painScoreAfter).toBe(0);
+    expect(body.exercisesGiven).toEqual(["Bridging"]);
+  });
+
+  it("omits the optional fields rather than sending nulls the validator would reject", async () => {
+    await treatmentApi.submitImprovementRecord("6a79c0e6f0a3fb9b8f59ab42", {
+      painScoreAfter: 4,
+      improvementNotes: "Steady",
+    });
+
+    const body = post.mock.calls[0][1];
+    expect(body).not.toHaveProperty("painScoreBefore");
+    expect(body).not.toHaveProperty("exercisesGiven");
+    expect(body.painScoreAfter).toBe(4);
   });
 });

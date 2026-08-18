@@ -27,7 +27,7 @@
     "android": {
       "package": "in.physiobuddies.therapist",
       "adaptiveIcon": {
-        "backgroundColor": "#003554",
+        "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -58,7 +58,7 @@
           "backgroundColor": "#003554",
           "android": {
             "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+            "imageWidth": 150
           }
         }
       ],
@@ -98,12 +98,6 @@
         }
       ],
       "expo-local-authentication",
-      [
-        "@react-native-google-signin/google-signin",
-        {
-          "iosUrlScheme": "com.googleusercontent.apps.PLACEHOLDER-REVERSED-IOS-CLIENT-ID"
-        }
-      ],
       "expo-apple-authentication"
     ],
     "experiments": {

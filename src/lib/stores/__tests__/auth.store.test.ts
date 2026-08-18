@@ -1,7 +1,6 @@
 import type { AuthTokens, Therapist } from "@/types";
 import * as secure from "@/lib/storage/secure";
 import { authApi } from "@/lib/api/services";
-import { signOutGoogle } from "@/lib/auth/googleSignIn";
 import ToastMessage from "react-native-toast-message";
 import { useAuthStore } from "@/lib/stores/auth.store";
 
@@ -28,10 +27,6 @@ jest.mock("@/lib/storage/secure", () => ({
 
 jest.mock("@/lib/api/services", () => ({
   authApi: { logout: jest.fn(async () => {}) },
-}));
-
-jest.mock("@/lib/auth/googleSignIn", () => ({
-  signOutGoogle: jest.fn(async () => {}),
 }));
 
 jest.mock("@/lib/api/netlog", () => ({
@@ -202,10 +197,9 @@ describe("logout", () => {
     });
   });
 
-  it("revokes server-side, signs out of Google, and clears local state", async () => {
+  it("revokes server-side and clears local state", async () => {
     await useAuthStore.getState().logout();
     expect(authApi.logout).toHaveBeenCalled();
-    expect(signOutGoogle).toHaveBeenCalled();
     expect(mocked.clearAllSecureData).toHaveBeenCalled();
 
     const s = useAuthStore.getState();
@@ -239,13 +233,11 @@ describe("sessionExpired (refresh token rejected by the server)", () => {
     });
   });
 
-  it("clears the session locally without calling the server or Google", async () => {
+  it("clears the session locally without calling the server", async () => {
     await useAuthStore.getState().sessionExpired();
 
-    // The credential that would authorize a server-side revoke is exactly what just died,
-    // and staying signed into Google keeps re-signing in one tap.
+    // The credential that would authorize a server-side revoke is exactly what just died.
     expect(authApi.logout).not.toHaveBeenCalled();
-    expect(signOutGoogle).not.toHaveBeenCalled();
 
     expect(mocked.clearAllSecureData).toHaveBeenCalled();
     const s = useAuthStore.getState();

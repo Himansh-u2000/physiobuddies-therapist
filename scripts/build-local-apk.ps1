@@ -94,9 +94,10 @@ if (Test-Path $cmake412) {
 # Points at the DEPLOYED backend over HTTPS. This is what makes a release APK usable at all:
 # release builds forbid cleartext HTTP, so the old http://localhost:3000 value could never be
 # reached from a phone, and the previous https://staging-api.physiobuddies.in does not resolve.
-# Domains whose backend endpoints are real are turned on individually. Only NOTIFICATIONS stays
-# on fixtures - its controllers are empty method bodies that never send a response, so the
-# reviewable APK would sit on a request that never returns.
+# Domains whose backend endpoints are real are turned on individually - which is now ALL of them,
+# notifications included: as of 2026-08-17 the backend serves them under /notifications/ (plural),
+# and the app calls that path. The old note here said they hung; that is only true of the dead
+# singular /notification/ mount.
 $env:EXPO_PUBLIC_API_URL = "https://api.dev.physiobuddies.in/api/v1"
 $env:EXPO_PUBLIC_USE_MOCK_API = "true"
 $env:EXPO_PUBLIC_USE_MOCK_AUTH = "false"
@@ -111,28 +112,13 @@ $env:EXPO_PUBLIC_USE_MOCK_CONTENT = "false"
 $env:EXPO_PUBLIC_USE_MOCK_SESSION = "false"
 $env:EXPO_PUBLIC_USE_MOCK_TREATMENT = "false"
 $env:EXPO_PUBLIC_USE_MOCK_PATIENTS = "false"
+$env:EXPO_PUBLIC_USE_MOCK_NOTIFICATIONS = "false"
 
 # In-app network log (Profile > Support > Network log). ON for this build specifically: it is a
 # RELEASE build, so there is no Metro console and Chrome DevTools cannot attach - without this
 # there is no way to see a request payload or an error body from the phone. Store builds leave
 # the flag unset, where it defaults to __DEV__ (i.e. off).
 $env:EXPO_PUBLIC_ENABLE_NETWORK_LOG = "true"
-
-# Google Sign-In needs the Web client ID, which is kept out of git in .env.development.local.
-# A release build runs with NODE_ENV=production and loads .env.production, so that file is never
-# read -- without forwarding it here the APK would ship an empty client ID and Google login would
-# fail at the native call with a bare DEVELOPER_ERROR. Forwarded, not committed.
-$localEnv = Join-Path $projectRoot ".env.development.local"
-if (Test-Path $localEnv) {
-  $match = Select-String -Path $localEnv -Pattern '^\s*EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID\s*=\s*(.+)\s*$' | Select-Object -First 1
-  if ($match) {
-    $env:EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = $match.Matches[0].Groups[1].Value.Trim()
-    Write-Host "Google Web client ID forwarded from .env.development.local" -ForegroundColor Cyan
-  }
-}
-if (-not $env:EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
-  Write-Host "No Google Web client ID found - Google Sign-In will fail in this APK (email/password login still works)." -ForegroundColor Yellow
-}
 
 Write-Host "Target ABI = $Abi (pass -Abi x86_64 for an emulator)" -ForegroundColor Cyan
 

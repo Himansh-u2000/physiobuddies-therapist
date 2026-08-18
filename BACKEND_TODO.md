@@ -14,6 +14,35 @@ Every response must use the standard envelope `{ success, message, data }` and r
 
 ---
 
+## 0. Read this first — verified live 2026-08-17
+
+A full app-vs-server audit ran on 2026-08-17; findings and evidence are in
+[`../API_AUDIT.md`](../API_AUDIT.md). Three things below have **changed since this file was
+written**, and the app has been updated to match:
+
+- **The clinical assessment moved** to `GET`/`POST /treatment-plan/:planId/assessment`. The old
+  `POST /treatment-session/:id/assessment` now returns **404** (GET: **500**). Every clinical form
+  the app submitted between the move and 2026-08-17 was lost at the final step. If the move was
+  intentional, please keep the old path 410-ing rather than 404-ing, or leave a deprecation window —
+  a silent relocation of the app's single most important write is expensive.
+- **`/notifications/*` (plural) is implemented and working**; `/notification/*` (singular) returns
+  **500**. Same split for `/complaints/` vs `/complaint/`. `/activity/` is unaffected. Please retire
+  the dead singular mounts rather than leaving them answering 500 — §2 below is now largely obsolete.
+- **`GET /payment/` and `/payments/` now both return 500.** They returned 200 on 2026-08-13, so this
+  is a regression. The therapist billing screen has no working source until it's fixed.
+
+Still missing, unchanged: `POST /notification/token` (so push is undeliverable), `POST /auth/apple`
+and `DELETE /account` (both store-submission blockers).
+
+Two smaller gaps found in the same pass:
+
+- `GET /blog/:slug` returns a like **count** but nothing about the caller's own like, so a reader
+  can't be shown whether they already liked a post.
+- `POST /therapist/leaves` has no companion **list or cancel** route, so applied leave can't be
+  withdrawn from the app.
+
+---
+
 ## 1. Live defects — small fixes, real breakage
 
 ### 1.1 `GET /therapist/sessions/today` and `/upcoming` are unreachable

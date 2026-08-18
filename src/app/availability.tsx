@@ -14,15 +14,7 @@ import {
   Sun,
   Moon,
 } from "lucide-react-native";
-import {
-  Badge,
-  Button,
-  Skeleton,
-  EmptyState,
-  ErrorState,
-  BottomSheet,
-  TextArea,
-} from "@/components/ui";
+import { Badge, Button, Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { availabilityApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS, SLOT_CONFIG, WEEKDAYS, type SlotShiftId } from "@/constants/config";
@@ -76,9 +68,6 @@ export default function AvailabilityScreen() {
   const [dayIndex, setDayIndex] = useState(0);
   const [selected, setSelected] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
-  const [leaveOpen, setLeaveOpen] = useState(false);
-  const [leaveReason, setLeaveReason] = useState("");
-  const [leaveSaving, setLeaveSaving] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["availability"],
@@ -157,22 +146,6 @@ export default function AvailabilityScreen() {
     }
   };
 
-  const applyLeave = async () => {
-    if (!day || leaveSaving) return;
-    setLeaveSaving(true);
-    try {
-      await availabilityApi.applyLeave(day.date, day.date, leaveReason.trim() || undefined);
-      showToast("Leave applied", "success");
-      setLeaveOpen(false);
-      setLeaveReason("");
-      await queryClient.invalidateQueries({ queryKey: ["availability"] });
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : "Couldn't apply for leave. Try again.", "error");
-    } finally {
-      setLeaveSaving(false);
-    }
-  };
-
   return (
     <View className="flex-1 bg-bg">
       <View
@@ -184,17 +157,17 @@ export default function AvailabilityScreen() {
             <ChevronLeft size={22} color={COLORS.fg} />
           </Pressable>
           <Text className="text-[16px] font-extrabold text-fg flex-1">Availability</Text>
-          {tab === "days" && day && (
-            <Pressable
-              onPress={() => setLeaveOpen(true)}
-              hitSlop={8}
-              className="flex-row items-center active:opacity-70"
-              style={{ gap: 5 }}
-            >
-              <CalendarOff size={16} color={COLORS.danger} />
-              <Text className="text-danger text-[12px] font-bold">Leave</Text>
-            </Pressable>
-          )}
+          {/* Leave is its own screen now, not a sheet hanging off whichever day happened to be
+              selected — it applies to a date RANGE, and it lists the time off already booked. */}
+          <Pressable
+            onPress={() => router.push("/leave")}
+            hitSlop={8}
+            className="flex-row items-center active:opacity-70"
+            style={{ gap: 5 }}
+          >
+            <CalendarOff size={16} color={COLORS.danger} />
+            <Text className="text-danger text-[12px] font-bold">Time off</Text>
+          </Pressable>
         </View>
 
         <View className="flex-row mt-2.5 rounded-[12px] p-[3px]" style={{ backgroundColor: "rgba(0,64,96,0.05)" }}>
@@ -394,24 +367,6 @@ export default function AvailabilityScreen() {
         </>
       )}
 
-      <BottomSheet visible={leaveOpen} onClose={() => setLeaveOpen(false)}>
-        <View style={{ gap: 14 }}>
-          <Text className="text-[16px] font-extrabold text-fg">Apply for leave</Text>
-          <Text className="text-muted text-[12px]">
-            This marks <Text className="text-fg font-bold">{day?.label}</Text> as unavailable. Existing
-            bookings are not cancelled automatically — contact those patients directly.
-          </Text>
-          <TextArea
-            label="Reason (optional)"
-            value={leaveReason}
-            onChangeText={setLeaveReason}
-            placeholder="e.g. Personal leave"
-          />
-          <Button variant="primary" fullWidth onPress={applyLeave} disabled={leaveSaving}>
-            {leaveSaving ? <ActivityIndicator color="#fff" /> : "Apply for leave"}
-          </Button>
-        </View>
-      </BottomSheet>
     </View>
   );
 }

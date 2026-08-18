@@ -13,11 +13,13 @@
  */
 import type {
   ActivityEntry,
+  AppNotification,
   Appointment,
   AppointmentSession,
   AppointmentStatus,
   AvailabilityDay,
   BlogPost,
+  BlogReview,
   ClinicalAssessmentInput,
   ClinicalAssessmentRecord,
   DashboardStats,
@@ -245,7 +247,41 @@ export interface BackendBlogPost {
   views?: number;
   likes?: number;
   createdAt?: string;
-  reviews?: { id?: string; userName?: string; comment?: string; createdAt?: string }[];
+  reviews?: BackendBlogReview[];
+}
+
+/** GET /notifications/ — cursor-paginated envelope. */
+export interface BackendNotificationPage {
+  items?: BackendNotification[];
+  nextCursor?: string | null;
+  hasMore?: boolean;
+  unreadCount?: number;
+}
+
+/** One row of `GET /notifications/`. */
+export interface BackendNotification {
+  id: string;
+  userId?: string;
+  title?: string;
+  description?: string;
+  isRead?: boolean;
+  priority?: "low" | "medium" | "high";
+  status?: "queued" | "sent" | "delivered" | "failed";
+  event?: string | null;
+  /** The server's delivery channel, NOT the app's subject category. */
+  type?: "transactional" | "activity" | "promotional";
+  metadata?: unknown;
+  readAt?: string | null;
+  createdAt?: string;
+  time?: string;
+}
+
+/** One comment, as returned inside `GET /blog/:slug` and by `POST /blog/:id/review`. */
+export interface BackendBlogReview {
+  id?: string;
+  userName?: string;
+  comment?: string;
+  createdAt?: string;
 }
 
 /** GET /complaint — one element */
@@ -1113,17 +1149,55 @@ export function mapBlogPost(b: BackendBlogPost): BlogPost {
     likes: b.likes,
     createdAt: b.createdAt,
     dateLabel: d && !Number.isNaN(d.getTime()) ? relativeDateLabel(d) : "",
-    reviews: (b.reviews ?? []).map((r, i) => ({
-      id: r.id ?? `${b.id}-review-${i}`,
-      userName: r.userName ?? "Reader",
-      comment: r.comment ?? "",
-      createdAt: r.createdAt,
-    })),
+    reviews: (b.reviews ?? []).map((r, i) => mapBlogReview(r, `${b.id}-review-${i}`)),
+  };
+}
+
+/**
+ * `POST /blog/:id/review` answers with the created row in the same shape the detail fetch
+ * embeds, so one mapper serves both and a just-posted comment renders identically to a
+ * reloaded one.
+ */
+export function mapBlogReview(r: BackendBlogReview, fallbackId = ""): BlogReview {
+  return {
+    id: r?.id ?? fallbackId,
+    userName: r?.userName ?? "Reader",
+    comment: r?.comment ?? "",
+    createdAt: r?.createdAt,
   };
 }
 
 export function mapBlogPosts(list: BackendBlogPost[]): BlogPost[] {
   return (list ?? []).map(mapBlogPost);
+}
+
+/**
+ * Notification rows → the app's `AppNotification`.
+ *
+ * Two mismatches worth naming. The server's `type` is a *delivery channel*
+ * (transactional / activity / promotional), while the app's `type` is a *subject category* that
+ * picks the row's icon and tint (appointment / payment / task / system / message) — so the
+ * category is derived from `event` (e.g. `session.reminder`, `payout.processed`) and only falls
+ * back to the channel. And the body field is `description`, not `body`.
+ */
+export function mapNotifications(list: BackendNotification[]): AppNotification[] {
+  return (list ?? []).map((n) => ({
+    id: n.id,
+    type: notificationCategory(n),
+    title: n.title ?? "",
+    body: n.description ?? "",
+    timestamp: n.time ?? n.createdAt ?? "",
+    read: !!n.isRead,
+  }));
+}
+
+function notificationCategory(n: BackendNotification): AppNotification["type"] {
+  const key = `${n.event ?? ""}`.toLowerCase();
+  if (/session|booking|appointment|slot|reschedul/.test(key)) return "appointment";
+  if (/pay|payout|wallet|invoice|refund|commission|subscription/.test(key)) return "payment";
+  if (/complaint|message|reply|review/.test(key)) return "message";
+  if (/verif|document|kyc|onboard|task/.test(key)) return "task";
+  return n.type === "promotional" ? "message" : "system";
 }
 
 export function mapComplaints(list: BackendComplaint[]): SupportComplaint[] {

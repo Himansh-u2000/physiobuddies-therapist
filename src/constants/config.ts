@@ -84,9 +84,11 @@ export const USE_MOCK_CONTENT = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_CONTENT
  */
 export const USE_MOCK_SESSION = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_SESSION, USE_MOCK_API);
 /**
- * Clinical assessment — REAL: GET/POST /treatment-session/:id/assessment against the
- * `ClinicalAssessment` model. The form's option lists are app-side (`constants/clinical.ts`),
- * mirroring the backend's Prisma enums — there is no form-config endpoint and never was.
+ * Clinical assessment — REAL: `GET`/`POST /treatment-plan/:planId/assessment` against the
+ * `ClinicalAssessment` model. Note the base path and the id type: it is keyed by the treatment
+ * PLAN, not the session — the old `/treatment-session/:id/assessment` now 404s (verified live
+ * 2026-08-17). The form's option lists are app-side (`constants/clinical.ts`), mirroring the
+ * backend's Prisma enums — there is no form-config endpoint and never was.
  */
 export const USE_MOCK_TREATMENT = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_TREATMENT, USE_MOCK_API);
 /**
@@ -98,14 +100,20 @@ export const USE_MOCK_TREATMENT = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_TREAT
 export const USE_MOCK_PATIENTS = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_PATIENTS, USE_MOCK_API);
 
 /**
- * STILL MOCKED regardless of the global flag. `/notification/*` controllers are literally empty
- * method bodies (`async getUserNotifications(_req, _res, _next) {}`) — the request never gets a
- * response and HANGS until the client timeout, which is worse than a 404. Verified again against
- * api.dev.physiobuddies.in on 2026-08-10. Flip only once those controllers return data.
+ * Notifications — **REAL as of 2026-08-17**, and no longer pinned to mock.
+ *
+ * The old note here said the controllers were empty method bodies that hung the request. That
+ * was true of `/notification/*` (singular) and still is — it answers 500. The backend has since
+ * implemented the domain under `/notifications/*` (plural), which the app now calls:
+ * list, unread-count, mark-read, mark-all-read and preferences all return real data against
+ * api.dev.physiobuddies.in. Follows the global flag like every other live domain.
+ *
+ * Push is a separate question and still impossible: no route accepts a device token, so the
+ * list is polled, not pushed.
  */
 export const USE_MOCK_NOTIFICATIONS = envFlag(
   process.env.EXPO_PUBLIC_USE_MOCK_NOTIFICATIONS,
-  true,
+  USE_MOCK_API,
 );
 
 /**
@@ -133,15 +141,15 @@ export const NETWORK_LOG_ENABLED = envFlag(
  */
 export const SUBSCRIPTION_PAYMENT_ENABLED = false;
 
-/** Auth / Google Sign-In configuration. */
+/**
+ * Auth configuration.
+ *
+ * `googleWebClientId` is gone with the Google Sign-In removal (2026-08-17) — along with the
+ * `@react-native-google-signin` native module, its `app.json` plugin entry, and the Google
+ * Cloud Android-OAuth-client blocker that was holding that button up. Sign-in is
+ * email/password only; `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` is no longer read anywhere.
+ */
 export const AUTH_CONFIG = {
-  /**
-   * Google OAuth **Web** client ID — used as the native SDK's server client so Google
-   * returns a `serverAuthCode` we post to `POST /auth/google?code=…` (the backend runs the
-   * authorization-code exchange with the web client secret). Supply via env; see
-   * GOOGLE_SIGNIN_SETUP.md. Empty until credentials are added.
-   */
-  googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "",
   /** Re-lock the app (require biometric again) after this long in the background. */
   biometricRelockMs: 2 * 60 * 1000,
 } as const;

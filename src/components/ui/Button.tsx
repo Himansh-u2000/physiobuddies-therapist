@@ -1,15 +1,16 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { Pressable, Text, type PressableProps, type ViewStyle } from "react-native";
+import { StyleSheet, Pressable, Text, type PressableProps, type ViewStyle } from "react-native";
 import { GRADIENTS } from "@/constants/config";
 
 type ButtonVariant = "primary" | "secondary" | "success" | "danger" | "ghost";
 type ButtonSize = "default" | "small";
 
-interface ButtonProps extends Omit<PressableProps, "children"> {
+interface ButtonProps extends Omit<PressableProps, "children" | "style"> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   children: React.ReactNode;
   fullWidth?: boolean;
+  style?: ViewStyle;
 }
 
 const variantStyles: Record<ButtonVariant, { bg: string; text: string; border: string }> = {
@@ -29,6 +30,8 @@ const sizeStyles: Record<ButtonSize, { height: string; text: string; radius: str
   default: { height: "h-[46px]", text: "text-[14px]", radius: "rounded-[13px]", px: "px-5" },
   small: { height: "h-[34px]", text: "text-[12px]", radius: "rounded-[9px]", px: "px-3.5" },
 };
+
+const GRADIENT_VARIANTS: ButtonVariant[] = ["primary", "success"];
 
 export function Button({
   variant = "primary",
@@ -52,39 +55,74 @@ export function Button({
 }: ButtonProps) {
   const v = variantStyles[variant];
   const s = sizeStyles[size];
-  const useGradient = (variant === "primary" || variant === "success") && !disabled;
-  const flatStyle = style as ViewStyle | undefined;
+  const isGradient = GRADIENT_VARIANTS.includes(variant);
   const extra = className ? ` ${className}` : "";
+
+  // The disabled look is a real state, not a dimmed copy of the enabled one.
+  //
+  // It used to be `opacity-50` on the whole Pressable, and `useGradient` additionally excluded
+  // `disabled` — so the instant a submit button set `disabled={loading}` (login, OTP verify,
+  // treatment submit, the photo/camera actions: every async action in the app does this) the
+  // gradient vanished AND the label went half-transparent along with the background. White text
+  // at 50% over a near-white page is invisible; the button read as "turned white and
+  // disappeared" for exactly as long as the request was in flight. The fix is to keep the
+  // background fully opaque and change its *colour* instead: solid muted grey for the filled
+  // variants (white label stays readable on it), a flat tinted box with muted text for the
+  // outline variants. Opacity is never applied to the label.
+  const filledDisabled = disabled && isGradient;
+  const outlineDisabled = disabled && !isGradient;
 
   const content = (
     <>
       {typeof children === "string" ? (
-        <Text className={`${s.text} font-bold ${v.text}`}>{children}</Text>
+        <Text className={`${s.text} font-bold ${outlineDisabled ? "text-muted" : v.text}`}>
+          {children}
+        </Text>
       ) : (
         children
       )}
     </>
   );
 
-  if (useGradient) {
+  // Pressed feedback was missing entirely — the button had no `active:` class and no pressed
+  // style, so a tap produced no visual acknowledgement at all. A small opacity step is applied
+  // through the style function rather than a NativeWind `active:` variant so it composes with
+  // the gradient child (which paints over any background class) and can never lighten the
+  // button toward the page colour.
+  const pressStyle = ({ pressed }: { pressed: boolean }): ViewStyle[] => [
+    ...(style ? [style] : []),
+    ...(pressed && !disabled ? [{ opacity: 0.88 }] : []),
+  ];
+
+  if (isGradient) {
     const colors = variant === "success" ? GRADIENTS.success : GRADIENTS.accent;
     return (
       <Pressable
         disabled={disabled}
-        className={`${s.height} ${s.radius} ${s.px} ${fullWidth ? "w-full" : ""} items-center justify-center flex-row gap-2 overflow-hidden ${disabled ? "opacity-50" : ""}${extra}`}
-        style={flatStyle}
+        // `v.bg` stays on the Pressable underneath the gradient as a solid fallback: the
+        // gradient is an absolutely-positioned child, so if it ever fails to paint, the button
+        // is still a filled brand-coloured box rather than a transparent one with a white label.
+        className={`${s.height} ${s.radius} ${s.px} ${fullWidth ? "w-full" : ""} ${
+          filledDisabled ? "bg-muted" : v.bg
+        } items-center justify-center flex-row gap-2 overflow-hidden${extra}`}
+        style={pressStyle}
         {...props}
       >
         {/* No shadow here: `overflow-hidden` (needed to clip the gradient to the rounded
             corners) also clips RN's shadow on iOS. Pre-existing gap — the gradient variant
             (primary/success, the default) has never had a shadow; fixing it needs an outer
             shadow wrapper + inner clipped view, verified on a running build, not guessed here. */}
-        <LinearGradient
-          colors={colors as unknown as [string, string]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          className="absolute inset-0"
-        />
+        {!filledDisabled && (
+          <LinearGradient
+            colors={colors as unknown as [string, string]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            // Laid out with a plain style, not `className="absolute inset-0"`. This fill is
+            // load-bearing (it *is* the button's background) and shouldn't depend on the
+            // cssInterop registration for a third-party component to resolve.
+            style={StyleSheet.absoluteFill}
+          />
+        )}
         {content}
       </Pressable>
     );
@@ -93,8 +131,10 @@ export function Button({
   return (
     <Pressable
       disabled={disabled}
-      className={`${s.height} ${s.radius} ${s.px} ${fullWidth ? "w-full" : ""} ${v.bg} ${v.border} border shadow-btn items-center justify-center flex-row gap-2 ${disabled ? "opacity-50" : ""}${extra}`}
-      style={flatStyle}
+      className={`${s.height} ${s.radius} ${s.px} ${fullWidth ? "w-full" : ""} ${
+        outlineDisabled ? "bg-bg border-border" : `${v.bg} ${v.border}`
+      } border shadow-btn items-center justify-center flex-row gap-2${extra}`}
+      style={pressStyle}
       {...props}
     >
       {content}

@@ -900,7 +900,7 @@ export default function TreatmentFormScreen() {
           <Button
             variant="secondary"
             fullWidth={false}
-            style={{ flex: 1, opacity: phase === 0 ? 0.4 : 1 }}
+            style={{ flex: 1 }}
             onPress={goBack}
             disabled={phase === 0}
           >
@@ -911,7 +911,10 @@ export default function TreatmentFormScreen() {
             <Button
               variant="success"
               fullWidth={false}
-              style={{ flex: 2, opacity: blockingIssues.length ? 0.5 : 1 }}
+              // No hand-rolled `opacity` here: `Button` owns the disabled look now, and dimming
+              // the whole button was what made this exact control — the one at the end of the
+              // clinical form — fade to an unreadable white-on-white box when it was blocked.
+              style={{ flex: 2 }}
               onPress={sheet.open}
               disabled={blockingIssues.length > 0}
             >

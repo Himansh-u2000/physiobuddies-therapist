@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { View, Text, Pressable, Animated, Easing } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Activity, Fingerprint, LogIn, ShieldCheck } from "lucide-react-native";
+import { Fingerprint, LogIn, ShieldCheck } from "lucide-react-native";
+import { BrandMark } from "@/components/ui";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { COLORS } from "@/constants/config";
 
@@ -109,18 +110,9 @@ export default function SplashScreen() {
           }}
         >
           <View
-            className="w-[86px] h-[86px] rounded-[26px] bg-white items-center justify-center"
             style={{ shadowColor: "#000", shadowOpacity: 0.32, shadowRadius: 34, shadowOffset: { width: 0, height: 14 }, elevation: 14 }}
           >
-            <Text className="text-accent font-black text-[34px]" style={{ letterSpacing: -1 }}>
-              P
-            </Text>
-            <View
-              className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full items-center justify-center border-[3px]"
-              style={{ backgroundColor: COLORS.success, borderColor: "#021526" }}
-            >
-              <Activity size={14} color="#fff" strokeWidth={3} />
-            </View>
+            <BrandMark size={86} radius={26} />
           </View>
 
           <Text

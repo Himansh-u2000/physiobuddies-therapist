@@ -1,4 +1,5 @@
 export { Badge, StatusBadge, PaymentBadge } from "./Badge";
+export { BrandMark } from "./BrandMark";
 export type { BadgeVariant, BadgeTone, BadgeSize } from "./Badge";
 export { Button } from "./Button";
 export { Card } from "./Card";

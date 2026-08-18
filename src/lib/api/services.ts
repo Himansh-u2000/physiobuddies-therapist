@@ -25,6 +25,7 @@ import type {
   ActivityEntry,
   AuthTokens,
   BlogPost,
+  BlogReview,
   ClinicalAssessmentInput,
   ClinicalAssessmentRecord,
   LoginSession,
@@ -72,7 +73,9 @@ import {
   mapAssessments,
   mapAssessmentToPayload,
   mapBlogPost,
+  mapBlogReview,
   mapBlogPosts,
+  mapNotifications,
   mapLoginSessions,
   mapPayments,
   mapPayout,
@@ -90,11 +93,13 @@ import {
   type BackendActivity,
   type BackendAssessment,
   type BackendBlogPost,
+  type BackendBlogReview,
   type BackendBooking,
   type BackendBookingDetail,
   type BackendComplaint,
   type BackendCommission,
   type BackendLoginSession,
+  type BackendNotificationPage,
   type BackendPayment,
   type BackendWallet,
   type BackendPayout,
@@ -153,30 +158,10 @@ export const authApi = {
     return { tokens, therapist };
   },
 
-  /**
-   * Real Google login — authorization-code flow (backend: POST /auth/google?code=…).
-   * `serverAuthCode` comes from the native Google SDK (configured with the Web client ID).
-   */
-  async loginWithGoogle(
-    serverAuthCode: string,
-  ): Promise<{ tokens: AuthTokens; therapist: Therapist }> {
-    if (USE_MOCK_AUTH) {
-      const tokens: AuthTokens = {
-        accessToken: "mock-google-access-token",
-        refreshToken: "mock-google-refresh-token",
-        expiresAt: Date.now() + 3600_000,
-      };
-      return delay({ tokens, therapist: mockTherapist }, 600);
-    }
-    const { data } = await client.post<{ accessToken: string; refreshToken: string }>(
-      "/auth/google",
-      null,
-      { params: { code: serverAuthCode } },
-    );
-    const tokens = toAuthTokens(data);
-    const therapist = await authApi.getMyProfile();
-    return { tokens, therapist };
-  },
+  // Google login was removed from the app on 2026-08-17 (product decision). `POST /auth/google`
+  // still exists server-side and is used by the web client — this app simply no longer offers
+  // it, so the native SDK, the Web/Android OAuth clients and the `DEVELOPER_ERROR` failure mode
+  // that came with them are all gone. Sign-in is email/password only.
 
   /**
    * Apple login — STUB. Backend has no /auth/apple endpoint yet (App Store Guideline 4.8).
@@ -438,6 +423,34 @@ export const blogApi = {
     const { data } = await client.get<BackendBlogPost>(`/blog/${slug}`);
     return mapBlogPost(data);
   },
+
+  /**
+   * Toggle a like (POST /blog/:id/like). One call both likes and unlikes — the server looks for
+   * an existing `BlogLike` for this user and deletes it if present, creates it if not — and
+   * answers with the resulting state, so the response is the source of truth rather than
+   * whatever the client assumed it was doing.
+   *
+   * Addressed by **id**, while the article itself is fetched by **slug**; the detail payload
+   * carries both, so pass `post.id` here, never the slug.
+   *
+   * ⚠️ The detail response has no "did I like this" field — only a total count — so a freshly
+   * opened article cannot show whether this therapist already liked it. Logged as a backend gap;
+   * until it lands, the heart starts unfilled and only reflects likes made in this session.
+   */
+  async toggleLike(postId: string): Promise<{ liked: boolean; likes: number }> {
+    if (USE_MOCK_CONTENT) return delay({ liked: true, likes: 1 }, 300);
+    const { data } = await client.post<{ liked: boolean; likes: number }>(`/blog/${postId}/like`);
+    return { liked: !!data?.liked, likes: data?.likes ?? 0 };
+  },
+
+  /** Post a comment (POST /blog/:id/review, body `{ comment }`) and get the stored row back. */
+  async addComment(postId: string, comment: string): Promise<BlogReview> {
+    if (USE_MOCK_CONTENT) {
+      return delay({ id: `mock-${Date.now()}`, userName: "You", comment, createdAt: new Date().toISOString() }, 400);
+    }
+    const { data } = await client.post<BackendBlogReview>(`/blog/${postId}/review`, { comment });
+    return mapBlogReview(data);
+  },
 };
 
 /**
@@ -448,19 +461,19 @@ export const blogApi = {
 export const supportApi = {
   async list(): Promise<SupportComplaint[]> {
     if (USE_MOCK_PROFILE) return delay([]);
-    const { data } = await client.get<BackendComplaint[]>("/complaint");
+    const { data } = await client.get<BackendComplaint[]>("/complaints/");
     return mapComplaints(data ?? []);
   },
 
   /** `type` is a free-text bucket the admin console filters on ("payout", "session", …). */
   async create(type: string, description: string): Promise<void> {
     if (USE_MOCK_PROFILE) return delay(undefined, 600);
-    await client.post("/complaint", { type, description });
+    await client.post("/complaints/", { type, description });
   },
 
   async reply(complaintId: string, message: string): Promise<void> {
     if (USE_MOCK_PROFILE) return delay(undefined, 500);
-    await client.post(`/complaint/${complaintId}/reply`, { message });
+    await client.post(`/complaints/${complaintId}/reply`, { message });
   },
 };
 
@@ -703,10 +716,12 @@ export const sessionApi = {
     return { sessionId };
   },
 
-  async startFlagged(appointmentId: string): Promise<{ sessionId: string; flagged: boolean }> {
-    // No backend endpoint for a flagged / no-OTP start — mock only.
-    return delay({ sessionId: `flagged-session-${appointmentId}`, flagged: true }, 600);
-  },
+  // `startFlagged` (emergency start with no patient OTP) was deleted on 2026-08-17. There was
+  // never a backend endpoint for it: nothing server-side flipped the session to `active`, so the
+  // therapist was shown a running timer for a visit the server still had as pending, and the
+  // "supervisor notified" toast was untrue. It is also what produced the fabricated
+  // `flagged-session-<planId>` id that killed assessment submission at the very end of a visit
+  // (fixed 2026-08-13, now moot). A verified OTP is the only way into a session.
 
   /**
    * End the visit (POST .../my-bookings/:id/end) — sets `completed` + `actualEndTime` and logs
@@ -819,34 +834,88 @@ function buildAssessmentInput(payload: TreatmentSubmitPayload): ClinicalAssessme
 
 export const treatmentApi = {
   /**
-   * Submit the clinical assessment (POST /treatment-session/:id/assessment).
+   * Submit the clinical assessment — **POST /treatment-plan/:planId/assessment**.
    *
-   * Side effect worth knowing: the backend does more than store a record — if the plan has a
-   * session in `active` status it also flips that session to `completed` and writes a status
-   * log. So submitting the assessment IS the completion for the visit that's underway; the
-   * sync engine's separate `sessionApi.complete` call afterwards just re-asserts the same
-   * terminal state.
+   * ⚠️ MOVED. This used to be `POST /treatment-session/:sessionId/assessment`. The backend
+   * relocated it to its own `/treatment-plan` base precisely because the id TYPE was ambiguous
+   * from the URL: every other `/treatment-session/:id` route takes a session id, while the
+   * assessment is plan-scoped, so the same URL shape meant two different things depending on
+   * which endpoint you'd memorised. Verified against api.dev.physiobuddies.in on 2026-08-17:
+   *
+   *   POST /treatment-plan/<planId>/assessment       → 202 "Assessment created or updated"
+   *   POST /treatment-session/<sessionId>/assessment → 404   (GET on it → 500)
+   *
+   * So every clinical form the app submitted was failing outright until this change — the
+   * therapist filled the whole assessment and lost it at the last step. The **body is
+   * unchanged**; only the path and the id it is keyed by moved.
+   *
+   * `appointmentId` is the treatment-PLAN id (that is what the appointment list is keyed by);
+   * `sessionId` is the treatment-SESSION id. This endpoint takes the former, which is the exact
+   * opposite of the lifecycle endpoints (`generate-otp`, `verify-otp`, `end`, `add-docs`,
+   * `improvement-record`) — hence the explicit naming here rather than a bare `id`.
+   *
+   * Side effect worth knowing: the backend does more than store a record — submitting the
+   * assessment also completes the plan's `active` session and writes a status log. So this IS
+   * the completion for the visit underway; the sync engine's separate `sessionApi.complete`
+   * afterwards just re-asserts the same terminal state.
    */
   async submit(payload: TreatmentSubmitPayload, idempotencyKey?: string): Promise<{ id: string }> {
     if (USE_MOCK_TREATMENT) return delay({ id: `treatment-${Date.now()}` }, 600);
     const body = mapAssessmentToPayload(buildAssessmentInput(payload));
     const { data } = await client.post<{ id?: string } | null>(
-      `/treatment-session/${payload.sessionId}/assessment`,
+      `/treatment-plan/${payload.appointmentId}/assessment`,
       body,
       idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : undefined,
     );
-    return { id: data?.id ?? payload.sessionId };
+    // The 202 answers `data: null`, so there is no server id to take — fall back to the plan id
+    // rather than inventing one.
+    return { id: data?.id ?? payload.appointmentId };
   },
 
-  /** Assessments already recorded against a session's plan (GET .../assessment). */
-  async getAssessments(sessionId: string): Promise<ClinicalAssessmentRecord[]> {
+  /**
+   * Assessment history for a treatment plan (GET /treatment-plan/:planId/assessment).
+   * Returns an array — a plan accumulates one record per assessed visit.
+   */
+  async getAssessments(planId: string): Promise<ClinicalAssessmentRecord[]> {
     if (USE_MOCK_TREATMENT) return delay([], 300);
-    const { data } = await client.get<BackendAssessment[]>(
-      `/treatment-session/${sessionId}/assessment`,
-    );
+    const { data } = await client.get<BackendAssessment[]>(`/treatment-plan/${planId}/assessment`);
     return mapAssessments(Array.isArray(data) ? data : []);
   },
 
+  /**
+   * Record the visit's outcome and close the session
+   * (POST /treatment-session/:sessionId/improvement-record).
+   *
+   * Session-scoped, unlike the assessment above. `painScoreAfter` and `improvementNotes` are
+   * required — the server rejects a missing `painScoreAfter` with
+   * `400 {code:"VALIDATION_ERROR", details:{field:"painScoreAfter"}}` — and both scores are
+   * integers clamped to 0–10 here so a slider value can never 400 the request.
+   */
+  async submitImprovementRecord(
+    sessionId: string,
+    record: {
+      painScoreBefore?: number;
+      painScoreAfter: number;
+      improvementNotes: string;
+      exercisesGiven?: string[];
+    },
+    idempotencyKey?: string,
+  ): Promise<void> {
+    // Gated with the rest of `treatmentApi` (clinical data), not with the session lifecycle —
+    // it records a clinical outcome and happens to close the session as a side effect.
+    if (USE_MOCK_TREATMENT) return delay(undefined, 500);
+    const clamp = (n: number) => Math.max(0, Math.min(10, Math.round(n)));
+    await client.post(
+      `/treatment-session/${sessionId}/improvement-record`,
+      {
+        ...(record.painScoreBefore != null ? { painScoreBefore: clamp(record.painScoreBefore) } : {}),
+        painScoreAfter: clamp(record.painScoreAfter),
+        improvementNotes: record.improvementNotes,
+        ...(record.exercisesGiven?.length ? { exercisesGiven: record.exercisesGiven } : {}),
+      },
+      idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : undefined,
+    );
+  },
 };
 
 /**
@@ -912,20 +981,54 @@ export const earningsApi = {
   },
 };
 
+/**
+ * Notifications — **real as of 2026-08-17**, and note the path: `/notifications` (plural).
+ *
+ * This domain was mocked for months because `/notification/*` was a set of empty controllers
+ * that never sent a response and hung the request. That is no longer the story. Probed live:
+ *
+ *   GET /notifications/               → 200 { items, nextCursor, hasMore, unreadCount }
+ *   GET /notifications/unread-count   → 200 { unreadCount }
+ *   GET /notifications/preferences    → 200 { promotionalEmail, promotionalInApp, … }
+ *   GET /notification/  (singular)    → 500
+ *
+ * So the backend implemented the domain under the plural mount and the singular one is dead —
+ * the app was calling the one path that could never work.
+ */
 export const notificationApi = {
-  // TODO(backend): the notification endpoints are empty stub controllers that never send a
-  // response — the request HANGS (worse than a 404). Kept mocked; flip USE_MOCK_NOTIFICATIONS
-  // only once they return real data. See progress.md → Phase 5 backend gap list.
   async list(): Promise<AppNotification[]> {
     if (USE_MOCK_NOTIFICATIONS) return delay(mockNotifications);
-    const { data } = await client.get<AppNotification[]>("/notification");
-    return data;
+    const { data } = await client.get<BackendNotificationPage>("/notifications/", {
+      params: { limit: 50 },
+    });
+    return mapNotifications(data?.items ?? []);
+  },
+
+  /** Badge count without pulling the list (GET /notifications/unread-count). */
+  async unreadCount(): Promise<number> {
+    if (USE_MOCK_NOTIFICATIONS) {
+      return delay(mockNotifications.filter((n) => !n.read).length, 200);
+    }
+    const { data } = await client.get<{ unreadCount?: number }>("/notifications/unread-count");
+    return data?.unreadCount ?? 0;
+  },
+
+  async markRead(id: string): Promise<void> {
+    if (USE_MOCK_NOTIFICATIONS) return delay(undefined, 200);
+    await client.patch(`/notifications/${id}/read`);
+  },
+
+  async markAllRead(): Promise<void> {
+    if (USE_MOCK_NOTIFICATIONS) return delay(undefined, 200);
+    await client.patch("/notifications/read-all");
   },
 
   async registerPushToken(token: string): Promise<void> {
-    // TODO(backend): no push-token registration endpoint exists yet.
-    if (USE_MOCK_NOTIFICATIONS) return delay(undefined, 200);
-    await client.post("/notification/token", { token });
+    // Still genuinely absent: there is no push-token registration route on the server, so a
+    // device token has nowhere to go and push cannot be delivered even with FCM configured.
+    // The in-app list above works regardless — it is polled, not pushed.
+    void token;
+    return delay(undefined, 200);
   },
 };
 

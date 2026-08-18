@@ -3,8 +3,7 @@ import { View, Text, Pressable, KeyboardAvoidingView, Platform, ScrollView } fro
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { LogIn, Eye, EyeOff } from "lucide-react-native";
-import { Button, Input } from "@/components/ui";
-import { SocialAuthButtons } from "@/components/auth/SocialAuthButtons";
+import { BrandMark, Button, Input } from "@/components/ui";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { authApi } from "@/lib/api/services";
@@ -20,8 +19,12 @@ import { COLORS } from "@/constants/config";
  * session that looked signed in and could not load a single thing. Both it and the separate
  * `email-login` screen are gone; this is the one login path, and it is real.
  *
- * Google stays as a secondary option (it is a real backend endpoint). Apple is iOS-only and
- * still stubbed server-side — `SocialAuthButtons` handles that.
+ * Social sign-in is gone too (2026-08-17). Google was removed on request; Apple went with it
+ * rather than being left alone under an "or continue with" divider, since it is iOS-only, has
+ * never been compiled, and `POST /auth/apple` still does not exist server-side. `lib/auth/
+ * appleSignIn.ts` and `authApi.loginWithApple` are kept — inert — for whenever that endpoint
+ * lands. Worth noting for Phase 8: App Store Guideline 4.8 only compels Sign in with Apple when
+ * the app offers a *third-party* social login, so dropping Google also drops that obligation.
  */
 export default function LoginScreen() {
   const router = useRouter();
@@ -64,8 +67,8 @@ export default function LoginScreen() {
       <View className="h-[200px] relative overflow-hidden">
         <LinearGradient colors={["#003554", "#004060"]} className="absolute inset-0" />
         <View className="absolute bottom-5 left-5">
-          <View className="w-11 h-11 rounded-[12px] bg-white items-center justify-center mb-2.5">
-            <Text className="text-accent font-black text-xl">P</Text>
+          <View className="mb-2.5">
+            <BrandMark size={46} radius={13} />
           </View>
           <Text className="text-white text-[20px] font-extrabold">Physiobuddies Therapist</Text>
           <Text className="text-white/70 text-[12px] mt-0.5">Therapist Partner App</Text>
@@ -145,14 +148,6 @@ export default function LoginScreen() {
                 {loading ? "Signing in..." : "Sign in"}
               </Text>
             </Button>
-
-            <View className="flex-row items-center gap-3 my-1">
-              <View className="flex-1 h-px bg-border" />
-              <Text className="text-muted text-[11px]">or continue with</Text>
-              <View className="flex-1 h-px bg-border" />
-            </View>
-
-            <SocialAuthButtons />
 
             <View className="items-center mt-1">
               <Text className="text-muted text-[12px]">

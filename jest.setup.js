@@ -6,24 +6,6 @@
  * unrelated suites fail at import time rather than on anything they actually assert.
  */
 
-jest.mock("@react-native-google-signin/google-signin", () => ({
-  GoogleSignin: {
-    configure: jest.fn(),
-    hasPlayServices: jest.fn(async () => true),
-    signIn: jest.fn(),
-    signOut: jest.fn(async () => {}),
-    revokeAccess: jest.fn(async () => {}),
-    getCurrentUser: jest.fn(async () => null),
-  },
-  statusCodes: {
-    SIGN_IN_CANCELLED: "SIGN_IN_CANCELLED",
-    IN_PROGRESS: "IN_PROGRESS",
-    PLAY_SERVICES_NOT_AVAILABLE: "PLAY_SERVICES_NOT_AVAILABLE",
-  },
-  isSuccessResponse: jest.fn(() => false),
-  isErrorWithCode: jest.fn(() => false),
-}));
-
 jest.mock("expo-secure-store", () => ({
   setItemAsync: jest.fn(async () => {}),
   getItemAsync: jest.fn(async () => null),

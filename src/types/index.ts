@@ -501,7 +501,22 @@ export interface BlogPost {
   likes?: number;
   createdAt?: string;
   dateLabel: string;
-  reviews?: { id: string; userName: string; comment: string; createdAt?: string }[];
+  reviews?: BlogReview[];
+}
+
+/**
+ * A reader comment on a blog post (`BlogReview` server-side — the model is named for a review
+ * but carries only a comment; there is no rating field).
+ *
+ * The backend returns the author's display name and nothing that identifies them, so a comment
+ * cannot be matched back to the signed-in therapist, and none of edit, delete or "mine" is
+ * possible. Posting is the only write.
+ */
+export interface BlogReview {
+  id: string;
+  userName: string;
+  comment: string;
+  createdAt?: string;
 }
 
 /** A support ticket the therapist raised (GET/POST /complaint). */

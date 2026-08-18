@@ -38,7 +38,9 @@
         "EXPO_PUBLIC_USE_MOCK_CONTENT": "false",
         "EXPO_PUBLIC_USE_MOCK_SESSION": "false",
         "EXPO_PUBLIC_USE_MOCK_TREATMENT": "false",
-        "EXPO_PUBLIC_USE_MOCK_PATIENTS": "false"
+        "EXPO_PUBLIC_USE_MOCK_PATIENTS": "false",
+        "EXPO_PUBLIC_USE_MOCK_NOTIFICATIONS": "false",
+        "EXPO_PUBLIC_ENABLE_NETWORK_LOG": "true"
       }
     },
     "preview": {
