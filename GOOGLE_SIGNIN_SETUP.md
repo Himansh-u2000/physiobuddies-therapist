@@ -1,5 +1,14 @@
 # Google Sign-In setup — Phase 2 handoff
 
+> ## ⚠️ SUPERSEDED — Google Sign-In was removed from this app on 2026-08-17
+>
+> The native module, the `app.json` plugin entry, `src/lib/auth/googleSignIn.ts` and the
+> `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` variable are all gone; login is email/password only.
+> `POST /auth/google` still exists server-side for the web client. The `.env.development.local`
+> and `.env.development` files this checklist refers to no longer exist either — there are two
+> env files now, `.env` and `.env.production`. Kept only as the record of how the flow worked,
+> in case Google login is ever restored.
+
 The app-side Google Sign-In is fully wired; it just needs your OAuth client IDs. This is the
 one auth item that needs your Google account, so it's a short checklist (like `FCM_SETUP.md`).
 

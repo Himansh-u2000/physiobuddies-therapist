@@ -12,12 +12,12 @@ import { COLORS } from "@/constants/config";
 /**
  * Sign in — **email and password only**.
  *
- * This screen used to lead with a phone number and a "Send OTP" button. That flow was
- * mock-only and had no backend behind it: `authApi.login`/`verifyOtp` accepted any 6-digit
- * code and minted a literal `mock-access-token`, which the live API then rejected on every
- * subsequent request. So the most prominent control on the app's first screen produced a
- * session that looked signed in and could not load a single thing. Both it and the separate
- * `email-login` screen are gone; this is the one login path, and it is real.
+ * This screen used to lead with a phone number and a "Send OTP" button. That flow had no
+ * backend behind it: `authApi.login`/`verifyOtp` accepted any 6-digit code and minted a
+ * fabricated access token, which the live API then rejected on every subsequent request. So
+ * the most prominent control on the app's first screen produced a session that looked signed
+ * in and could not load a single thing. Both it and the separate `email-login` screen are
+ * gone; this is the one login path, and it is real.
  *
  * Social sign-in is gone too (2026-08-17). Google was removed on request; Apple went with it
  * rather than being left alone under an "or continue with" divider, since it is iOS-only, has

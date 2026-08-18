@@ -50,11 +50,11 @@ const SUGGESTIONS = [
  * with character counters, tap-to-fill starters, and a submit button whose disabled reason is
  * visible rather than implied.
  *
- * ⚠️ `GET /therapist/:id/faqs` returns `{ question, answer, createdAt }` and **no `id`** — the
- * backend's read projection omits the primary key that `PATCH`/`DELETE /therapist/faqs/:id`
- * require. Editing and deleting are therefore impossible for anything the server sent us, and
- * those controls are *disabled with an explanation* rather than left tappable to fail. Tracked
- * in BACKEND_TODO §1.5. Locally-added FAQs are equally affected once the list refetches.
+ * ⚠️ `GET /therapist/:id/faqs` returns `{ question, answer, createdAt }` and **no `id`** — even
+ * though `POST` and `PATCH` both return one. So a FAQ read back from the list has nothing to
+ * address a `PATCH`/`DELETE` to, and `FaqCard` marks those rows read-only with the reason stated
+ * rather than offering Edit/Delete that fail on tap. Creating always works; editing only works
+ * within the same session, before a refetch drops the id. Tracked in BACKEND_TODO §1.8.
  */
 export default function FaqsScreen() {
   const router = useRouter();
@@ -106,9 +106,10 @@ export default function FaqsScreen() {
     if (!canSave) return;
     setSaving(true);
     try {
-      // Payload verified against the live API: POST /therapist/faqs { question, answer } → 201
-      // { success, message: "Faq created successfully", data: null }. Trimmed because trailing
-      // whitespace from a soft keyboard otherwise ends up on the public profile.
+      // Verified against the live API 2026-08-18: POST /therapist/faqs { question, answer }
+      // → 200 { id, question, answer, createdAt }; PATCH /therapist/faqs/:id → 200 with the
+      // updated row. Trimmed because trailing whitespace from a soft keyboard would otherwise
+      // end up on the public profile.
       if (editing?.id) {
         await contentApi.updateFaq(editing.id, { question: question.trim(), answer: answer.trim() });
         showToast("FAQ updated", "success");
@@ -382,8 +383,8 @@ function FaqCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  // No id from the read endpoint ⇒ nothing to address a PATCH/DELETE to. Say so once, here,
-  // instead of letting each control fail on tap.
+  // PATCH/DELETE are live, but the LIST read omits the id they address, so a row that came
+  // from a refetch can't be edited. Said once, here, instead of letting each control fail on tap.
   const editable = !!faq.id;
 
   return (

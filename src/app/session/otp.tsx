@@ -3,13 +3,13 @@ import { View, Text, Pressable } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, HelpCircle, Lock, Send, ShieldCheck } from "lucide-react-native";
+import { ChevronLeft, FlaskConical, HelpCircle, Lock, Send, ShieldCheck } from "lucide-react-native";
 import { Avatar, Badge, Button, OTPInput, PaymentBadge } from "@/components/ui";
 import { appointmentApi, sessionApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useSessionStore } from "@/lib/stores/session.store";
-import { COLORS, OTP_CONFIG, SLOT_CONFIG, SUPPORT_EMAIL } from "@/constants/config";
+import { COLORS, OTP_CONFIG, SHOW_TEST_OTP, SLOT_CONFIG, SUPPORT_EMAIL } from "@/constants/config";
 import { getSessionTypeLabel } from "@/lib/utils/format";
 import { openSupportEmail } from "@/lib/utils/support";
 
@@ -53,8 +53,11 @@ export default function SessionOtpScreen() {
     try {
       const result = await sessionApi.generateOtp(sessionTargetId);
       setOtpSent(true);
-      // Dev/staging echoes the code back so the flow is testable on one handset.
-      setHintOtp(result.otpCode ?? null);
+      // The backend currently echoes the patient's code back to the therapist so the flow can
+      // be tested on one handset. Held only when this build is allowed to show it — see
+      // SHOW_TEST_OTP — so a production build can't surface a one-time password even if the
+      // server keeps sending it.
+      setHintOtp(SHOW_TEST_OTP ? (result.otpCode ?? null) : null);
       showToast(result.message ?? "OTP sent to the patient", "success");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Couldn't send the OTP. Try again.", "error");
@@ -66,7 +69,7 @@ export default function SessionOtpScreen() {
   const handleVerify = async () => {
     if (code.length < OTP_CONFIG.sessionOtpLength) {
       setError(true);
-      showToast("Enter all 4 digits.");
+      showToast(`Enter all ${OTP_CONFIG.sessionOtpLength} digits.`);
       return;
     }
     if (!sessionTargetId) {
@@ -159,7 +162,7 @@ export default function SessionOtpScreen() {
           </Text>
           <Text className="text-muted text-[13px] mt-1.5 text-center">
             {otpSent
-              ? "Ask the patient for the 4-digit code that just arrived in their Physiobuddies app"
+              ? `Ask the patient for the ${OTP_CONFIG.sessionOtpLength}-digit code that just arrived in their Physiobuddies app`
               : "The code is generated when you arrive. It can be sent from 30 minutes before the slot until 2 hours after."}
           </Text>
 
@@ -184,7 +187,7 @@ export default function SessionOtpScreen() {
           </View>
 
           {/* Gated on a complete code rather than firing and reporting failure afterwards:
-              tapping with 0 digits used to send the therapist a "enter all 4 digits" toast that
+              tapping with 0 digits used to send the therapist an "enter all the digits" toast that
               read like the OTP had been rejected by the patient. Also gated on there being a
               session to start at all — without one the call 404s. */}
           <Button
@@ -203,11 +206,23 @@ export default function SessionOtpScreen() {
               </Text>
             </Pressable>
           )}
-          {/* The dev backend echoes the generated code back in the response. Shown only when it
-              actually does — never as a hardcoded "demo OTP", which would be wrong against a
-              real server and would teach the therapist to try a code that can't work. */}
+          {/* TESTING ONLY. The backend echoes the patient's code back in the send-otp response
+              so the flow can be exercised without a second handset; `SHOW_TEST_OTP` keeps it out
+              of production builds, and it renders only when the server actually sent one —
+              never as a hardcoded "demo OTP", which would be wrong against a real server. Styled
+              as a labelled test affordance rather than a subtle hint, so nobody mistakes it for
+              something the therapist is meant to rely on. */}
           {hintOtp && (
-            <Text className="text-muted/50 text-[10px] mt-1">Code issued: {hintOtp}</Text>
+            <View
+              className="mt-2.5 w-full flex-row items-center rounded-[10px] border border-warning/30 px-2.5 py-2"
+              style={{ backgroundColor: "rgba(209,154,18,0.08)", gap: 8 }}
+            >
+              <FlaskConical size={13} color={COLORS.warning} />
+              <Text className="text-[11px] text-muted flex-1">
+                Testing build — the patient&apos;s code is{" "}
+                <Text className="font-extrabold text-fg">{hintOtp}</Text>
+              </Text>
+            </View>
           )}
         </View>
 

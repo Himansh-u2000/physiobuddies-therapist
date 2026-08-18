@@ -5,7 +5,7 @@ import type { DrizzleDB } from "@/lib/db/provider";
 
 interface SyncedQueryOptions<T> {
   queryKey: readonly unknown[];
-  /** The real fetch — whatever `services.ts` already does (mock or live). */
+  /** The network fetch — whatever `services.ts` already does for this domain. */
   queryFn: () => Promise<T>;
   /** Read the last-known-good snapshot out of SQLite. `null`/`undefined` means no cache yet. */
   readCache: (db: DrizzleDB) => Promise<T | null | undefined>;

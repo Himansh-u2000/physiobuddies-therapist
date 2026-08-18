@@ -78,7 +78,7 @@ export function clearNetLog(): void {
  * The whole point of this log is that it gets screenshotted and pasted into chats, so this is
  * not optional politeness. Bearer tokens are truncated rather than removed entirely — "which
  * token was sent" is frequently the actual question, and the first characters are enough to
- * tell two tokens apart or spot a literal `mock-access-token`.
+ * tell two tokens apart.
  */
 const SECRET_KEYS = /^(password|newpassword|currentpassword|token|refresh|accesstoken|refreshtoken|otp)$/i;
 

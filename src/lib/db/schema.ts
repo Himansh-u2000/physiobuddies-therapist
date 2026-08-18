@@ -147,6 +147,10 @@ export const sessionPhotos = sqliteTable("session_photos", {
   mimeType: text("mime_type").notNull(),
   syncStatus: text("sync_status").notNull().default("pending"),
   remoteUrl: text("remote_url"),
+  /** Server document id from `add-docs`; also the de-dupe guard on retry. */
+  remoteDocId: text("remote_doc_id"),
+  /** "photo" (session camera) or "document" (X-ray / report picked from files). */
+  kind: text("kind").notNull().default("photo"),
   syncAttempts: integer("sync_attempts").notNull().default(0),
   nextRetryAt: integer("next_retry_at").notNull().default(0),
   createdAt: integer("created_at").notNull().default(0),

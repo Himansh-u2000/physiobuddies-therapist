@@ -81,7 +81,16 @@ export interface AppointmentSession {
   rescheduleCount: number;
 }
 
-/** A file attached to a treatment plan (GET booking detail `documents`, POST add-docs). */
+/**
+ * A file attached to a treatment plan (GET booking detail `documents`, POST add-docs).
+ *
+ * ⚠️ `url` is NOT publicly fetchable. The server stores these in `private-uploads` and returns
+ * `/file/<id>`, which resolves only through the authenticated `GET /api/v1/file/:id` — 401
+ * without a token, and 404 (same as a missing id) for anyone who isn't the patient concerned,
+ * the assigned therapist, or an admin. `sessionApi.addDocument` absolutises it with
+ * `privateFileUrl`, which KEEPS the `/api/v1` prefix; rendering or downloading one has to
+ * attach the bearer token via `lib/utils/privateFile.ts`.
+ */
 export interface SessionDocument {
   id: string;
   url: string;

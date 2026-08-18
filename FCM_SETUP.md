@@ -6,7 +6,7 @@ a client config file), so it is left as a short manual checklist below. APNs (iO
 is intentionally deferred to **Phase 8** — it needs an Apple Developer account.
 
 Until these steps are done, remote push testing on Android in later phases is blocked.
-Local notifications and the whole mock-mode app work fine without it.
+Local notifications work fine without it.
 
 > Why this can't be scripted: it requires signing into the Firebase console with your
 > Google account and downloading `google-services.json`. `app.json` is deliberately left

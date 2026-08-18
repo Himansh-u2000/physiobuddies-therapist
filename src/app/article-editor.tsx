@@ -11,7 +11,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, Check } from "lucide-react-native";
+import { Check, ChevronLeft } from "lucide-react-native";
 import { Input, RichTextEditor } from "@/components/ui";
 import { contentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
@@ -20,7 +20,8 @@ import { COLORS } from "@/constants/config";
 /**
  * Full-screen create/edit for a patient-education article, using the Markdown rich-text editor.
  * Reached from the Articles screen with `edit=1` + the article fields for edit, or with no params
- * for a new article. Content is a Markdown string (POST/PATCH /therapist/articles).
+ * for a new article. Content is a Markdown string
+ * (`POST /therapist/articles`, `PATCH /therapist/articles/:id`).
  */
 export default function ArticleEditorScreen() {
   const router = useRouter();

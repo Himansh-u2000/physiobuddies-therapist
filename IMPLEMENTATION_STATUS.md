@@ -10,16 +10,16 @@
 > **For current status, read [`../progress.md`](../progress.md).** For the API, read
 > [`../api_contract.md`](../api_contract.md).
 >
-> The headline differences as of 2026-08-11:
+> The headline differences as of 2026-08-18:
 >
 > | This document says | Reality |
 > |---|---|
-> | "mock data until the MERN therapist APIs are connected" | **12 of 13 domains run on the real backend** (`api.dev.physiobuddies.in`). Only notifications is mocked — its controllers hang |
+> | "mock data until the MERN therapist APIs are connected" | **There is no mock data left.** The fixtures (`src/lib/api/mock.ts`) and the `EXPO_PUBLIC_USE_MOCK_*` flags were deleted on 2026-08-18; every domain calls `api.dev.physiobuddies.in` |
 > | "about 75% complete" / "55% production readiness" | ~85% of buildable app work; ~65% production readiness |
 > | "auth, dashboard, session flow" as MVP focus | All shipped. Session lifecycle, clinical assessment, availability + weekly schedule, payouts, KYC/avatar upload and support are also live |
 > | "No runtime device/emulator QA" | Device QA is **in progress** on a real Android as of 2026-08-11 |
 > | Treatment form collects the app's own shape | Rebuilt against the backend's real `ClinicalAssessment` model, with sliders for numeric fields |
-> | Auth is Google → phone/OTP | **No phone-OTP login exists.** Email/password + Google. The app's phone path is mock-only and pending a product decision |
+> | Auth is Google → phone/OTP | **No phone-OTP login exists**, and Google sign-in was removed from the app on 2026-08-17. Login is email/password only |
 
 Last audited: 2026-06-24
 

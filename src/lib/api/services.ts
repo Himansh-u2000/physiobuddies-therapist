@@ -1,19 +1,4 @@
 import { client, toAuthTokens } from "./client";
-import {
-  mockTherapist,
-  mockDashboardStats,
-  mockAppointments,
-  mockPatients,
-  mockTransactions,
-  mockEarnings,
-  mockNotifications,
-  mockPayouts,
-  mockWallet,
-  mockReviews,
-  mockAvailability,
-  mockArticles,
-  mockFaqs,
-} from "./mock";
 import type {
   Therapist,
   DashboardStats,
@@ -37,28 +22,12 @@ import type {
   TherapistReview,
   AvailabilityDay,
   TherapistArticle,
+  SessionDocument,
   SupportComplaint,
   TherapistFaq,
   WeeklySchedule,
 } from "@/types";
-import {
-  API_BASE_URL,
-  OTP_CONFIG,
-  USE_MOCK_AUTH,
-  USE_MOCK_PROFILE,
-  USE_MOCK_DASHBOARD,
-  USE_MOCK_APPOINTMENTS,
-  USE_MOCK_EARNINGS,
-  USE_MOCK_SESSION,
-  USE_MOCK_TREATMENT,
-  USE_MOCK_NOTIFICATIONS,
-  USE_MOCK_UPLOAD,
-  USE_MOCK_PATIENTS,
-  USE_MOCK_PAYOUTS,
-  USE_MOCK_AVAILABILITY,
-  USE_MOCK_CONTENT,
-  SUBSCRIPTION_PAYMENT_ENABLED,
-} from "@/constants/config";
+import { API_BASE_URL, SUBSCRIPTION_PAYMENT_ENABLED } from "@/constants/config";
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "@/lib/subscription/plans";
 import { getTokens, saveTokens } from "@/lib/storage/secure";
 import {
@@ -111,10 +80,6 @@ import {
   type BackendWeeklySchedule,
 } from "./mappers";
 
-function delay<T>(data: T, ms = 400): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(data), ms));
-}
-
 /**
  * Enrich the identity record with the therapist's public profile (GET /therapist/:id) —
  * specialization, rating, experience. Best-effort: returns null on any failure so a missing
@@ -140,15 +105,6 @@ export const authApi = {
     email: string,
     password: string,
   ): Promise<{ tokens: AuthTokens; therapist: Therapist }> {
-    if (USE_MOCK_AUTH) {
-      if (!email.includes("@") || password.length < 6) throw new Error("Invalid email or password");
-      const tokens: AuthTokens = {
-        accessToken: "mock-access-token",
-        refreshToken: "mock-refresh-token",
-        expiresAt: Date.now() + 3600_000,
-      };
-      return delay({ tokens, therapist: { ...mockTherapist, email } }, 600);
-    }
     const { data } = await client.post<{ accessToken: string; refreshToken: string }>("/auth/login", {
       email,
       password,
@@ -164,30 +120,22 @@ export const authApi = {
   // that came with them are all gone. Sign-in is email/password only.
 
   /**
-   * Apple login — STUB. Backend has no /auth/apple endpoint yet (App Store Guideline 4.8).
-   * Mock establishes a session so the flow is testable end-to-end; the real exchange is
-   * left ready to wire once the backend adds it.
+   * Apple login — STUB. Backend has no /auth/apple endpoint yet (App Store Guideline 4.8), so
+   * this throws rather than pretending: `appleSignIn` can obtain the credential natively, but
+   * there is nothing to exchange it with. Wire the call below once the endpoint lands.
    */
   async loginWithApple(
     identityToken: string,
     fullName?: string | null,
   ): Promise<{ tokens: AuthTokens; therapist: Therapist }> {
-    if (USE_MOCK_AUTH) {
-      const tokens: AuthTokens = {
-        accessToken: "mock-apple-access-token",
-        refreshToken: "mock-apple-refresh-token",
-        expiresAt: Date.now() + 3600_000,
-      };
-      return delay({ tokens, therapist: { ...mockTherapist, name: fullName || mockTherapist.name } }, 600);
-    }
     // TODO(backend): POST /auth/apple { identityToken, fullName } — endpoint pending.
     void identityToken;
+    void fullName;
     throw new Error("Apple Sign-In isn't available yet — backend endpoint pending.");
   },
 
   /** Fetch the authenticated user (GET /user) + therapist enrichment, mapped to Therapist. */
   async getMyProfile(): Promise<Therapist> {
-    if (USE_MOCK_AUTH) return delay(mockTherapist);
     const { data } = await client.get<BackendUser>("/user");
     const pub = await fetchTherapistPublic(data.therapistProfile?.id);
     return mapUserToTherapist(data, pub);
@@ -203,7 +151,6 @@ export const authApi = {
    * has already invalidated — bricking the session at the next refresh.
    */
   async refresh(): Promise<AuthTokens | null> {
-    if (USE_MOCK_AUTH) return null;
     const current = await getTokens();
     if (!current?.refreshToken) return null;
     const { data } = await client.post<{ accessToken: string; refreshToken?: string }>(
@@ -228,7 +175,6 @@ export const authApi = {
    * caller. Tracked in api_contract.md §2.4.
    */
   async logout(): Promise<void> {
-    if (USE_MOCK_AUTH) return;
     try {
       const current = await getTokens();
       await client.post("/auth/logout", { refresh: current?.refreshToken });
@@ -239,52 +185,41 @@ export const authApi = {
 
   /** Email-OTP: send a 6-digit verification code (POST /auth/send-email-before-signup). */
   async sendEmailOtp(email: string): Promise<void> {
-    if (USE_MOCK_AUTH) return delay(undefined, 400);
     await client.post("/auth/send-email-before-signup", { email });
   },
 
   /** Verify an email OTP (POST /auth/verify-email). */
   async verifyEmail(email: string, token: string): Promise<void> {
-    if (USE_MOCK_AUTH) {
-      if (token.length !== OTP_CONFIG.authOtpLength) throw new Error("Invalid OTP");
-      return delay(undefined, 400);
-    }
     await client.post("/auth/verify-email", { email, token });
   },
 
   /** Request a password-reset OTP (POST /auth/forgot-password). */
   async forgotPassword(email: string): Promise<void> {
-    if (USE_MOCK_AUTH) return delay(undefined, 400);
     await client.post("/auth/forgot-password", { email });
   },
 
   /** Complete a password reset (POST /auth/reset-password). */
   async resetPassword(email: string, token: string, newPassword: string): Promise<void> {
-    if (USE_MOCK_AUTH) return delay(undefined, 400);
     await client.post("/auth/reset-password", { email, token, newPassword });
   },
 
   /**
    * In-app account deletion (store-mandated).
-   * STUB: no backend endpoint exists yet — mock resolves; the real call is left ready to wire.
+   * STUB: no backend endpoint exists yet — the call below 404s until the backend adds it.
    */
   async deleteAccount(reason?: string): Promise<void> {
-    if (USE_MOCK_AUTH) return delay(undefined, 700);
     // TODO(backend): implement DELETE /account (soft-delete + token revocation per DPDP).
     await client.delete("/account", { data: { reason } });
   },
 
-  // REMOVED: the phone-OTP pair (`login` / `verifyOtp`). They ignored `USE_MOCK_AUTH`
-  // entirely, accepted any 6-digit code, and returned a literal `mock-access-token` — against
-  // a live backend that meant the app's most prominent login button produced a session every
-  // real endpoint answered with 401. There is no phone-OTP login server-side and there never
-  // was; login is email/password (+ Google). Deleted rather than gated so it cannot come back
-  // by flipping a flag.
+  // REMOVED: the phone-OTP pair (`login` / `verifyOtp`). They accepted any 6-digit code and
+  // returned a fabricated access token — against a live backend that meant the app's most
+  // prominent login button produced a session every real endpoint answered with 401. There is
+  // no phone-OTP login server-side and there never was; login is email/password.
 };
 
 export const therapistApi = {
   async getProfile(): Promise<Therapist> {
-    if (USE_MOCK_PROFILE) return delay(mockTherapist);
     const { data } = await client.get<BackendUser>("/user");
     const pub = await fetchTherapistPublic(data.therapistProfile?.id);
     return mapUserToTherapist(data, pub);
@@ -292,7 +227,6 @@ export const therapistApi = {
 
   /** Update editable identity fields (PATCH /user accepts { name, mobile }), then re-fetch. */
   async updateProfile(updates: Partial<Therapist>): Promise<Therapist> {
-    if (USE_MOCK_PROFILE) return delay({ ...mockTherapist, ...updates });
     const body: { name?: string; mobile?: string } = {};
     if (updates.name !== undefined) body.name = updates.name;
     if (updates.phone !== undefined) body.mobile = updates.phone;
@@ -310,23 +244,17 @@ export const therapistApi = {
    * `uploadApi.uploadDocument` returned, which `absoluteFileUrl` has already resolved.
    */
   async updateAvatar(avatarUrl: string): Promise<Therapist> {
-    if (USE_MOCK_PROFILE) return delay({ ...mockTherapist, avatarUrl });
     await client.patch("/user/avatar", { avatar: absoluteFileUrl(avatarUrl) });
     return therapistApi.getProfile();
   },
 
   /** Change the account password (PATCH /user/password). */
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
-    if (USE_MOCK_PROFILE) {
-      if (newPassword.length < 8) throw new Error("Password must be at least 8 characters");
-      return delay(undefined, 600);
-    }
     await client.patch("/user/password", { currentPassword, newPassword });
   },
 
   /** Patient reviews for the signed-in therapist (GET /therapist/:id/reviews). */
   async getReviews(): Promise<TherapistReview[]> {
-    if (USE_MOCK_PROFILE) return delay(mockReviews);
     const { data: user } = await client.get<BackendUser>("/user");
     const therapistId = user.therapistProfile?.id;
     if (!therapistId) return [];
@@ -340,7 +268,6 @@ export const therapistApi = {
    * public profile (rating).
    */
   async getDashboard(): Promise<DashboardStats> {
-    if (USE_MOCK_DASHBOARD) return delay(mockDashboardStats);
     const [user, commissions, bookings] = await Promise.all([
       client.get<BackendUser>("/user"),
       client.get<BackendCommission[]>("/therapist/earnings"),
@@ -354,8 +281,7 @@ export const therapistApi = {
 /**
  * Account security — active login sessions and the audit log.
  *
- * Both endpoints are real and were probed live; neither had an app surface before. Follows the
- * profile mock flag since it's account data, not a domain of its own.
+ * Both endpoints are real and were probed live; neither had an app surface before.
  */
 export const accountApi = {
   /**
@@ -367,7 +293,6 @@ export const accountApi = {
    * the UI must warn that revoking might sign you out. Tracked as BACKEND_TODO §1.4.
    */
   async listSessions(): Promise<LoginSession[]> {
-    if (USE_MOCK_PROFILE) return delay([]);
     const { data } = await client.get<BackendLoginSession[]>("/user/sessions");
     return mapLoginSessions(data ?? []);
   },
@@ -380,13 +305,11 @@ export const accountApi = {
    * So the destructive case degrades correctly even though we can't predict it.
    */
   async revokeSession(id: string): Promise<void> {
-    if (USE_MOCK_PROFILE) return delay(undefined, 400);
     await client.delete(`/user/sessions/${id}`);
   },
 
   /** Audit log (GET /activity/) — logins plus API calls made on the account. */
   async listActivity(): Promise<ActivityEntry[]> {
-    if (USE_MOCK_PROFILE) return delay([]);
     const { data } = await client.get<BackendActivity[]>("/activity");
     return mapActivity(data ?? []);
   },
@@ -400,7 +323,6 @@ export const accountApi = {
  */
 export const billingApi = {
   async listPayments(): Promise<PaymentRecord[]> {
-    if (USE_MOCK_PAYOUTS) return delay([]);
     const { data } = await client.get<BackendPayment[]>("/payment");
     return mapPayments(data ?? []);
   },
@@ -412,14 +334,12 @@ export const billingApi = {
  */
 export const blogApi = {
   async list(): Promise<BlogPost[]> {
-    if (USE_MOCK_CONTENT) return delay([]);
     const { data } = await client.get<BackendBlogPost[]>("/blog");
     return mapBlogPosts(data ?? []);
   },
 
   /** Keyed by SLUG, not id. Note the backend increments `views` on each read. */
   async getBySlug(slug: string): Promise<BlogPost> {
-    if (USE_MOCK_CONTENT) throw new Error("Blog content isn't available offline yet.");
     const { data } = await client.get<BackendBlogPost>(`/blog/${slug}`);
     return mapBlogPost(data);
   },
@@ -438,16 +358,12 @@ export const blogApi = {
    * until it lands, the heart starts unfilled and only reflects likes made in this session.
    */
   async toggleLike(postId: string): Promise<{ liked: boolean; likes: number }> {
-    if (USE_MOCK_CONTENT) return delay({ liked: true, likes: 1 }, 300);
     const { data } = await client.post<{ liked: boolean; likes: number }>(`/blog/${postId}/like`);
     return { liked: !!data?.liked, likes: data?.likes ?? 0 };
   },
 
   /** Post a comment (POST /blog/:id/review, body `{ comment }`) and get the stored row back. */
   async addComment(postId: string, comment: string): Promise<BlogReview> {
-    if (USE_MOCK_CONTENT) {
-      return delay({ id: `mock-${Date.now()}`, userName: "You", comment, createdAt: new Date().toISOString() }, 400);
-    }
     const { data } = await client.post<BackendBlogReview>(`/blog/${postId}/review`, { comment });
     return mapBlogReview(data);
   },
@@ -460,19 +376,16 @@ export const blogApi = {
  */
 export const supportApi = {
   async list(): Promise<SupportComplaint[]> {
-    if (USE_MOCK_PROFILE) return delay([]);
     const { data } = await client.get<BackendComplaint[]>("/complaints/");
     return mapComplaints(data ?? []);
   },
 
   /** `type` is a free-text bucket the admin console filters on ("payout", "session", …). */
   async create(type: string, description: string): Promise<void> {
-    if (USE_MOCK_PROFILE) return delay(undefined, 600);
     await client.post("/complaints/", { type, description });
   },
 
   async reply(complaintId: string, message: string): Promise<void> {
-    if (USE_MOCK_PROFILE) return delay(undefined, 500);
     await client.post(`/complaints/${complaintId}/reply`, { message });
   },
 };
@@ -480,23 +393,17 @@ export const supportApi = {
 export const payoutApi = {
   /** Payout history (GET /therapist/payout). */
   async list(): Promise<Payout[]> {
-    if (USE_MOCK_PAYOUTS) return delay(mockPayouts);
     const { data } = await client.get<BackendPayout[]>("/therapist/payout");
     return mapPayouts(data);
   },
 
   async getById(id: string): Promise<Payout> {
-    if (USE_MOCK_PAYOUTS) {
-      const found = mockPayouts.find((p) => p.id === id) ?? mockPayouts[0];
-      return delay(found);
-    }
     const { data } = await client.get<BackendPayout>(`/therapist/payout/${id}`);
     return mapPayout(data);
   },
 
   /** Wallet balance + ledger (GET /therapist/wallet) — the withdrawable figure. */
   async getWallet(): Promise<WalletInfo> {
-    if (USE_MOCK_PAYOUTS) return delay(mockWallet);
     const { data } = await client.get<BackendWallet>("/therapist/wallet");
     return mapWallet(data);
   },
@@ -509,13 +416,6 @@ export const payoutApi = {
    * therefore never auto-retries this call; it is only ever fired by an explicit tap.
    */
   async request(amount: number): Promise<Payout> {
-    if (USE_MOCK_PAYOUTS) {
-      if (amount <= 0) throw new Error("Enter an amount greater than zero");
-      return delay(
-        { id: `payout-${Date.now()}`, amount, status: "requested", dateLabel: "Today" },
-        700,
-      );
-    }
     const { data } = await client.post<BackendPayout>("/therapist/payout/request", { amount });
     return mapPayout(data);
   },
@@ -524,7 +424,6 @@ export const payoutApi = {
 export const availabilityApi = {
   /** The therapist's own bookable slots (GET /therapist/:id/availability). */
   async getAvailability(): Promise<AvailabilityDay[]> {
-    if (USE_MOCK_AVAILABILITY) return delay(mockAvailability);
     const { data: user } = await client.get<BackendUser>("/user");
     const therapistId = user.therapistProfile?.id;
     if (!therapistId) return [];
@@ -540,7 +439,6 @@ export const availabilityApi = {
    * availability response carries, which is why `AvailabilitySlot` keeps that field verbatim.
    */
   async setSlotsBlocked(isoDate: string, startHours: number[], blocked: boolean): Promise<void> {
-    if (USE_MOCK_AVAILABILITY) return delay(undefined, 500);
     const body = { date: new Date(`${isoDate}T00:00:00.000Z`).toISOString(), startHours };
     if (blocked) await client.post("/therapist/slots/block", body);
     else await client.delete("/therapist/slots/block", { data: body });
@@ -552,24 +450,12 @@ export const availabilityApi = {
    * from — and were only settable during onboarding before this endpoint existed.
    */
   async getWeeklySchedule(): Promise<WeeklySchedule> {
-    if (USE_MOCK_AVAILABILITY) {
-      return delay({
-        monday: { shifts: ["morning", "evening"], disabledHours: [] },
-        tuesday: { shifts: ["morning", "evening"], disabledHours: [] },
-        wednesday: { shifts: ["morning"], disabledHours: [] },
-        thursday: { shifts: ["morning", "evening"], disabledHours: [] },
-        friday: { shifts: ["morning", "evening", "night"], disabledHours: [] },
-        saturday: { shifts: ["morning"], disabledHours: [] },
-        sunday: { shifts: [], disabledHours: [] },
-      } satisfies WeeklySchedule);
-    }
     const { data } = await client.get<BackendWeeklySchedule>("/therapist/slots/schedule");
     return mapWeeklySchedule(data);
   },
 
   /** Replace the weekly defaults (PUT /therapist/slots/schedule). */
   async updateWeeklySchedule(schedule: WeeklySchedule): Promise<void> {
-    if (USE_MOCK_AVAILABILITY) return delay(undefined, 600);
     await client.put("/therapist/slots/schedule", { schedule });
   },
 
@@ -578,14 +464,12 @@ export const availabilityApi = {
    * A day with all 16 slots blocked comes back flagged `isOff`.
    */
   async getOverrides(): Promise<ScheduleOverride[]> {
-    if (USE_MOCK_AVAILABILITY) return delay([]);
     const { data } = await client.get<BackendScheduleOverride[]>("/therapist/slots/overrides");
     return mapScheduleOverrides(data ?? []);
   },
 
   /** Apply for leave over a date range (POST /therapist/leaves). */
   async applyLeave(startIsoDate: string, endIsoDate: string, reason?: string): Promise<void> {
-    if (USE_MOCK_AVAILABILITY) return delay(undefined, 600);
     await client.post("/therapist/leaves", {
       startDate: new Date(`${startIsoDate}T00:00:00.000Z`).toISOString(),
       endDate: new Date(`${endIsoDate}T00:00:00.000Z`).toISOString(),
@@ -594,10 +478,22 @@ export const availabilityApi = {
   },
 };
 
+/**
+ * Therapist-authored content: articles and FAQs shown on the public profile.
+ *
+ * The write routes were missing for a stretch (every POST/PATCH/DELETE answered Express's
+ * unmatched-route 404) and the app was made read-only behind a flag. They are live again as of
+ * 2026-08-18 — all six verified against api.dev.physiobuddies.in — so the flag is gone.
+ *
+ * ⚠️ One gap remains: **the list reads still omit `id`.** `POST`/`PATCH` return the full row
+ * including its id, but `GET /therapist/:id/{articles,faqs}` returns only
+ * `{ title|question, content|answer, createdAt }`. So a row that came back from a list refetch
+ * has nothing to address a `PATCH`/`DELETE` to, and the screens mark those rows read-only rather
+ * than offering controls that would fail on tap. Tracked in BACKEND_TODO §1.8.
+ */
 export const contentApi = {
   /** The therapist's published articles (GET /therapist/:id/articles). */
   async listArticles(): Promise<TherapistArticle[]> {
-    if (USE_MOCK_CONTENT) return delay(mockArticles);
     const { data: user } = await client.get<BackendUser>("/user");
     const therapistId = user.therapistProfile?.id;
     if (!therapistId) return [];
@@ -606,23 +502,19 @@ export const contentApi = {
   },
 
   async createArticle(title: string, content: string): Promise<void> {
-    if (USE_MOCK_CONTENT) return delay(undefined, 600);
     await client.post("/therapist/articles", { title, content });
   },
 
   async updateArticle(id: string, updates: { title?: string; content?: string }): Promise<void> {
-    if (USE_MOCK_CONTENT) return delay(undefined, 600);
     await client.patch(`/therapist/articles/${id}`, updates);
   },
 
   async deleteArticle(id: string): Promise<void> {
-    if (USE_MOCK_CONTENT) return delay(undefined, 500);
     await client.delete(`/therapist/articles/${id}`);
   },
 
   /** The therapist's FAQs (GET /therapist/:id/faqs). */
   async listFaqs(): Promise<TherapistFaq[]> {
-    if (USE_MOCK_CONTENT) return delay(mockFaqs);
     const { data: user } = await client.get<BackendUser>("/user");
     const therapistId = user.therapistProfile?.id;
     if (!therapistId) return [];
@@ -631,39 +523,60 @@ export const contentApi = {
   },
 
   async createFaq(question: string, answer: string): Promise<void> {
-    if (USE_MOCK_CONTENT) return delay(undefined, 600);
     await client.post("/therapist/faqs", { question, answer });
   },
 
   async updateFaq(id: string, updates: { question?: string; answer?: string }): Promise<void> {
-    if (USE_MOCK_CONTENT) return delay(undefined, 600);
     await client.patch(`/therapist/faqs/${id}`, updates);
   },
 
   async deleteFaq(id: string): Promise<void> {
-    if (USE_MOCK_CONTENT) return delay(undefined, 500);
     await client.delete(`/therapist/faqs/${id}`);
   },
 };
 
 export const appointmentApi = {
   async list(): Promise<Appointment[]> {
-    if (USE_MOCK_APPOINTMENTS) return delay(mockAppointments);
     const { data } = await client.get<BackendBooking[]>("/therapist/sessions/my-bookings");
     return mapBookings(data);
   },
 
   async getById(id: string): Promise<Appointment> {
-    if (USE_MOCK_APPOINTMENTS) {
-      const found = mockAppointments.find((a) => a.id === id) ?? mockAppointments[0];
-      return delay(found);
-    }
     const { data } = await client.get<BackendBookingDetail>(
       `/therapist/sessions/my-bookings/${id}`,
     );
     return mapBookingDetailToAppointment(data);
   },
 };
+
+/**
+ * `POST /treatment-session/:id/send-otp` — the documented half is `{ message, expiresInMinutes }`.
+ * The echoed code is undocumented, so every field it might plausibly arrive under is declared
+ * rather than assuming one and silently getting `undefined`.
+ */
+interface BackendSendOtp {
+  message?: string;
+  expiresInMinutes?: number;
+  otpCode?: string;
+  otp?: string | { code?: string };
+  code?: string;
+  testOtp?: string;
+  devOtp?: string;
+}
+
+/**
+ * Pull the echoed test OTP out of a send-otp response, whatever the backend chose to call it.
+ * Returns `undefined` when the response carries no code — the expected steady state once the
+ * echo is removed for production, and the reason the caller must treat this as optional.
+ */
+function pickEchoedOtp(data: BackendSendOtp | null | undefined): string | undefined {
+  if (!data) return undefined;
+  const nested = typeof data.otp === "object" ? data.otp?.code : data.otp;
+  const raw = data.otpCode ?? nested ?? data.code ?? data.testOtp ?? data.devOtp;
+  // Numeric codes arrive as numbers often enough to be worth coercing rather than dropping.
+  const value = typeof raw === "number" ? String(raw) : raw;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
 
 /**
  * Session lifecycle, all real against the dev backend.
@@ -675,44 +588,62 @@ export const appointmentApi = {
  */
 export const sessionApi = {
   /**
-   * Confirm a booking request (PATCH .../my-bookings/:id/accept) — flips the slot reservation
-   * to `booked` and the session to `confirmed`.
+   * Confirm a pending booking (POST /treatment-session/confirm, body `{ sessionId }`).
+   *
+   * NOT `PATCH /therapist/sessions/my-bookings/:id/accept`, which this used to call and which
+   * has never existed — Express answered it with its own unmatched-route 404
+   * ("Cannot PATCH /api/v1/therapist/sessions/my-bookings/…/accept"), so accepting a booking
+   * failed every time. Note the id travels in the BODY here, not the path, unlike every other
+   * call in this object.
    */
   async accept(sessionId: string): Promise<void> {
-    if (USE_MOCK_SESSION) return delay(undefined, 500);
-    await client.patch(`/therapist/sessions/my-bookings/${sessionId}/accept`);
+    await client.post("/treatment-session/confirm", { sessionId });
   },
 
   /**
-   * Ask the backend to send the patient a start-OTP (POST .../generate-otp).
+   * Ask the backend to send the patient a start-OTP
+   * (POST /treatment-session/:id/send-otp — no request body).
    *
-   * Two server-side rules worth surfacing rather than discovering at the counter: the window is
-   * 30 minutes before the scheduled start to 2 hours after (outside it the call 400s with a
-   * readable message, which the caller shows verbatim), and the response echoes `otpCode` back
-   * in dev so the flow is testable without a second handset.
+   * The old path (`.../my-bookings/:id/generate-otp`) did not exist and 404'd on every tap;
+   * this is the route the API actually serves. Server-side rules worth surfacing rather than
+   * discovering at the patient's door: the window is 30 minutes before the scheduled start to
+   * 2 hours after — outside it the call 400s with a readable message, which the caller shows
+   * verbatim — and three wrong verify attempts invalidate the code, requiring a resend.
+   *
+   * ⚠️ **The deployed backend does not echo the code back.** Probed live 2026-08-18 against a
+   * real confirmed session: the 200 body is exactly `{ message: "OTP sent to patient
+   * successfully.", expiresInMinutes: 5 }` and nothing else, and `GET /treatment-session/:id`
+   * reports `otpCode: null` / `otpExpiresAt: null` straight afterwards. So the code reaches the
+   * patient only, and `pickEchoedOtp` correctly returns `undefined` today.
+   *
+   * The reader is kept because the echo is expected to be added for testing (and `otpCode` is
+   * what the backend's own session model calls the field, so that is the name to expect). It
+   * accepts the plausible spellings rather than assuming one, and returning nothing is a
+   * supported outcome, not a failure — the OTP screen simply shows no hint. Whether an arriving
+   * code is ever *displayed* is a separate decision made by `SHOW_TEST_OTP` at the call site:
+   * never render a one-time password just because it turned up in a payload.
    */
   async generateOtp(
     sessionId: string,
   ): Promise<{ otpCode?: string; expiresInMinutes?: number; message?: string }> {
-    if (USE_MOCK_SESSION) {
-      return delay({ otpCode: OTP_CONFIG.demoSessionOtp, expiresInMinutes: 5 }, 600);
-    }
-    const { data } = await client.post<{
-      otpCode?: string;
-      expiresInMinutes?: number;
-      message?: string;
-    }>(`/therapist/sessions/my-bookings/${sessionId}/generate-otp`);
-    return data ?? {};
+    const { data } = await client.post<BackendSendOtp>(
+      `/treatment-session/${sessionId}/send-otp`,
+    );
+    return {
+      otpCode: pickEchoedOtp(data),
+      expiresInMinutes: data?.expiresInMinutes,
+      message: data?.message,
+    };
   },
 
-  /** Verify the patient's OTP, which is what actually starts the session (status → `active`). */
+  /**
+   * Verify the patient's OTP, which is what actually starts the session (status → `active`).
+   * POST /treatment-session/:id/verify-otp, body `{ otp }` — the field name is confirmed by the
+   * server's own validation error (`details.field === "otp"`). Answers 202 with `data: null`,
+   * so there is no server-side session id to read back; the caller keeps the one it passed in.
+   */
   async start(sessionId: string, otp: string): Promise<{ sessionId: string }> {
-    if (USE_MOCK_SESSION) {
-      const valid = otp === OTP_CONFIG.demoSessionOtp || otp.length === OTP_CONFIG.sessionOtpLength;
-      if (!valid) throw new Error("Invalid session OTP");
-      return delay({ sessionId: `session-${sessionId}` }, 600);
-    }
-    await client.post(`/therapist/sessions/my-bookings/${sessionId}/verify-otp`, { otp });
+    await client.post(`/treatment-session/${sessionId}/verify-otp`, { otp });
     return { sessionId };
   },
 
@@ -723,38 +654,25 @@ export const sessionApi = {
   // `flagged-session-<planId>` id that killed assessment submission at the very end of a visit
   // (fixed 2026-08-13, now moot). A verified OTP is the only way into a session.
 
-  /**
-   * End the visit (POST .../my-bookings/:id/end) — sets `completed` + `actualEndTime` and logs
-   * the status change. Returns the server-measured duration.
-   *
-   * `idempotencyKey` is generated once on the client when the session is first completed
-   * locally and persists across retries — a resend after a dropped response (offline, app
-   * killed mid-request) must never double-trigger a payout server-side. The backend does not
-   * dedupe on it yet, but ending an already-completed session is itself idempotent (it just
-   * rewrites the same terminal state), so a replay is harmless today.
-   */
-  async complete(
-    sessionId: string,
-    idempotencyKey?: string,
-  ): Promise<{ payoutQueued: boolean; durationMinutes?: number }> {
-    if (USE_MOCK_SESSION) return delay({ payoutQueued: true }, 500);
-    const { data } = await client.post<{ durationMinutes?: number }>(
-      `/therapist/sessions/my-bookings/${sessionId}/end`,
-      undefined,
-      idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : undefined,
-    );
-    return { payoutQueued: true, durationMinutes: data?.durationMinutes };
-  },
+  // REMOVED (2026-08-18): `complete()` — `POST /therapist/sessions/my-bookings/:id/end`.
+  // That route has never existed; the server answers Express's unmatched-route 404, so every
+  // call failed and the offline sync queue retried it until the row parked as `error`. It was
+  // also redundant: `POST /treatment-plan/:planId/assessment` already flips the plan's active
+  // session to `completed` server-side, which is what actually ends the visit, and the sync
+  // engine now marks the session synced off the back of that.
+  //
+  // The API's own "complete the session" route is `POST /treatment-session/:id/improvement-record`
+  // — already implemented here as `treatmentApi.submitImprovementRecord`, but not yet called by
+  // anything, because it REQUIRES `painScoreAfter` and `improvementNotes` and no screen collects
+  // them. Wiring it means building that step, not defaulting the numbers. See BACKEND_TODO §1.9.
 
   /** Cancel a scheduled session (POST /treatment-session/:id/cancel). */
   async cancel(sessionId: string, reason?: string): Promise<void> {
-    if (USE_MOCK_SESSION) return delay(undefined, 500);
     await client.post(`/treatment-session/${sessionId}/cancel`, reason ? { reason } : {});
   },
 
   /** Record that the patient didn't show (POST /treatment-session/:id/no-show). */
   async markNoShow(sessionId: string): Promise<void> {
-    if (USE_MOCK_SESSION) return delay(undefined, 500);
     await client.post(`/treatment-session/${sessionId}/no-show`);
   },
 
@@ -767,18 +685,51 @@ export const sessionApi = {
     planId: string,
     payload?: { beforeTherapyImg?: string; afterTherapyImg?: string; finalImprovement?: string },
   ): Promise<void> {
-    if (USE_MOCK_SESSION) return delay(undefined, 600);
     await client.post(`/therapist/sessions/plan/${planId}/complete`, payload ?? {});
   },
 
-  /** Attach files to the plan (POST /treatment-session/:id/add-docs). */
-  async addDocuments(
+  /**
+   * Attach ONE clinical document to the session (POST /treatment-session/:id/add-docs).
+   *
+   * **This is a multipart upload that carries the file itself** — not a JSON reference to a file
+   * uploaded elsewhere. The previous version posted `{ documents: [{ url, name, fileType }] }`
+   * and was rejected outright with `400 "No file uploaded"`; it was never called by anything, so
+   * the breakage stayed latent. Swagger is wrong here too, declaring an `application/json` body
+   * of `{ name, fileType }` with no file part at all — the shape below is what the running server
+   * actually accepts (probed 2026-08-18). Multer's field name is `file`, matching
+   * `/file-upload/single`; `name` and `fileType` ride along as ordinary form fields.
+   *
+   * Singular by design: one call per document. The old array parameter suggested a batch endpoint
+   * that does not exist.
+   *
+   * Why this endpoint rather than `/file-upload/single`: the bytes land in the server's
+   * `private-uploads` directory and the returned `url` (`/file/<id>`) resolves **only** through
+   * the authenticated `GET /api/v1/file/:id`, which 401s without a token and answers 404 — the
+   * same as a missing id — to anyone who isn't the patient concerned, the assigned therapist, or
+   * an admin. `/file-upload/single` writes to a public static path instead, which is fine for an
+   * avatar and wrong for an X-ray.
+   */
+  async addDocument(
     sessionId: string,
-    documents: { url: string; name: string; fileType: string }[],
-  ): Promise<void> {
-    if (USE_MOCK_SESSION) return delay(undefined, 500);
-    if (documents.length === 0) return;
-    await client.post(`/treatment-session/${sessionId}/add-docs`, { documents });
+    uri: string,
+    fileName: string,
+    mimeType: string,
+  ): Promise<SessionDocument> {
+    const data = await uploadMultipart<BackendSessionDocument>(
+      `/treatment-session/${sessionId}/add-docs`,
+      uri,
+      fileName,
+      mimeType,
+      { name: fileName, fileType: mimeType },
+    );
+    if (!data?.id) throw new Error("Upload succeeded but the server returned no document id.");
+    return {
+      id: data.id,
+      name: data.name ?? fileName,
+      url: privateFileUrl(data.url ?? `/file/${data.id}`),
+      fileType: data.fileType ?? mimeType,
+      createdAt: data.createdAt,
+    };
   },
 };
 
@@ -860,7 +811,6 @@ export const treatmentApi = {
    * afterwards just re-asserts the same terminal state.
    */
   async submit(payload: TreatmentSubmitPayload, idempotencyKey?: string): Promise<{ id: string }> {
-    if (USE_MOCK_TREATMENT) return delay({ id: `treatment-${Date.now()}` }, 600);
     const body = mapAssessmentToPayload(buildAssessmentInput(payload));
     const { data } = await client.post<{ id?: string } | null>(
       `/treatment-plan/${payload.appointmentId}/assessment`,
@@ -877,7 +827,6 @@ export const treatmentApi = {
    * Returns an array — a plan accumulates one record per assessed visit.
    */
   async getAssessments(planId: string): Promise<ClinicalAssessmentRecord[]> {
-    if (USE_MOCK_TREATMENT) return delay([], 300);
     const { data } = await client.get<BackendAssessment[]>(`/treatment-plan/${planId}/assessment`);
     return mapAssessments(Array.isArray(data) ? data : []);
   },
@@ -903,7 +852,6 @@ export const treatmentApi = {
   ): Promise<void> {
     // Gated with the rest of `treatmentApi` (clinical data), not with the session lifecycle —
     // it records a clinical outcome and happens to close the session as a side effect.
-    if (USE_MOCK_TREATMENT) return delay(undefined, 500);
     const clamp = (n: number) => Math.max(0, Math.min(10, Math.round(n)));
     await client.post(
       `/treatment-session/${sessionId}/improvement-record`,
@@ -925,17 +873,12 @@ export const treatmentApi = {
  */
 export const patientApi = {
   async list(): Promise<Patient[]> {
-    if (USE_MOCK_PATIENTS) return delay(mockPatients);
     const { data } = await client.get<BackendBooking[]>("/therapist/sessions/my-bookings");
     return buildPatientsFromBookings(data ?? []);
   },
 
   /** `id` is the treatment-plan id the roster row carries. */
   async getById(id: string): Promise<Patient> {
-    if (USE_MOCK_PATIENTS) {
-      const found = mockPatients.find((p) => p.id === id) ?? mockPatients[0];
-      return delay(found);
-    }
     const { data } = await client.get<BackendBookingDetail>(
       `/therapist/sessions/my-bookings/${id}`,
     );
@@ -966,7 +909,6 @@ export const earningsApi = {
    * matches EarningsSummary (week/month buckets and the weekly chart are derived client-side).
    */
   async getSummary(): Promise<EarningsSummary> {
-    if (USE_MOCK_EARNINGS) return delay(mockEarnings);
     const [commissions, wallet] = await Promise.all([
       client.get<BackendCommission[]>("/therapist/earnings"),
       client.get<BackendWallet>("/therapist/wallet"),
@@ -975,7 +917,6 @@ export const earningsApi = {
   },
 
   async getTransactions(): Promise<Transaction[]> {
-    if (USE_MOCK_EARNINGS) return delay(mockTransactions);
     const { data } = await client.get<BackendCommission[]>("/therapist/earnings");
     return mapCommissions(data);
   },
@@ -984,8 +925,8 @@ export const earningsApi = {
 /**
  * Notifications — **real as of 2026-08-17**, and note the path: `/notifications` (plural).
  *
- * This domain was mocked for months because `/notification/*` was a set of empty controllers
- * that never sent a response and hung the request. That is no longer the story. Probed live:
+ * The `/notification/*` (singular) mount is a set of empty controllers that never send a
+ * response and hang the request — it is dead. Probed live:
  *
  *   GET /notifications/               → 200 { items, nextCursor, hasMore, unreadCount }
  *   GET /notifications/unread-count   → 200 { unreadCount }
@@ -997,7 +938,6 @@ export const earningsApi = {
  */
 export const notificationApi = {
   async list(): Promise<AppNotification[]> {
-    if (USE_MOCK_NOTIFICATIONS) return delay(mockNotifications);
     const { data } = await client.get<BackendNotificationPage>("/notifications/", {
       params: { limit: 50 },
     });
@@ -1006,20 +946,15 @@ export const notificationApi = {
 
   /** Badge count without pulling the list (GET /notifications/unread-count). */
   async unreadCount(): Promise<number> {
-    if (USE_MOCK_NOTIFICATIONS) {
-      return delay(mockNotifications.filter((n) => !n.read).length, 200);
-    }
     const { data } = await client.get<{ unreadCount?: number }>("/notifications/unread-count");
     return data?.unreadCount ?? 0;
   },
 
   async markRead(id: string): Promise<void> {
-    if (USE_MOCK_NOTIFICATIONS) return delay(undefined, 200);
     await client.patch(`/notifications/${id}/read`);
   },
 
   async markAllRead(): Promise<void> {
-    if (USE_MOCK_NOTIFICATIONS) return delay(undefined, 200);
     await client.patch("/notifications/read-all");
   },
 
@@ -1028,9 +963,23 @@ export const notificationApi = {
     // device token has nowhere to go and push cannot be delivered even with FCM configured.
     // The in-app list above works regardless — it is polled, not pushed.
     void token;
-    return delay(undefined, 200);
   },
 };
+
+/**
+ * `POST /treatment-session/:id/add-docs`, verified live 2026-08-18. The server also echoes
+ * `storagePath` (`/app/private-uploads/<hash>`), `treatmentPlanId`, `uploadedBy` and
+ * `uploadedByUserId`; only the fields the app uses are declared. Note `url` is the relative
+ * `/file/<id>`, not an absolute one — see `privateFileUrl`.
+ */
+interface BackendSessionDocument {
+  id?: string;
+  name?: string;
+  url?: string;
+  fileType?: string;
+  mimeType?: string;
+  createdAt?: string;
+}
 
 /**
  * The backend response for POST /file-upload/single. The field naming isn't guaranteed across
@@ -1061,6 +1010,22 @@ export function absoluteFileUrl(url: string): string {
   return `${origin}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
+/**
+ * Resolve a PRIVATE document url (`/file/<id>`) returned by `add-docs`.
+ *
+ * Deliberately NOT `absoluteFileUrl`, and the difference is the whole point: `/uploads/...` is
+ * served from the site root, so that helper *strips* the `/api/v1` suffix. `/file/:id` is a
+ * versioned API route, so this one *keeps* it. Passing a private url through `absoluteFileUrl`
+ * yields a 404 at a public path — which would look like a missing file rather than a wrong URL.
+ *
+ * The result still needs an `Authorization` header to fetch; see `lib/utils/privateFile.ts`.
+ */
+export function privateFileUrl(url: string): string {
+  if (!url || /^https?:\/\//i.test(url)) return url;
+  const base = API_BASE_URL.replace(/\/$/, "");
+  return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
 function normalizeUpload(data: BackendUpload | string | null | undefined): {
   url: string;
   id: string;
@@ -1071,12 +1036,19 @@ function normalizeUpload(data: BackendUpload | string | null | undefined): {
   return { url: absoluteFileUrl(raw), id: data?.id ?? data?.filename ?? data?.key ?? raw };
 }
 
-async function uploadSingle(
+/**
+ * POST a file as `multipart/form-data` to `path`, under multer field `file`, with any extra
+ * fields appended alongside it. Shared by the public uploader (`/file-upload/single`) and the
+ * private clinical one (`/treatment-session/:id/add-docs`) because both take the same field name
+ * — and, more importantly, because both need the Content-Type handling below to be exactly right.
+ */
+async function uploadMultipart<T>(
+  path: string,
   uri: string,
   fileName: string,
   mimeType: string,
   extra?: Record<string, string>,
-): Promise<{ url: string; id: string }> {
+): Promise<T> {
   const formData = new FormData();
   // RN's FormData takes this {uri,name,type} object for a file part; it is not a browser File.
   formData.append("file", { uri, name: fileName, type: mimeType } as unknown as Blob);
@@ -1089,39 +1061,38 @@ async function uploadSingle(
   //    silently uploading JSON instead of the file.
   // Setting it to null makes axios omit the header entirely, so the runtime supplies
   // `multipart/form-data; boundary=…` itself.
-  const { data } = await client.post<BackendUpload>("/file-upload/single", formData, {
-    headers: { "Content-Type": null },
-  });
+  const { data } = await client.post<T>(path, formData, { headers: { "Content-Type": null } });
+  return data;
+}
+
+async function uploadSingle(
+  uri: string,
+  fileName: string,
+  mimeType: string,
+  extra?: Record<string, string>,
+): Promise<{ url: string; id: string }> {
+  const data = await uploadMultipart<BackendUpload>(
+    "/file-upload/single",
+    uri,
+    fileName,
+    mimeType,
+    extra,
+  );
   return normalizeUpload(data);
 }
 
+/**
+ * The PUBLIC uploader. `/file-upload/single` writes to a static path that is not behind the auth
+ * middleware, so it is right for a profile photo or a therapist's own credential document and
+ * WRONG for anything about a patient.
+ *
+ * Clinical files — session photos, X-rays, reports — go through `sessionApi.addDocument`
+ * instead, which stores them privately. `uploadSessionPhoto` and `uploadTreatmentAttachment`
+ * used to live here and were removed on 2026-08-18 for exactly that reason: they put patient
+ * photographs on an ungated URL, and the `sessionId`/`treatmentId` form fields they sent to
+ * compensate were read by nothing server-side.
+ */
 export const uploadApi = {
-  /**
-   * POST /file-upload/single (multer field `file`) — a generic uploader with no session
-   * correlation server-side. `sessionId`/`treatmentId` are sent as extra form fields so the
-   * association is at least present in the request once the backend starts reading it; today
-   * the backend ignores them and the app keeps the linkage locally in SQLite.
-   */
-  async uploadSessionPhoto(
-    sessionId: string,
-    uri: string,
-    fileName: string,
-    mimeType: string
-  ): Promise<{ url: string; id: string }> {
-    if (USE_MOCK_UPLOAD) return delay({ url: uri, id: `photo-${Date.now()}` }, 800);
-    return uploadSingle(uri, fileName, mimeType, { sessionId });
-  },
-
-  async uploadTreatmentAttachment(
-    treatmentId: string,
-    uri: string,
-    fileName: string,
-    mimeType: string
-  ): Promise<{ url: string; id: string }> {
-    if (USE_MOCK_UPLOAD) return delay({ url: uri, id: `attachment-${Date.now()}` }, 800);
-    return uploadSingle(uri, fileName, mimeType, { treatmentId });
-  },
-
   /** A KYC / credential document or a profile photo — same endpoint, no server-side kind. */
   async uploadDocument(
     uri: string,
@@ -1129,7 +1100,6 @@ export const uploadApi = {
     mimeType: string,
     kind?: string,
   ): Promise<{ url: string; id: string }> {
-    if (USE_MOCK_UPLOAD) return delay({ url: uri, id: `doc-${Date.now()}` }, 900);
     return uploadSingle(uri, fileName, mimeType, kind ? { kind } : undefined);
   },
 };

@@ -16,21 +16,7 @@ import { client } from "@/lib/api/client";
 
 jest.mock("@/constants/config", () => ({
   API_BASE_URL: "https://api.dev.physiobuddies.in/api/v1",
-  OTP_CONFIG: { authOtpLength: 6, sessionOtpLength: 4, demoOtp: "123456", demoSessionOtp: "1234" },
-  USE_MOCK_AUTH: true,
-  USE_MOCK_PROFILE: true,
-  USE_MOCK_DASHBOARD: true,
-  USE_MOCK_APPOINTMENTS: true,
-  USE_MOCK_EARNINGS: true,
-  USE_MOCK_SESSION: true,
-  USE_MOCK_NOTIFICATIONS: true,
-  USE_MOCK_PATIENTS: true,
-  USE_MOCK_PAYOUTS: true,
-  USE_MOCK_AVAILABILITY: true,
-  USE_MOCK_CONTENT: true,
-  USE_MOCK_UPLOAD: true,
-  // The flag under test — assessments go to the real branch.
-  USE_MOCK_TREATMENT: false,
+  SUBSCRIPTION_PAYMENT_ENABLED: false,
 }));
 
 jest.mock("@/lib/api/client", () => ({

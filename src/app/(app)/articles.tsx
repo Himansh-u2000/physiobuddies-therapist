@@ -1,7 +1,7 @@
 import { View, Text, ScrollView, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpenText, PencilLine, Plus, Trash2, TriangleAlert } from "lucide-react-native";
+import { BookOpenText, Lock, PencilLine, Plus, Trash2, TriangleAlert } from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
 import { Button, Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { contentApi } from "@/lib/api/services";
@@ -166,6 +166,7 @@ function ArticleCard({
   return (
     <Pressable
       onPress={onEdit}
+      disabled={!article.id}
       className="bg-white border border-border rounded-md p-3.5 active:opacity-90"
       style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
     >
@@ -183,6 +184,17 @@ function ArticleCard({
           </Text>
         </View>
       </View>
+      {/* PATCH/DELETE are live, but the LIST read omits the id they address, so an article that
+          came from a refetch can't be edited. Say so once instead of failing on tap. */}
+      {!article.id ? (
+        <View className="flex-row items-center border-t border-border pt-2.5" style={{ gap: 8 }}>
+          <Lock size={12} color={COLORS.muted} />
+          <Text className="text-muted text-[11px] flex-1">
+            Read-only — the server doesn&apos;t return an id for this article, so it can&apos;t be
+            edited or deleted from the app yet.
+          </Text>
+        </View>
+      ) : (
       <View className="flex-row border-t border-border pt-2.5" style={{ gap: 16 }}>
         <Pressable
           onPress={onEdit}
@@ -203,6 +215,7 @@ function ArticleCard({
           <Text className="text-danger text-[12px] font-bold">Delete</Text>
         </Pressable>
       </View>
+      )}
     </Pressable>
   );
 }

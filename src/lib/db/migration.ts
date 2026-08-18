@@ -149,6 +149,8 @@ CREATE TABLE IF NOT EXISTS session_photos (
   mime_type TEXT NOT NULL,
   sync_status TEXT NOT NULL DEFAULT 'pending',
   remote_url TEXT,
+  remote_doc_id TEXT,
+  kind TEXT NOT NULL DEFAULT 'photo',
   sync_attempts INTEGER NOT NULL DEFAULT 0,
   next_retry_at INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT 0
@@ -169,4 +171,11 @@ export const POST_MIGRATION_ALTERS = [
   // columns. It's written and read whole (the form fills it, the sync queue posts it) and never
   // queried by field, so columns would buy nothing and cost an ALTER per future clinical field.
   "ALTER TABLE treatments ADD COLUMN clinical TEXT;",
+  // The server-side document id returned by `add-docs`. Its real job is de-duplication: that
+  // endpoint takes no `Idempotency-Key`, so a retry after a dropped response would attach the
+  // same photo to the plan a second time. A row that already has an id is never re-uploaded.
+  "ALTER TABLE session_photos ADD COLUMN remote_doc_id TEXT;",
+  // 'photo' (session camera) or 'document' (X-ray / report picked from files). Same queue, same
+  // durability guarantees; they differ only in how they're captured and rendered.
+  "ALTER TABLE session_photos ADD COLUMN kind TEXT NOT NULL DEFAULT 'photo';",
 ];
