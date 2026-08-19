@@ -100,6 +100,20 @@ export function normalizeError(err: unknown): ApiError {
   return new ApiError(message, 0, "unknown");
 }
 
+/**
+ * A 500 the server raises against *itself*: the handler produced a body its own declared
+ * response schema rejects. It arrives as `{ code: "RESPONSE_CONTRACT_ERROR" }` and, unlike
+ * every other 5xx, is perfectly deterministic — the stored data is the problem, so retrying
+ * it forever is the wrong response. Callers that can repair the data check for it explicitly.
+ */
+export function isResponseContractError(err: unknown): boolean {
+  const e = normalizeError(err);
+  return (
+    e.status >= 500 &&
+    (e.details as { code?: string } | undefined)?.code === "RESPONSE_CONTRACT_ERROR"
+  );
+}
+
 /** Transient failures worth retrying (network / timeout / 5xx / rate-limit). */
 export function isRetryable(err: ApiError): boolean {
   return (

@@ -147,9 +147,52 @@ from `POST` rather than `data: null`, so the app doesn't have to refetch to see 
 - **`my-bookings` returns no per-booking price.** `Appointment.amount` is `0` app-side, so no
   appointment surface can show what a visit is worth. `priceAtBooking` exists on the session.
 - **Swagger is materially inaccurate.** It documents `POST /auth/refresh-token` (the real route is
-  `/auth/refresh`), omits `GET/PUT /therapist/slots/schedule`, `/slots/overrides`,
-  `/slots/blocks-and-leaves` and `POST /treatment-session/:id/improvement-record` entirely, and types
-  every response `data: any`. Reading the source is currently more reliable than reading the doc.
+  `/auth/refresh`) and omits `POST /treatment-session/:id/improvement-record` entirely. The slot
+  routes (`GET/PUT /therapist/slots/schedule`, `/slots/overrides`, `/slots/blocks-and-leaves`) *are*
+  documented as of 2026-08-18 — and their schemas are now enforced at runtime, which is how §1.10
+  became a 500 rather than a quiet shape mismatch. Probing live beats reading either the doc or the
+  checked-out source.
+
+### 1.10 `PUT /therapist/slots/schedule` can store a week that `GET` then refuses to serve
+
+Found live 2026-08-18. `PUT` documents and accepts a day in **either** shape:
+
+```jsonc
+{ "schedule": { "monday": ["morning", "evening"] } }                          // bare array
+{ "schedule": { "monday": { "shifts": ["morning"], "disabledHours": [7] } } } // object
+```
+
+…and persists whichever it was given. But the **`GET` response contract only permits the array**
+(`schedule` is typed `additionalProperties: { type: "array", items: { type: "string" } }`). So the
+moment a day is saved in the object form, every later read fails the server's own response
+validator:
+
+```
+GET /therapist/slots/schedule
+500 { "success": false,
+      "message": "Server produced a response that does not match its declared contract.",
+      "code": "RESPONSE_CONTRACT_ERROR" }
+```
+
+It is permanent — retrying can't help, and the therapist's Weekly defaults tab is dead until the
+schedule is overwritten. Reproduced end to end on the seed therapist: PUT object form → GET 500;
+PUT array form → GET 200.
+
+**Fix:** widen the GET response schema to the same `anyOf` the PUT request already uses (and return
+`disabledHours`, which is currently write-only and therefore unusable). Either that, or reject the
+object form on write instead of accepting data that can't be read back.
+
+Meanwhile the app **only ever sends the bare array form** and treats
+`RESPONSE_CONTRACT_ERROR` as "unreadable, re-save to repair" rather than as a retryable 5xx.
+
+### 1.11 `GET /therapist/:id/availability` renamed its slot fields
+
+The slot objects now come back as `{ startMinute, durationMinutes, category, status }`; they were
+previously `{ startHour, startTime, endTime, category, status }`. Nothing announced the change and
+the field names don't overlap, so every consumer reading `startHour` silently got `undefined` —
+in the therapist app that emptied the whole day grid, since `/therapist/slots/block` keys on the
+hour. The app now derives the hour from `startMinute` and accepts both shapes. Flagging it only as
+a process point: a rename in a response payload needs the same deprecation window as a route move.
 
 ---
 

@@ -334,6 +334,19 @@ export interface WeekdaySchedule {
 
 export type WeeklySchedule = Record<string, WeekdaySchedule>;
 
+/** What GET /therapist/slots/schedule could actually be read as. */
+export interface WeeklyScheduleResult {
+  schedule: WeeklySchedule;
+  /**
+   * The saved schedule exists but the server can't serve it: PUT accepts a day as
+   * `{ shifts, disabledHours }` and stores it verbatim, while the GET response contract only
+   * permits a bare shift array, so reading it back fails its own validator with a 500. There
+   * is nothing to show, but re-saving repairs it — so this is a distinct state from "the
+   * request failed", which is retryable and must not be overwritten.
+   */
+  unreadable: boolean;
+}
+
 /** A future date whose default schedule has been overridden (GET /therapist/slots/overrides). */
 export interface ScheduleOverride {
   /** ISO `YYYY-MM-DD`. */

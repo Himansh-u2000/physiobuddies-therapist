@@ -476,8 +476,11 @@ function WeeklyDefaults() {
     queryFn: availabilityApi.getWeeklySchedule,
   });
 
-  const schedule = draft ?? data ?? {};
+  const schedule = draft ?? data?.schedule ?? {};
   const dirty = draft !== null;
+  // The saved week exists but can't be served back (see `getWeeklySchedule`). Nothing to
+  // show, yet the editor still has to open — saving over it is the only repair.
+  const unreadable = !!data?.unreadable;
 
   const toggleShift = (dayId: string, shift: SlotShift) => {
     const current = schedule[dayId] ?? { shifts: [], disabledHours: [] };
@@ -537,10 +540,28 @@ function WeeklyDefaults() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 130 }}
       >
-        <Text className="text-muted text-[12px] mb-3">
-          Choose the shifts you normally work. Patients can only book inside these hours — blocking
-          a one-off day is done on the &ldquo;By day&rdquo; tab.
-        </Text>
+        {unreadable ? (
+          <View
+            className="rounded-md border p-3 mb-3"
+            style={{ backgroundColor: "rgba(240,68,56,0.06)", borderColor: COLORS.danger, gap: 4 }}
+          >
+            <View className="flex-row items-center" style={{ gap: 6 }}>
+              <TriangleAlert size={14} color={COLORS.danger} />
+              <Text className="text-[12.5px] font-extrabold" style={{ color: COLORS.danger }}>
+                We couldn&rsquo;t read your saved hours
+              </Text>
+            </View>
+            <Text className="text-muted text-[11.5px]">
+              Your bookable hours are still in force — this screen just can&rsquo;t show them. Set
+              every day you work below and save; that replaces the whole week and fixes it.
+            </Text>
+          </View>
+        ) : (
+          <Text className="text-muted text-[12px] mb-3">
+            Choose the shifts you normally work. Patients can only book inside these hours —
+            blocking a one-off day is done on the &ldquo;By day&rdquo; tab.
+          </Text>
+        )}
 
         {WEEKDAYS.map((weekday) => {
           const daySchedule = schedule[weekday.id] ?? { shifts: [], disabledHours: [] };

@@ -1,4 +1,5 @@
 import { client, toAuthTokens } from "./client";
+import { isResponseContractError } from "@/lib/api/errors";
 import {
   mockTherapist,
   mockDashboardStats,
@@ -40,6 +41,7 @@ import type {
   SupportComplaint,
   TherapistFaq,
   WeeklySchedule,
+  WeeklyScheduleResult,
 } from "@/types";
 import {
   API_BASE_URL,
@@ -550,27 +552,53 @@ export const availabilityApi = {
    * The recurring weekly defaults (GET /therapist/slots/schedule). These are the shifts the
    * therapist works on each weekday — the source the daily availability grid is generated
    * from — and were only settable during onboarding before this endpoint existed.
+   *
+   * A schedule stored in the object day form can't be served at all (see
+   * `WeeklyScheduleResult.unreadable`); that comes back as an empty schedule flagged
+   * `unreadable` rather than as a thrown error, because retrying can never fix it and the
+   * therapist needs to reach the editor to save over it.
    */
-  async getWeeklySchedule(): Promise<WeeklySchedule> {
+  async getWeeklySchedule(): Promise<WeeklyScheduleResult> {
     if (USE_MOCK_AVAILABILITY) {
       return delay({
-        monday: { shifts: ["morning", "evening"], disabledHours: [] },
-        tuesday: { shifts: ["morning", "evening"], disabledHours: [] },
-        wednesday: { shifts: ["morning"], disabledHours: [] },
-        thursday: { shifts: ["morning", "evening"], disabledHours: [] },
-        friday: { shifts: ["morning", "evening", "night"], disabledHours: [] },
-        saturday: { shifts: ["morning"], disabledHours: [] },
-        sunday: { shifts: [], disabledHours: [] },
-      } satisfies WeeklySchedule);
+        schedule: {
+          monday: { shifts: ["morning", "evening"], disabledHours: [] },
+          tuesday: { shifts: ["morning", "evening"], disabledHours: [] },
+          wednesday: { shifts: ["morning"], disabledHours: [] },
+          thursday: { shifts: ["morning", "evening"], disabledHours: [] },
+          friday: { shifts: ["morning", "evening", "night"], disabledHours: [] },
+          saturday: { shifts: ["morning"], disabledHours: [] },
+          sunday: { shifts: [], disabledHours: [] },
+        },
+        unreadable: false,
+      } satisfies WeeklyScheduleResult);
     }
-    const { data } = await client.get<BackendWeeklySchedule>("/therapist/slots/schedule");
-    return mapWeeklySchedule(data);
+    try {
+      const { data } = await client.get<BackendWeeklySchedule>("/therapist/slots/schedule");
+      return { schedule: mapWeeklySchedule(data), unreadable: false };
+    } catch (e) {
+      if (isResponseContractError(e)) return { schedule: {}, unreadable: true };
+      throw e;
+    }
   },
 
-  /** Replace the weekly defaults (PUT /therapist/slots/schedule). */
+  /**
+   * Replace the weekly defaults (PUT /therapist/slots/schedule).
+   *
+   * Days go out as a **bare shift array**, never the `{ shifts, disabledHours }` object the
+   * endpoint also accepts. The object form is a trap: the server stores whichever shape it
+   * was given, but the GET response contract only permits the array — so saving the object
+   * form makes every later read of the schedule fail with a 500, permanently, until it is
+   * overwritten. `disabledHours` is lost by sending arrays, but it was already unreadable
+   * for the same reason, and the app blocks individual hours through
+   * `/therapist/slots/block` (the "By day" tab) rather than through the weekly defaults.
+   */
   async updateWeeklySchedule(schedule: WeeklySchedule): Promise<void> {
     if (USE_MOCK_AVAILABILITY) return delay(undefined, 600);
-    await client.put("/therapist/slots/schedule", { schedule });
+    const body = Object.fromEntries(
+      Object.entries(schedule).map(([day, value]) => [day, value.shifts ?? []]),
+    );
+    await client.put("/therapist/slots/schedule", { schedule: body });
   },
 
   /**

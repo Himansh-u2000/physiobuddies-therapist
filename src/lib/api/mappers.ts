@@ -362,10 +362,19 @@ export interface BackendReview {
 export interface BackendAvailabilityDay {
   /** `DD-MM-YYYY` — note this is NOT ISO, and NOT the format the block endpoint takes. */
   date: string;
+  /**
+   * The live server describes a slot as `startMinute` + `durationMinutes` (minutes from
+   * midnight, so 360 = 6 AM). An earlier revision sent `startHour`/`startTime`/`endTime`
+   * instead; both are accepted here because the hour is the only thing the app can act on —
+   * `/therapist/slots/block` takes `startHours` — and reading the wrong pair silently yields
+   * `startHour: undefined`, which drops every slot out of the shift grid.
+   */
   timeSlots?: {
-    startHour: number;
-    startTime: number;
-    endTime: number;
+    startMinute?: number;
+    durationMinutes?: number;
+    startHour?: number;
+    startTime?: number;
+    endTime?: number;
     category?: string;
     status?: string;
   }[];
@@ -975,13 +984,18 @@ export function mapAvailability(list: BackendAvailabilityDay[]): AvailabilityDay
       label: parsed
         ? parsed.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })
         : day.date,
-      slots: (day.timeSlots ?? []).map((s) => ({
-        startHour: s.startHour,
-        startTime: s.startTime,
-        endTime: s.endTime,
-        category: s.category ?? "morning",
-        status: s.status ?? "open",
-      })),
+      slots: (day.timeSlots ?? []).map((s) => {
+        const startTime = s.startMinute ?? s.startTime ?? 0;
+        const endTime =
+          s.endTime ?? (s.durationMinutes != null ? startTime + s.durationMinutes : startTime);
+        return {
+          startHour: s.startHour ?? Math.floor(startTime / 60),
+          startTime,
+          endTime,
+          category: s.category ?? "morning",
+          status: s.status ?? "open",
+        };
+      }),
     };
   });
 }

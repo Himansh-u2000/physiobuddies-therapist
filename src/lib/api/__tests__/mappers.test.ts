@@ -14,6 +14,7 @@ import {
   buildPatientsFromBookings,
   mapAssessment,
   mapAssessmentToPayload,
+  mapAvailability,
   mapWeeklySchedule,
   mapActivity,
   mapBlogPost,
@@ -382,6 +383,30 @@ describe("mapAssessmentToPayload", () => {
     const body = mapAssessmentToPayload({ ...input, surgeryType: undefined });
     expect(body).not.toHaveProperty("surgeryType");
     expect(body).not.toHaveProperty("fallRisk");
+  });
+});
+
+describe("mapAvailability", () => {
+  it("derives the block-able start hour from the server's startMinute/durationMinutes", () => {
+    const [day] = mapAvailability([
+      {
+        date: "18-08-2026",
+        timeSlots: [
+          { startMinute: 360, durationMinutes: 40, category: "morning", status: "booked" },
+          { startMinute: 1260, durationMinutes: 40, category: "night", status: "open" },
+        ],
+      },
+    ]);
+    expect(day.date).toBe("2026-08-18");
+    expect(day.slots.map((s) => s.startHour)).toEqual([6, 21]);
+    expect(day.slots[0]).toMatchObject({ startTime: 360, endTime: 400, status: "booked" });
+  });
+
+  it("still reads the older startHour/startTime/endTime slot form", () => {
+    const [day] = mapAvailability([
+      { date: "18-08-2026", timeSlots: [{ startHour: 9, startTime: 540, endTime: 580 }] },
+    ]);
+    expect(day.slots[0]).toMatchObject({ startHour: 9, startTime: 540, endTime: 580 });
   });
 });
 
