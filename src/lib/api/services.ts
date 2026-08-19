@@ -1,20 +1,5 @@
 import { client, toAuthTokens } from "./client";
 import { isResponseContractError } from "@/lib/api/errors";
-import {
- mockTherapist,
- mockDashboardStats,
- mockAppointments,
- mockPatients,
- mockTransactions,
- mockEarnings,
- mockNotifications,
- mockPayouts,
- mockWallet,
- mockReviews,
- mockAvailability,
- mockArticles,
- mockFaqs,
-} from "./mock";
 import type {
  Therapist,
  DashboardStats,
@@ -508,20 +493,6 @@ export const availabilityApi = {
   * therapist needs to reach the editor to save over it.
   */
  async getWeeklySchedule(): Promise<WeeklyScheduleResult> {
-  if (USE_MOCK_AVAILABILITY) {
-   return delay({
-    schedule: {
-     monday: { shifts: ["morning", "evening"], disabledHours: [] },
-     tuesday: { shifts: ["morning", "evening"], disabledHours: [] },
-     wednesday: { shifts: ["morning"], disabledHours: [] },
-     thursday: { shifts: ["morning", "evening"], disabledHours: [] },
-     friday: { shifts: ["morning", "evening", "night"], disabledHours: [] },
-     saturday: { shifts: ["morning"], disabledHours: [] },
-     sunday: { shifts: [], disabledHours: [] },
-    },
-    unreadable: false,
-   } satisfies WeeklyScheduleResult);
-  }
   try {
    const { data } = await client.get<BackendWeeklySchedule>(
     "/therapist/slots/schedule"
@@ -545,7 +516,6 @@ export const availabilityApi = {
   * `/therapist/slots/block` (the "By day" tab) rather than through the weekly defaults.
   */
  async updateWeeklySchedule(schedule: WeeklySchedule): Promise<void> {
-  if (USE_MOCK_AVAILABILITY) return delay(undefined, 600);
   const body = Object.fromEntries(
    Object.entries(schedule).map(([day, value]) => [day, value.shifts ?? []])
   );
