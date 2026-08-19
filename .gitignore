@@ -30,17 +30,17 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# env files — ONLY .env.example is committed.
+# env files — NONE are committed.
 #
-# The others were listed here but were also *tracked*, which does nothing: .gitignore is only
-# consulted for untracked paths, so an ignored-looking file that git already knows about is still
-# staged on every edit. They were untracked with `git rm --cached` (2026-08-13) so these rules
-# finally bite. `.env.staging` was never listed at all.
+# There are exactly two (2026-08-18): `.env` for local development and `.env.production` for
+# release builds, which is layered on top of `.env` when NODE_ENV=production. Cloud builds don't
+# read either — their values live in eas.json > build.<profile>.env and the EAS env store.
 #
-# Anything real — client IDs, keys — belongs in `.env*.local` or the EAS env store, never here.
+# These were once listed here while also being *tracked*, which does nothing: .gitignore is only
+# consulted for untracked paths. They were untracked with `git rm --cached` (2026-08-13) so these
+# rules finally bite.
 .env
 .env.*
-!.env.example
 
 # typescript
 *.tsbuildinfo

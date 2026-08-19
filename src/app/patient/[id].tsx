@@ -12,8 +12,6 @@ import { COLORS } from "@/constants/config";
 import { getSessionTypeLabel } from "@/lib/utils/format";
 import type { Appointment } from "@/types";
 
-const DUMMY_PHONE = "+919876543210";
-
 export default function PatientProfileScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -34,7 +32,11 @@ export default function PatientProfileScreen() {
   const nextAppointment = patientAppointments[0];
 
   const callPatient = async () => {
-    const phone = patient?.phone ?? DUMMY_PHONE;
+    const phone = patient?.phone;
+    if (!phone) {
+      showToast("No phone number on file for this patient", "error");
+      return;
+    }
     await dialPatient(phone, nextAppointment?.id);
   };
 

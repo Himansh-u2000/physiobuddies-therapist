@@ -36,85 +36,13 @@ export const RADII = {
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ?? "https://api.physiobuddies.in/api/v1";
 
+/** `__DEV__` is injected by Metro and is absent under Jest/node — probe before reading it. */
+const IS_DEV = typeof __DEV__ !== "undefined" && __DEV__;
+
 /** Resolve a boolean env flag: unset -> fallback; else anything but "false" is true. */
 function envFlag(value: string | undefined, fallback: boolean): boolean {
   return value === undefined ? fallback : value !== "false";
 }
-
-/** Global mock switch — mocks every API domain unless a per-domain flag overrides it. */
-export const USE_MOCK_API = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_API, true);
-
-/**
- * Auth-specific mock switch. Phase 2 wires the real auth endpoints (they exist on the
- * backend) while dashboard/session/etc. stay on mock. Set EXPO_PUBLIC_USE_MOCK_AUTH=false
- * to exercise real auth against the backend while the rest of the app remains mocked.
- * Falls back to the global flag when unset.
- */
-export const USE_MOCK_AUTH = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_AUTH, USE_MOCK_API);
-
-/**
- * Per-domain mock switches (Phase 5 backend integration). Domains whose backend endpoints
- * are implemented fall back to the global flag, so `EXPO_PUBLIC_USE_MOCK_API=false` turns them
- * all real at once. Each can also be pinned independently for staged rollout / debugging.
- */
-export const USE_MOCK_PROFILE = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_PROFILE, USE_MOCK_API);
-export const USE_MOCK_DASHBOARD = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_DASHBOARD, USE_MOCK_API);
-export const USE_MOCK_APPOINTMENTS = envFlag(
-  process.env.EXPO_PUBLIC_USE_MOCK_APPOINTMENTS,
-  USE_MOCK_API,
-);
-export const USE_MOCK_EARNINGS = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_EARNINGS, USE_MOCK_API);
-/** Payouts: GET /therapist/payout (+ /:id) and POST /therapist/payout/request — all verified live. */
-export const USE_MOCK_PAYOUTS = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_PAYOUTS, USE_MOCK_API);
-/** Uploads: POST /file-upload/single (multer field `file`) — verified live. */
-export const USE_MOCK_UPLOAD = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_UPLOAD, USE_MOCK_API);
-/** Availability: GET /therapist/:id/availability, POST/DELETE /therapist/slots/block, /leaves. */
-export const USE_MOCK_AVAILABILITY = envFlag(
-  process.env.EXPO_PUBLIC_USE_MOCK_AVAILABILITY,
-  USE_MOCK_API,
-);
-/** Therapist-authored content: /therapist/articles + /therapist/faqs CRUD, read via /therapist/:id/*. */
-export const USE_MOCK_CONTENT = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_CONTENT, USE_MOCK_API);
-
-/**
- * Session lifecycle — REAL as of the `api.dev.physiobuddies.in` backend. The whole chain is
- * implemented and was probed live: PATCH /therapist/sessions/my-bookings/:id/accept,
- * POST .../generate-otp, .../verify-otp (flips the session to `active`), .../end, plus
- * POST /treatment-session/:id/{start,complete,cancel,no-show,add-docs}. Follows the global flag.
- */
-export const USE_MOCK_SESSION = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_SESSION, USE_MOCK_API);
-/**
- * Clinical assessment — REAL: `GET`/`POST /treatment-plan/:planId/assessment` against the
- * `ClinicalAssessment` model. Note the base path and the id type: it is keyed by the treatment
- * PLAN, not the session — the old `/treatment-session/:id/assessment` now 404s (verified live
- * 2026-08-17). The form's option lists are app-side (`constants/clinical.ts`), mirroring the
- * backend's Prisma enums — there is no form-config endpoint and never was.
- */
-export const USE_MOCK_TREATMENT = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_TREATMENT, USE_MOCK_API);
-/**
- * Patients — no dedicated therapist-patients endpoint exists, but the therapist's own patient
- * roster is derivable from GET /therapist/sessions/my-bookings (one treatment plan per patient
- * engagement, with visit counts and last-visit dates). Follows the global flag; the derivation
- * lives in `mappers.buildPatientsFromBookings`.
- */
-export const USE_MOCK_PATIENTS = envFlag(process.env.EXPO_PUBLIC_USE_MOCK_PATIENTS, USE_MOCK_API);
-
-/**
- * Notifications — **REAL as of 2026-08-17**, and no longer pinned to mock.
- *
- * The old note here said the controllers were empty method bodies that hung the request. That
- * was true of `/notification/*` (singular) and still is — it answers 500. The backend has since
- * implemented the domain under `/notifications/*` (plural), which the app now calls:
- * list, unread-count, mark-read, mark-all-read and preferences all return real data against
- * api.dev.physiobuddies.in. Follows the global flag like every other live domain.
- *
- * Push is a separate question and still impossible: no route accepts a device token, so the
- * list is polled, not pushed.
- */
-export const USE_MOCK_NOTIFICATIONS = envFlag(
-  process.env.EXPO_PUBLIC_USE_MOCK_NOTIFICATIONS,
-  USE_MOCK_API,
-);
 
 /**
  * In-app network log (`/network-log`, entry point in Profile → Support).
@@ -125,10 +53,22 @@ export const USE_MOCK_NOTIFICATIONS = envFlag(
  * is the only way to see a request payload on the device. Keep it OFF for store builds: it
  * holds patient data in memory, and the screen can share it out.
  */
-export const NETWORK_LOG_ENABLED = envFlag(
-  process.env.EXPO_PUBLIC_ENABLE_NETWORK_LOG,
-  typeof __DEV__ !== "undefined" && __DEV__,
-);
+export const NETWORK_LOG_ENABLED = envFlag(process.env.EXPO_PUBLIC_ENABLE_NETWORK_LOG, IS_DEV);
+
+/**
+ * Show the session OTP the backend echoes back to the therapist.
+ *
+ * `POST /treatment-session/:id/send-otp` currently returns the generated code in its own
+ * response so the flow can be tested on a single handset — the therapist doesn't need the
+ * patient's phone to try it. That is a TESTING affordance and a real one-time-password leak:
+ * anyone holding the therapist's device could start a visit the patient never consented to.
+ *
+ * So it is gated here rather than rendered whenever the field happens to be present. Defaults
+ * to `__DEV__`; `.env` turns it on for local + review builds and `.env.production` pins it
+ * `false`. When the backend stops echoing the code this flag simply stops having anything to
+ * show — no app change needed.
+ */
+export const SHOW_TEST_OTP = envFlag(process.env.EXPO_PUBLIC_SHOW_TEST_OTP, IS_DEV);
 
 /**
  * In-app subscription billing switch. OFF because the backend does not yet charge for or activate
@@ -205,10 +145,17 @@ export const STORAGE_KEYS = {
 
 export const OTP_CONFIG = {
   authOtpLength: 6,
-  sessionOtpLength: 4,
+  /**
+   * The start-of-session code the patient reads out — **6 digits**, corrected 2026-08-18.
+   *
+   * It was 4 here, which silently broke the whole flow rather than failing visibly: `OTPInput`
+   * rendered four boxes, so a therapist could never enter the last two digits of a real code,
+   * and the "Verify & start session" button unlocked at four — submitting a truncated code that
+   * the server could only reject. Every screen that mentions the length now interpolates this
+   * value instead of hardcoding a numeral, so the two can't drift apart again.
+   */
+  sessionOtpLength: 6,
   resendCooldownSec: 30,
-  demoOtp: "123456",
-  demoSessionOtp: "1234",
 } as const;
 
 export const SESSION_CONFIG = {

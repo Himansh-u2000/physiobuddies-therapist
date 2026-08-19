@@ -10,8 +10,8 @@ import { COLORS } from "@/constants/config";
 
 /**
  * In-app account deletion (mandated by both app stores; DPDP Act deletion path).
- * STUB: the backend has no DELETE /account endpoint yet, so this succeeds in mock and is
- * ready to wire (see authApi.deleteAccount). Real deletion should soft-delete + revoke tokens.
+ * STUB: the backend has no DELETE /account endpoint yet, so the call 404s until it lands
+ * (see authApi.deleteAccount). Real deletion should soft-delete + revoke tokens.
  */
 export default function DeleteAccountScreen() {
   const router = useRouter();

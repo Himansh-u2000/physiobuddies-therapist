@@ -1,5 +1,5 @@
 ﻿<#
-  Builds a standalone demo APK locally — the same thing the EAS "demo" profile produces,
+  Builds a standalone review APK locally — the same thing the EAS "demo" profile produces,
   but on this machine (no queue, no build quota). First run downloads Gradle + deps and
   takes 20-40 min; later runs are incremental (~2-5 min).
 
@@ -9,10 +9,10 @@
 
   Notes:
   - JAVA_HOME is auto-detected from Android Studio's bundled JBR (no separate JDK needed).
-  - The mock flags are exported as REAL environment variables on purpose: a release build
-    runs with NODE_ENV=production, so Expo would otherwise load .env.production (mocks OFF,
-    pointing at the live API) and every data screen would fail. Process env wins over
-    .env files, so setting them here is what keeps the demo build fully offline.
+  - EXPO_PUBLIC_API_URL is exported as a REAL environment variable on purpose: a release build
+    runs with NODE_ENV=production, so Expo would otherwise load .env.production and point this
+    review build at the LIVE backend. Process env wins over .env files, which is what keeps it
+    aimed at the dev API.
   - The release buildType signs with the bundled debug keystore (Expo template default),
     so this APK has a DIFFERENT signature than EAS-built ones — uninstall the existing app
     once before installing a local build.
@@ -90,35 +90,21 @@ if (Test-Path $cmake412) {
   Write-Host "CMake 4.1.2 not found at $cmake412 — if the build fails with 'ninja: manifest still dirty', install a newer CMake via Android Studio's SDK Manager." -ForegroundColor Yellow
 }
 
-# --- Demo-build env (see note above: must be process env, not .env files) ---
-# Points at the DEPLOYED backend over HTTPS. This is what makes a release APK usable at all:
-# release builds forbid cleartext HTTP, so the old http://localhost:3000 value could never be
-# reached from a phone, and the previous https://staging-api.physiobuddies.in does not resolve.
-# Domains whose backend endpoints are real are turned on individually - which is now ALL of them,
-# notifications included: as of 2026-08-17 the backend serves them under /notifications/ (plural),
-# and the app calls that path. The old note here said they hung; that is only true of the dead
-# singular /notification/ mount.
+# --- Review-build env (see note above: must be process env, not .env files) ---
+# Points at the DEPLOYED dev backend over HTTPS. This is what makes a release APK usable at all:
+# release builds forbid cleartext HTTP, so a http://localhost:3000 value could never be reached
+# from a phone.
 $env:EXPO_PUBLIC_API_URL = "https://api.dev.physiobuddies.in/api/v1"
-$env:EXPO_PUBLIC_USE_MOCK_API = "true"
-$env:EXPO_PUBLIC_USE_MOCK_AUTH = "false"
-$env:EXPO_PUBLIC_USE_MOCK_PROFILE = "false"
-$env:EXPO_PUBLIC_USE_MOCK_DASHBOARD = "false"
-$env:EXPO_PUBLIC_USE_MOCK_APPOINTMENTS = "false"
-$env:EXPO_PUBLIC_USE_MOCK_EARNINGS = "false"
-$env:EXPO_PUBLIC_USE_MOCK_PAYOUTS = "false"
-$env:EXPO_PUBLIC_USE_MOCK_UPLOAD = "false"
-$env:EXPO_PUBLIC_USE_MOCK_AVAILABILITY = "false"
-$env:EXPO_PUBLIC_USE_MOCK_CONTENT = "false"
-$env:EXPO_PUBLIC_USE_MOCK_SESSION = "false"
-$env:EXPO_PUBLIC_USE_MOCK_TREATMENT = "false"
-$env:EXPO_PUBLIC_USE_MOCK_PATIENTS = "false"
-$env:EXPO_PUBLIC_USE_MOCK_NOTIFICATIONS = "false"
 
 # In-app network log (Profile > Support > Network log). ON for this build specifically: it is a
 # RELEASE build, so there is no Metro console and Chrome DevTools cannot attach - without this
 # there is no way to see a request payload or an error body from the phone. Store builds leave
 # the flag unset, where it defaults to __DEV__ (i.e. off).
 $env:EXPO_PUBLIC_ENABLE_NETWORK_LOG = "true"
+
+# Show the session OTP the backend echoes back, so the start-session flow can be tested on this
+# one handset without a patient device. TESTING ONLY - store builds leave this unset/false.
+$env:EXPO_PUBLIC_SHOW_TEST_OTP = "true"
 
 Write-Host "Target ABI = $Abi (pass -Abi x86_64 for an emulator)" -ForegroundColor Cyan
 

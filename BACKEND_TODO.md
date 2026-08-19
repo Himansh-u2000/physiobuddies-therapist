@@ -138,12 +138,143 @@ GET  /therapist/6a60ceb577a6fdaf79a22d9b/faqs
   → 200 [{"question":"…","answer":"…","createdAt":"2026-08-13T17:39:40.847Z"}]   ← no id
 ```
 
-So a therapist can add an FAQ and then never change or remove it. The app now renders those rows
-as explicitly **read-only** with the reason stated, rather than offering Edit/Delete buttons that
-fail on tap. **Fix: add `id` to the select in both read projections** (and return the created row
-from `POST` rather than `data: null`, so the app doesn't have to refetch to see it).
+So a therapist can add an FAQ and then never change or remove it. **Fix: add `id` to the select in
+both read projections** (and return the created row from `POST` rather than `data: null`, so the
+app doesn't have to refetch to see it).
 
-### 1.9 Smaller items
+#### ✅ RESOLVED (2026-08-18): the write routes are back
+
+They had vanished — every POST/PATCH/DELETE answered Express's unmatched-route 404 for part of
+the day, and the app was made read-only behind a flag. All six are live again and were verified
+end-to-end against `api.dev.physiobuddies.in`:
+
+```
+POST   /therapist/faqs      {question, answer}  → 200 {id, question, answer, createdAt}
+POST   /therapist/articles  {title, content}    → 200 {id, title, content, createdAt}
+PATCH  /therapist/faqs/:id                      → 200  (returns the updated row)
+PATCH  /therapist/articles/:id                  → 200  (returns the updated row)
+DELETE /therapist/faqs/:id                      → 202  "FAQ deleted successfully"
+DELETE /therapist/articles/:id                  → 202  "Article deleted successfully"
+```
+
+The app-side flag is gone and the composers, editor and Create buttons are all wired up again.
+
+#### ⚠️ STILL OPEN: the LIST reads omit `id`, so edit and delete remain unreachable
+
+This is the original §1.8 defect and it survived the restore. `POST` and `PATCH` both return the
+row *with* its `id`, but the list projection does not:
+
+```
+GET /therapist/6a830016f85ba191340ff715/faqs
+  → 200 [{"question":"…","answer":"…","createdAt":"…"}]        ← no id
+GET /therapist/6a830016f85ba191340ff715/articles
+  → 200 [{"title":"…","content":"…","createdAt":"…"}]          ← no id
+```
+
+So the practical behaviour for a therapist is: **creating always works; editing or deleting works
+only until the list refetches**, at which point every row loses the id its `PATCH`/`DELETE` needs.
+The screens mark those rows read-only with the reason stated rather than offering controls that
+fail on tap.
+
+**Fix: add `id` to the select in both list projections.** It is one field in each query, the
+models already have it, and the write endpoints already return it — the two reads are the only
+place it is missing.
+
+### 1.9 The session-lifecycle paths the app was calling do not exist
+
+Verified 2026-08-18. Three of the five calls that make up "start and finish a visit" were addressed
+to routes the server has never served, each answering Express's unmatched-route 404:
+
+| App called (404) | Route that actually exists | Status |
+|---|---|---|
+| `PATCH /therapist/sessions/my-bookings/:id/accept` | `POST /treatment-session/confirm`, body `{ sessionId }` | **fixed app-side** |
+| `POST  /therapist/sessions/my-bookings/:id/generate-otp` | `POST /treatment-session/:id/send-otp` (no body) | **fixed app-side** |
+| `POST  /therapist/sessions/my-bookings/:id/verify-otp` | `POST /treatment-session/:id/verify-otp`, body `{ otp }` | **fixed app-side** |
+| `POST  /therapist/sessions/my-bookings/:id/end` | *nothing* — see below | **open** |
+
+Note the id in `confirm` travels in the body, not the path, unlike every other call in the group.
+
+**There is no `end` endpoint.** The closest documented equivalent is
+`POST /treatment-session/:id/improvement-record` — Swagger summary "Record Improvement & Complete
+Session" — which the app already calls separately, and `POST /treatment-plan/:planId/assessment`
+also flips the plan's `active` session to `completed` as a side effect. So a visit *is* completed
+server-side; it is the redundant extra call that fails, and it fails inside the offline sync queue,
+which retries it until the row parks as `error`. Deciding whether the queue should drop that step
+or call `improvement-record` in its place changes queue semantics, so it is left as an explicit
+decision rather than a guess. **Either confirm `improvement-record` is the intended completion
+call, or add the missing `end` route.**
+
+#### `send-otp` does not return the code — there is no way to test the flow on one handset
+
+Probed live 2026-08-18 against a real confirmed session
+(`POST /treatment-session/6a830a19fb5588c9e1e6fc1c/send-otp`):
+
+```
+200 {"success":true,"message":"ok",
+     "data":{"message":"OTP sent to patient successfully.","expiresInMinutes":5}}
+```
+
+No code in the body, and `GET /treatment-session/:id` immediately afterwards still reports
+`otpCode: null`, `otpExpiresAt: null` — so the value is either held outside the session document
+or nulled in the read projection. Either way the therapist has no way to obtain it, and QA needs a
+second logged-in patient handset to test starting a visit at all.
+
+**Ask:** return the generated code on the send-otp response (`otpCode`, matching the session
+model's own field name) in the dev/staging deployment only. The app is already wired for it:
+`pickEchoedOtp` reads it defensively, and `SHOW_TEST_OTP` — pinned `false` in `.env.production`
+and the EAS production profile — decides whether it's rendered. **It must never be returned by
+the production deployment:** it is a one-time password handed to a second party, and anyone
+holding the therapist's device could then start a visit the patient never consented to.
+
+### 1.10 `add-docs` is multipart, and clinical files were bypassing it
+
+Two separate problems, found together on 2026-08-18.
+
+**a) The app posted the wrong content type.** `sessionApi.addDocuments` sent JSON
+(`{ documents: [{ url, name, fileType }] }`) to `POST /treatment-session/:id/add-docs`, which is a
+multipart endpoint. Every shape of JSON is rejected identically:
+
+```
+400 {"success":false,"message":"No file uploaded","code":"VALIDATION_ERROR"}
+```
+
+It had no callers, so the breakage was latent. **Swagger is also wrong here** — it declares an
+`application/json` request body of `{ name, fileType }` with no file part at all. The verified
+contract, probed against the running server:
+
+```
+POST /treatment-session/:id/add-docs        multipart/form-data
+  file      <the bytes>          (multer field name, same as /file-upload/single)
+  name      "xray.jpg"
+  fileType  "image/jpeg"
+→ 200 { id, name, url: "/file/<id>", fileType, mimeType, treatmentPlanId,
+        storagePath: "/app/private-uploads/<hash>", uploadedBy, uploadedByUserId, createdAt }
+```
+
+One document per call — not an array. The document then appears on
+`GET /therapist/sessions/my-bookings/:planId` under `documents[]`. Fixed app-side as
+`sessionApi.addDocument`, pinned by tests, since Swagger can't be trusted for this route.
+
+**b) Patient files were going to a public path.** Session photos were uploaded with
+`/file-upload/single`, which writes to a static path that is **not behind the auth middleware**
+(`/uploads/...` returns no 401 challenge), and the resulting urls were stored on the clinical
+assessment as `documentUrls`. `add-docs` exists precisely to avoid that: its bytes land in
+`private-uploads` and `GET /api/v1/file/:id` gates retrieval — 401 without a token, 404 for anyone
+who isn't the patient, the assigned therapist, or an admin. All clinical files now go through
+`add-docs`; `/file-upload/single` is kept only for avatars and the therapist's own KYC documents.
+
+**Backend asks:**
+
+1. **Fix the Swagger entry** for `add-docs` to describe `multipart/form-data` with a `file` part.
+   As written it would lead any new client into exactly the failure above.
+2. **Accept `Idempotency-Key` on `add-docs`.** It has no dedupe today, so a retry after a dropped
+   response attaches the same photograph to the plan twice. The app works around this by
+   persisting the returned document id and refusing to re-send a row that has one, but that only
+   protects this client.
+3. **Consider whether `/uploads/*` should be public at all** — even for avatars, and given
+   `storagePath` is already returned in API responses.
+
+### 1.11 Smaller items
 - **`my-bookings` returns no per-booking price.** `Appointment.amount` is `0` app-side, so no
   appointment surface can show what a visit is worth. `priceAtBooking` exists on the session.
 - **Swagger is materially inaccurate.** It documents `POST /auth/refresh-token` (the real route is
@@ -207,8 +338,9 @@ async getUserNotifications(_req: Request, _res: Response, _next: NextFunction) {
 The request never gets a response, so a mobile client blocks until timeout. **A hang is worse than a
 404** — the app can't distinguish it from a dead network, so it can't fail fast or fall back.
 
-This is the last domain the app keeps pinned to bundled fixtures regardless of its global mock switch
-(`USE_MOCK_NOTIFICATIONS` is hardcoded `true` for exactly this reason).
+The app now calls the plural `/notifications/*` mount, which is implemented; the singular routes
+below are the dead ones. There is no fixture fallback any more — the mock layer was deleted on
+2026-08-18, so a hanging endpoint surfaces as a request timeout in the UI.
 
 | Route | Purpose | Response `data` |
 |---|---|---|
@@ -302,20 +434,21 @@ of work on both sides, not a gap to close.
 
 ## 5. What's already working — don't re-implement
 
-Wired, probed live against `api.dev.physiobuddies.in`, and un-mocked in the app:
+Wired and probed live against `api.dev.physiobuddies.in`. Every domain now talks to the backend —
+there is no mock path left to fall back to:
 
 | Domain | Endpoints |
 |---|---|
 | Auth | `/auth/login`, `/auth/refresh`, `/auth/google`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/verify-email` |
 | Profile | `GET /user`, `PATCH /user`, `PATCH /user/avatar`, `PATCH /user/password`, `GET /therapist/:id` |
 | Appointments | `GET /therapist/sessions/my-bookings` (+ `/:id`) |
-| Session lifecycle | `PATCH .../my-bookings/:id/accept`, `POST .../generate-otp`, `.../verify-otp`, `.../end`, `POST /therapist/sessions/plan/:id/complete` |
+| Session lifecycle | `POST /treatment-session/confirm`, `POST /treatment-session/:id/{send-otp,verify-otp}`, `POST /therapist/sessions/plan/:id/complete` — see §1.9, the `my-bookings/:id/{accept,generate-otp,verify-otp,end}` paths do **not** exist |
 | Treatment session | `POST /treatment-session/:id/{start,complete,cancel,no-show,add-docs,reschedule-slot}` |
-| Clinical assessment | `GET/POST /treatment-session/:id/assessment` |
+| Clinical assessment | `GET/POST /treatment-plan/:planId/assessment` (plan id, not session id) |
 | Earnings | `GET /therapist/earnings` (+ `/summary`), `GET /therapist/wallet` |
 | Payouts | `GET /therapist/payout` (+ `/:id`), `POST /therapist/payout/request` |
 | Availability | `GET /therapist/:id/availability`, `POST/DELETE /therapist/slots/block`, `GET/PUT /therapist/slots/schedule`, `GET /therapist/slots/overrides`, `POST /therapist/leaves` |
-| Content | `GET /therapist/:id/{articles,faqs,reviews}` + therapist CRUD |
+| Content | `GET /therapist/:id/{articles,faqs,reviews}` — **reads only**, the CRUD routes are gone (§1.8) |
 | Support | `GET/POST /complaint`, `POST /complaint/:id/reply` |
 | Upload | `POST /file-upload/single` |
 
@@ -329,6 +462,7 @@ Wired, probed live against `api.dev.physiobuddies.in`, and un-mocked in the app:
 
 ---
 
-_Updated 2026-08-11 after integrating against `api.dev.physiobuddies.in`. Per-domain mock flags live
-in `src/constants/config.ts`; flip the matching `EXPO_PUBLIC_USE_MOCK_*` to `false` once each
-outstanding item lands._
+_Updated 2026-08-18: the per-domain `EXPO_PUBLIC_USE_MOCK_*` flags and the bundled fixtures
+(`src/lib/api/mock.ts`) were deleted — every service in `src/lib/api/services.ts` now calls the
+backend unconditionally, so an outstanding item below shows up as a real error rather than as
+plausible-looking fake data._

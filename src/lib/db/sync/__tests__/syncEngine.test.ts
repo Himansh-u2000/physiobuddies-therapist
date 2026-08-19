@@ -1,5 +1,5 @@
 import { flushPendingSync, flushPendingPhotoUploads, nextBackoffMs } from "@/lib/db/sync/syncEngine";
-import { sessionApi, treatmentApi, uploadApi } from "@/lib/api/services";
+import { sessionApi, treatmentApi } from "@/lib/api/services";
 import {
   getPendingSyncTreatments,
   markTreatmentSyncResult,
@@ -21,9 +21,8 @@ import {
  */
 
 jest.mock("@/lib/api/services", () => ({
-  sessionApi: { complete: jest.fn() },
   treatmentApi: { submit: jest.fn() },
-  uploadApi: { uploadSessionPhoto: jest.fn() },
+  sessionApi: { addDocument: jest.fn() },
 }));
 
 jest.mock("@/lib/db/repositories", () => ({
@@ -32,7 +31,6 @@ jest.mock("@/lib/db/repositories", () => ({
   treatmentRowToDomain: jest.fn((row) => row),
   getPendingSyncSessions: jest.fn(async () => []),
   markSessionSyncResult: jest.fn(async () => {}),
-  sessionRowToDomain: jest.fn((row) => row),
   getSessionById: jest.fn(async () => null),
   getTreatmentBySessionId: jest.fn(async () => ({ syncStatus: "synced" })),
   requeueErroredSessions: jest.fn(async () => {}),
@@ -128,9 +126,10 @@ describe("flushPendingSync — sessions", () => {
   it("skips a pending row whose local status isn't completed (a live draft, not a completion)", async () => {
     (getPendingSyncSessions as jest.Mock).mockResolvedValue([sessionRow({ status: "active" })]);
 
-    await flushPendingSync(FAKE_DB);
+    const result = await flushPendingSync(FAKE_DB);
 
-    expect(sessionApi.complete).not.toHaveBeenCalled();
+    expect(markSessionSyncResult).not.toHaveBeenCalled();
+    expect(result.sessionsSynced).toBe(0);
   });
 
   it("does not complete a session until its treatment is confirmed synced — attempted in the same pass is not enough", async () => {
@@ -141,7 +140,7 @@ describe("flushPendingSync — sessions", () => {
 
     const result = await flushPendingSync(FAKE_DB);
 
-    expect(sessionApi.complete).not.toHaveBeenCalled();
+    expect(markSessionSyncResult).not.toHaveBeenCalled();
     expect(result.sessionsSynced).toBe(0);
   });
 
@@ -149,19 +148,21 @@ describe("flushPendingSync — sessions", () => {
     (getPendingSyncSessions as jest.Mock).mockResolvedValue([sessionRow()]);
     (getTreatmentBySessionId as jest.Mock).mockResolvedValue(null);
 
-    await flushPendingSync(FAKE_DB);
+    const result = await flushPendingSync(FAKE_DB);
 
-    expect(sessionApi.complete).not.toHaveBeenCalled();
+    expect(markSessionSyncResult).not.toHaveBeenCalled();
+    expect(result.sessionsSynced).toBe(0);
   });
 
-  it("completes with the row's idempotency key and marks it synced once its treatment is synced", async () => {
+  // The completion itself is the assessment POST in the treatment loop — there is no separate
+  // end-of-session call (the `.../my-bookings/:id/end` route this used to hit does not exist).
+  // So "synced" here means: its treatment landed, therefore the server has already closed it.
+  it("marks the session synced off its treatment, with no second network call", async () => {
     (getPendingSyncSessions as jest.Mock).mockResolvedValue([sessionRow()]);
     (getTreatmentBySessionId as jest.Mock).mockResolvedValue({ syncStatus: "synced" });
-    (sessionApi.complete as jest.Mock).mockResolvedValue({ payoutQueued: true });
 
     const result = await flushPendingSync(FAKE_DB);
 
-    expect(sessionApi.complete).toHaveBeenCalledWith("s1", "idem-s1");
     expect(markSessionSyncResult).toHaveBeenCalledWith(
       FAKE_DB,
       "s1",
@@ -170,7 +171,7 @@ describe("flushPendingSync — sessions", () => {
     expect(result.sessionsSynced).toBe(1);
   });
 
-  it("processes treatments before sessions, so a session-complete never races ahead of its treatment", async () => {
+  it("processes treatments before sessions, so a session is never marked synced ahead of its treatment", async () => {
     const order: string[] = [];
     (getPendingSyncTreatments as jest.Mock).mockResolvedValue([treatmentRow()]);
     (getSessionById as jest.Mock).mockResolvedValue({ status: "completed" });
@@ -179,9 +180,8 @@ describe("flushPendingSync — sessions", () => {
       return { id: "server-t1" };
     });
     (getPendingSyncSessions as jest.Mock).mockResolvedValue([sessionRow()]);
-    (sessionApi.complete as jest.Mock).mockImplementation(async () => {
+    (markSessionSyncResult as jest.Mock).mockImplementation(async () => {
       order.push("session");
-      return { payoutQueued: true };
     });
 
     await flushPendingSync(FAKE_DB);
@@ -192,26 +192,28 @@ describe("flushPendingSync — sessions", () => {
 
 describe("flushPendingSync — single-flight", () => {
   it("shares one execution across overlapping calls instead of double-submitting", async () => {
-    (getPendingSyncSessions as jest.Mock).mockResolvedValue([sessionRow()]);
-    (sessionApi.complete as jest.Mock).mockResolvedValue({ payoutQueued: true });
+    (getPendingSyncTreatments as jest.Mock).mockResolvedValue([treatmentRow()]);
+    (getSessionById as jest.Mock).mockResolvedValue({ status: "completed" });
+    (treatmentApi.submit as jest.Mock).mockResolvedValue({ id: "server-t1" });
 
     // Two overlapping triggers, as would happen from treatment.tsx's immediate flush racing
     // useSyncEngine's edge trigger — called back-to-back with no await between them, so the
     // second must hit the in-flight guard rather than starting its own pass.
     const [firstResult, secondResult] = await Promise.all([flushPendingSync(FAKE_DB), flushPendingSync(FAKE_DB)]);
 
-    expect(sessionApi.complete).toHaveBeenCalledTimes(1);
+    expect(treatmentApi.submit).toHaveBeenCalledTimes(1);
     expect(firstResult).toBe(secondResult);
   });
 
   it("runs a fresh flush on the next call once the in-flight one has settled", async () => {
-    (getPendingSyncSessions as jest.Mock).mockResolvedValue([sessionRow()]);
-    (sessionApi.complete as jest.Mock).mockResolvedValue({ payoutQueued: true });
+    (getPendingSyncTreatments as jest.Mock).mockResolvedValue([treatmentRow()]);
+    (getSessionById as jest.Mock).mockResolvedValue({ status: "completed" });
+    (treatmentApi.submit as jest.Mock).mockResolvedValue({ id: "server-t1" });
 
     await flushPendingSync(FAKE_DB);
     await flushPendingSync(FAKE_DB);
 
-    expect(sessionApi.complete).toHaveBeenCalledTimes(2);
+    expect(treatmentApi.submit).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -226,24 +228,35 @@ const photoRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
 });
 
 describe("flushPendingPhotoUploads", () => {
-  it("uploads a queued photo and marks it synced with the returned remote URL", async () => {
+  const doc = {
+    id: "server-p1",
+    name: "session-s1-1.jpg",
+    url: "https://api.dev.physiobuddies.in/api/v1/file/server-p1",
+    fileType: "image/jpeg",
+  };
+
+  // Clinical files go through add-docs (private storage behind GET /file/:id), never through
+  // the generic /file-upload/single, which writes to an ungated static path.
+  it("uploads a queued file through the private clinical route and stores url + server id", async () => {
     (getPendingPhotoUploads as jest.Mock).mockResolvedValue([photoRow()]);
-    (uploadApi.uploadSessionPhoto as jest.Mock).mockResolvedValue({ url: "https://cdn/photo1.jpg", id: "server-p1" });
+    (sessionApi.addDocument as jest.Mock).mockResolvedValue(doc);
 
     const result = await flushPendingPhotoUploads(FAKE_DB);
 
-    expect(uploadApi.uploadSessionPhoto).toHaveBeenCalledWith("s1", "file:///photo1.jpg", "session-s1-1.jpg", "image/jpeg");
+    expect(sessionApi.addDocument).toHaveBeenCalledWith("s1", "file:///photo1.jpg", "session-s1-1.jpg", "image/jpeg");
     expect(markPhotoSyncResult).toHaveBeenCalledWith(
       FAKE_DB,
       "photo1",
-      expect.objectContaining({ syncStatus: "synced", remoteUrl: "https://cdn/photo1.jpg" }),
+      // The id is what makes a retry safe: add-docs takes no Idempotency-Key, and
+      // getPendingPhotoUploads refuses to return a row that already has one.
+      expect.objectContaining({ syncStatus: "synced", remoteUrl: doc.url, remoteDocId: "server-p1" }),
     );
     expect(result.uploaded).toBe(1);
   });
 
   it("on a retryable failure, stays pending with backoff — the file is never dropped", async () => {
     (getPendingPhotoUploads as jest.Mock).mockResolvedValue([photoRow({ syncAttempts: 1 })]);
-    (uploadApi.uploadSessionPhoto as jest.Mock).mockRejectedValue(Object.assign(new Error("network"), { isAxiosError: true }));
+    (sessionApi.addDocument as jest.Mock).mockRejectedValue(Object.assign(new Error("network"), { isAxiosError: true }));
 
     const result = await flushPendingPhotoUploads(FAKE_DB);
 
@@ -257,11 +270,11 @@ describe("flushPendingPhotoUploads", () => {
 
   it("is single-flighted independently of the session/treatment queue", async () => {
     (getPendingPhotoUploads as jest.Mock).mockResolvedValue([photoRow()]);
-    (uploadApi.uploadSessionPhoto as jest.Mock).mockResolvedValue({ url: "https://cdn/photo1.jpg", id: "server-p1" });
+    (sessionApi.addDocument as jest.Mock).mockResolvedValue(doc);
 
     const [first, second] = await Promise.all([flushPendingPhotoUploads(FAKE_DB), flushPendingPhotoUploads(FAKE_DB)]);
 
-    expect(uploadApi.uploadSessionPhoto).toHaveBeenCalledTimes(1);
+    expect(sessionApi.addDocument).toHaveBeenCalledTimes(1);
     expect(first).toBe(second);
   });
 });

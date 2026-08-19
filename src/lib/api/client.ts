@@ -1,5 +1,5 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
-import { API_BASE_URL, USE_MOCK_API } from "@/constants/config";
+import { API_BASE_URL } from "@/constants/config";
 import { getTokens, saveTokens, clearTokens, isExpired } from "@/lib/storage/secure";
 import { jwtExpiryMs } from "@/lib/auth/jwt";
 import { isRetryable, normalizeError } from "@/lib/api/errors";
@@ -21,8 +21,6 @@ function absoluteUrl(config: { baseURL?: string; url?: string }): string {
   const path = config.url ?? "";
   return /^https?:\/\//i.test(path) ? path : `${base}${path.startsWith("/") ? "" : "/"}${path}`;
 }
-
-const USE_MOCK = USE_MOCK_API;
 
 const client: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -218,4 +216,4 @@ client.interceptors.response.use(
   },
 );
 
-export { client, USE_MOCK };
+export { client };

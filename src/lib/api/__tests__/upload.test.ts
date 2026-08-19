@@ -9,28 +9,14 @@
  * the runtime supplies `multipart/form-data; boundary=…` itself, and that is what this pins.
  */
 
-import { uploadApi, absoluteFileUrl } from "@/lib/api/services";
+import { uploadApi, sessionApi, absoluteFileUrl, privateFileUrl } from "@/lib/api/services";
 import { client } from "@/lib/api/client";
 
 // `jest.mock` is hoisted above the imports above by babel-plugin-jest-hoist, so these stubs are
 // in place before `services.ts` resolves them — same arrangement as client.test.ts.
 jest.mock("@/constants/config", () => ({
   API_BASE_URL: "https://api.dev.physiobuddies.in/api/v1",
-  OTP_CONFIG: { authOtpLength: 6, sessionOtpLength: 4, demoOtp: "123456", demoSessionOtp: "1234" },
-  USE_MOCK_AUTH: true,
-  USE_MOCK_PROFILE: true,
-  USE_MOCK_DASHBOARD: true,
-  USE_MOCK_APPOINTMENTS: true,
-  USE_MOCK_EARNINGS: true,
-  USE_MOCK_SESSION: true,
-  USE_MOCK_TREATMENT: true,
-  USE_MOCK_NOTIFICATIONS: true,
-  USE_MOCK_PATIENTS: true,
-  USE_MOCK_PAYOUTS: true,
-  USE_MOCK_AVAILABILITY: true,
-  USE_MOCK_CONTENT: true,
-  // The one flag under test — uploads go to the real branch.
-  USE_MOCK_UPLOAD: false,
+  SUBSCRIPTION_PAYMENT_ENABLED: false,
 }));
 
 jest.mock("@/lib/api/client", () => ({
@@ -42,14 +28,14 @@ jest.mock("@/lib/storage/secure", () => ({ getTokens: jest.fn(), saveTokens: jes
 
 const post = client.post as jest.Mock;
 
-describe("uploadApi", () => {
+describe("uploadApi.uploadDocument — the PUBLIC uploader", () => {
   beforeEach(() => {
     post.mockReset();
     post.mockResolvedValue({ data: { url: "https://cdn.example/img.jpg", id: "img-1" } });
   });
 
   it("clears Content-Type so the runtime can set the multipart boundary", async () => {
-    await uploadApi.uploadSessionPhoto("sess-1", "file:///photo.jpg", "photo.jpg", "image/jpeg");
+    await uploadApi.uploadDocument("file:///kyc.jpg", "kyc.jpg", "image/jpeg");
 
     const [url, body, config] = post.mock.calls[0];
     expect(url).toBe("/file-upload/single");
@@ -59,21 +45,15 @@ describe("uploadApi", () => {
   });
 
   it("sends the file under the field name multer expects", async () => {
-    await uploadApi.uploadSessionPhoto("sess-1", "file:///photo.jpg", "photo.jpg", "image/jpeg");
+    await uploadApi.uploadDocument("file:///kyc.jpg", "kyc.jpg", "image/jpeg", "registration");
     const body: FormData = post.mock.calls[0][1];
     expect(body.get("file")).toBeTruthy();
-    expect(body.get("sessionId")).toBe("sess-1");
-  });
-
-  it("passes treatmentId through for treatment attachments", async () => {
-    await uploadApi.uploadTreatmentAttachment("t-9", "file:///a.jpg", "a.jpg", "image/jpeg");
-    const body: FormData = post.mock.calls[0][1];
-    expect(body.get("treatmentId")).toBe("t-9");
+    expect(body.get("kind")).toBe("registration");
   });
 
   it("normalises the response url across the plausible key names", async () => {
     post.mockResolvedValue({ data: { location: "https://cdn.example/b.jpg" } });
-    const r = await uploadApi.uploadSessionPhoto("s", "file:///b.jpg", "b.jpg", "image/jpeg");
+    const r = await uploadApi.uploadDocument("file:///b.jpg", "b.jpg", "image/jpeg");
     expect(r.url).toBe("https://cdn.example/b.jpg");
   });
 
@@ -81,8 +61,75 @@ describe("uploadApi", () => {
     // Silently succeeding here is the dangerous case: the caller would attach a blank photo.
     post.mockResolvedValue({ data: { ok: true } });
     await expect(
-      uploadApi.uploadSessionPhoto("s", "file:///c.jpg", "c.jpg", "image/jpeg"),
+      uploadApi.uploadDocument("file:///c.jpg", "c.jpg", "image/jpeg"),
     ).rejects.toThrow(/no file URL/i);
+  });
+});
+
+/**
+ * `sessionApi.addDocument` — the PRIVATE, clinical uploader.
+ *
+ * Pinned separately from the public one because the previous implementation posted JSON
+ * (`{ documents: [{ url, name, fileType }] }`) to this route and was rejected with
+ * `400 "No file uploaded"` every time. It had no callers, so nothing surfaced the breakage.
+ * Swagger still describes an `application/json` body here, so the shape below can only be
+ * defended by a test — it came from probing the running server.
+ */
+describe("sessionApi.addDocument — the PRIVATE clinical uploader", () => {
+  beforeEach(() => {
+    post.mockReset();
+    post.mockResolvedValue({
+      data: {
+        id: "doc-1",
+        name: "xray.jpg",
+        url: "/file/doc-1",
+        fileType: "image/jpeg",
+        createdAt: "2026-08-18T07:15:14.592Z",
+      },
+    });
+  });
+
+  it("posts multipart to the session's add-docs route, not JSON", async () => {
+    await sessionApi.addDocument("sess-1", "file:///xray.jpg", "xray.jpg", "image/jpeg");
+
+    const [url, body, config] = post.mock.calls[0];
+    expect(url).toBe("/treatment-session/sess-1/add-docs");
+    expect(body).toBeInstanceOf(FormData);
+    expect(config.headers["Content-Type"]).toBeNull();
+  });
+
+  it("sends the bytes under `file`, with name and fileType as sibling form fields", async () => {
+    await sessionApi.addDocument("sess-1", "file:///xray.jpg", "xray.jpg", "image/jpeg");
+    const body: FormData = post.mock.calls[0][1];
+    expect(body.get("file")).toBeTruthy();
+    expect(body.get("name")).toBe("xray.jpg");
+    expect(body.get("fileType")).toBe("image/jpeg");
+  });
+
+  it("absolutises the private url KEEPING /api/v1 — the file route is versioned", async () => {
+    const doc = await sessionApi.addDocument("sess-1", "file:///xray.jpg", "xray.jpg", "image/jpeg");
+    expect(doc.url).toBe("https://api.dev.physiobuddies.in/api/v1/file/doc-1");
+    expect(doc.id).toBe("doc-1");
+  });
+
+  it("throws when the server returns no document id, rather than queueing an unreferenceable file", async () => {
+    post.mockResolvedValue({ data: { name: "xray.jpg" } });
+    await expect(
+      sessionApi.addDocument("sess-1", "file:///xray.jpg", "xray.jpg", "image/jpeg"),
+    ).rejects.toThrow(/no document id/i);
+  });
+});
+
+describe("privateFileUrl", () => {
+  // The mirror-image of absoluteFileUrl below, and the reason both exist: /uploads is served
+  // from the site root, /file/:id is an API route. Resolving one with the other's rule yields a
+  // 404 that reads like a missing file rather than a wrong URL.
+  it("keeps the /api/v1 prefix", () => {
+    expect(privateFileUrl("/file/abc")).toBe("https://api.dev.physiobuddies.in/api/v1/file/abc");
+  });
+
+  it("leaves an already-absolute url alone", () => {
+    expect(privateFileUrl("https://cdn.example/x.jpg")).toBe("https://cdn.example/x.jpg");
   });
 });
 

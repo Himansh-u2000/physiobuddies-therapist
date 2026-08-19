@@ -22,6 +22,7 @@ import {
   NotebookPen,
   Calendar,
   TriangleAlert,
+  Paperclip,
 } from "lucide-react-native";
 import {
   Avatar,
@@ -51,9 +52,12 @@ import {
   upsertSessionDraft,
   getSessionById,
   getPhotosForSession,
+  enqueuePhotoUpload,
 } from "@/lib/db/repositories";
 import type { SessionPhotoRow } from "@/lib/db/repositories";
-import { flushPendingSync } from "@/lib/db/sync/syncEngine";
+import { flushPendingSync, flushPendingPhotoUploads } from "@/lib/db/sync/syncEngine";
+import { pickDocument, MAX_UPLOAD_BYTES } from "@/lib/hooks/useFilePicker";
+import { privateImageSource, useFileAuthToken } from "@/lib/utils/privateFile";
 import { COLORS } from "@/constants/config";
 import {
   ASSESSMENT_TYPES,
@@ -208,6 +212,57 @@ export default function TreatmentFormScreen() {
       };
     }, [db, sessionId]),
   );
+
+  // Uploaded clinical files live behind `GET /api/v1/file/:id`, so a thumbnail needs the
+  // bearer token attached. Without it expo-image issues an unauthenticated GET, gets a 401 and
+  // renders an empty box with no error — a silent failure, which is why the token is read here
+  // rather than left to each Image.
+  const fileToken = useFileAuthToken();
+  const [attaching, setAttaching] = useState(false);
+
+  /**
+   * Attach a clinical document (X-ray, referral, lab report) to this session.
+   *
+   * Queued locally first, exactly like a camera capture: the file is on-device the moment the
+   * picker returns, so attaching succeeds in a basement with no signal and the upload drains
+   * when connectivity comes back. Uploading inline instead would throw offline and lose the
+   * attachment — the failure the photo queue was built to end.
+   */
+  const handleAttachDocument = async () => {
+    if (!db || !sessionId) {
+      showToast("No active session", "error");
+      return;
+    }
+    setAttaching(true);
+    try {
+      const file = await pickDocument();
+      if (!file) return; // cancelled — not an error, say nothing
+      if (file.size != null && file.size > MAX_UPLOAD_BYTES) {
+        showToast(
+          `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB. Please choose one under ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.`,
+          "error",
+        );
+        return;
+      }
+      await enqueuePhotoUpload(db, {
+        id: Crypto.randomUUID(),
+        sessionId,
+        localUri: file.uri,
+        fileName: file.name,
+        mimeType: file.mimeType,
+        kind: "document",
+      });
+      const rows = await getPhotosForSession(db, sessionId);
+      setPhotos(rows);
+      showToast("Document attached — uploading");
+      // Best-effort immediate push; no-ops offline and the queue retries.
+      flushPendingPhotoUploads(db).catch(() => {});
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Couldn't attach that file.", "error");
+    } finally {
+      setAttaching(false);
+    }
+  };
 
   const togglePainRegion = (region: string) => {
     setPainRegions((prev) =>
@@ -790,26 +845,22 @@ export default function TreatmentFormScreen() {
             <Section title="Attachments">
               {photos.length === 0 ? (
                 <Text className="text-muted text-[11.5px] -mt-1">
-                  No photos captured during this session yet.
+                  No photos or documents attached to this session yet.
                 </Text>
               ) : (
-                photos.map((photo) => {
-                  const uploaded = photo.syncStatus === "synced";
-                  const stuck = photo.syncStatus === "error";
+                photos.map((file) => {
+                  const uploaded = file.syncStatus === "synced";
+                  const stuck = file.syncStatus === "error";
                   return (
                     <View
-                      key={photo.id}
+                      key={file.id}
                       className="flex-row items-center p-2.5 rounded-md border border-border"
                       style={{ gap: 10 }}
                     >
-                      <Image
-                        source={{ uri: photo.remoteUrl ?? photo.localUri }}
-                        style={{ width: 52, height: 52, borderRadius: 10, backgroundColor: COLORS.primarySoft }}
-                        contentFit="cover"
-                      />
+                      <AttachmentThumb file={file} token={fileToken} />
                       <View className="flex-1">
                         <Text className="text-[12.5px] font-bold text-fg" numberOfLines={1}>
-                          {photo.fileName}
+                          {file.fileName}
                         </Text>
                         <Text className="text-muted text-[11.5px]">
                           {uploaded ? "Uploaded" : stuck ? "Couldn't upload — will retry" : "Saved on device — uploading"}
@@ -828,15 +879,36 @@ export default function TreatmentFormScreen() {
                   );
                 })
               )}
-              <Pressable
-                onPress={() => router.push("/session/active")}
-                className="min-h-[82px] rounded-[14px] border-[1.5px] border-dashed items-center justify-center active:opacity-80"
-                style={{ backgroundColor: "rgba(0,64,96,0.02)", borderColor: "rgba(0,64,96,0.15)" }}
-              >
-                <Upload size={26} color={COLORS.muted} />
-                <Text className="text-[12px] font-bold text-fg mt-1.5">Add a photo</Text>
-                <Text className="text-muted text-[11px]">Opens the session camera</Text>
-              </Pressable>
+              <View className="flex-row" style={{ gap: 10 }}>
+                <Pressable
+                  onPress={() => router.push("/session/active")}
+                  className="flex-1 min-h-[82px] rounded-[14px] border-[1.5px] border-dashed items-center justify-center active:opacity-80"
+                  style={{ backgroundColor: "rgba(0,64,96,0.02)", borderColor: "rgba(0,64,96,0.15)" }}
+                >
+                  <Upload size={24} color={COLORS.muted} />
+                  <Text className="text-[12px] font-bold text-fg mt-1.5">Add a photo</Text>
+                  <Text className="text-muted text-[11px]">Session camera</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleAttachDocument}
+                  disabled={attaching}
+                  className="flex-1 min-h-[82px] rounded-[14px] border-[1.5px] border-dashed items-center justify-center active:opacity-80"
+                  style={{
+                    backgroundColor: "rgba(0,64,96,0.02)",
+                    borderColor: "rgba(0,64,96,0.15)",
+                    opacity: attaching ? 0.6 : 1,
+                  }}
+                >
+                  <Paperclip size={24} color={COLORS.muted} />
+                  <Text className="text-[12px] font-bold text-fg mt-1.5">
+                    {attaching ? "Opening…" : "Attach a document"}
+                  </Text>
+                  <Text className="text-muted text-[11px]">X-ray, report, PDF</Text>
+                </Pressable>
+              </View>
+              <Text className="text-muted text-[11px] leading-4">
+                Files are stored privately — only you, this patient and an admin can open them.
+              </Text>
             </Section>
           </>
         )}
@@ -1058,6 +1130,45 @@ function PhaseStepper({
         Step {phase + 1} of {PHASES.length} · {PHASES[phase].label}
       </Text>
     </View>
+  );
+}
+
+/**
+ * Thumbnail for one attachment, with a local-first / private-remote-fallback chain.
+ *
+ * The on-device copy is preferred: no network, no token, byte-identical to what was uploaded.
+ * But `localUri` points into the app's cache, which the OS is free to evict — the row still
+ * holds the path, so a plain `??` chain can't detect it and would render a permanently broken
+ * box. `onError` is the only signal that the local file is gone, so the fallback is wired to it
+ * rather than to a null check.
+ *
+ * The fallback is the private `/file/:id` url, which 401s without an `Authorization` header —
+ * hence `privateImageSource`. If that fails too (still uploading, so no remote yet; or the token
+ * has rotated) it degrades to the same file glyph a PDF gets, never to an empty frame.
+ */
+function AttachmentThumb({ file, token }: { file: SessionPhotoRow; token: string | null }) {
+  const [localFailed, setLocalFailed] = useState(false);
+  const size = { width: 52, height: 52, borderRadius: 10, backgroundColor: COLORS.primarySoft };
+
+  const isImage = file.mimeType.startsWith("image/");
+  const uri = localFailed ? file.remoteUrl : file.localUri;
+  const source = isImage ? privateImageSource(uri, token) : null;
+
+  if (!source) {
+    return (
+      <View className="items-center justify-center" style={size}>
+        <FileText size={22} color={COLORS.accent} />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={source}
+      style={size}
+      contentFit="cover"
+      onError={() => setLocalFailed(true)}
+    />
   );
 }
 

@@ -1,5 +1,5 @@
 import { isRetryable, normalizeError } from "@/lib/api/errors";
-import { sessionApi, treatmentApi, uploadApi } from "@/lib/api/services";
+import { sessionApi, treatmentApi } from "@/lib/api/services";
 import type { DrizzleDB } from "../provider";
 import {
   getPendingSyncTreatments,
@@ -7,7 +7,6 @@ import {
   treatmentRowToDomain,
   getPendingSyncSessions,
   markSessionSyncResult,
-  sessionRowToDomain,
   getSessionById,
   getTreatmentBySessionId,
   requeueErroredSessions,
@@ -112,15 +111,23 @@ async function runFlush(db: DrizzleDB): Promise<SyncResult> {
     // as "not synced yet", not as "nothing to wait for".
     const treatment = await getTreatmentBySessionId(db, row.id);
     if (treatment?.syncStatus !== "synced") continue;
-    const session = sessionRowToDomain(row);
-    try {
-      await sessionApi.complete(session.id, row.idempotencyKey);
-      await markSessionSyncResult(db, row.id, { syncStatus: "synced", syncAttempts: row.syncAttempts, nextRetryAt: 0 });
-      sessionsSynced++;
-    } catch (e) {
-      await markSessionSyncResult(db, row.id, resultFor(e, row.syncAttempts));
-      failed++;
-    }
+    // No second network call: **the assessment POST above IS the completion.**
+    // `POST /treatment-plan/:planId/assessment` flips the plan's `active` session to
+    // `completed` and writes the status log server-side, so by the time the treatment row is
+    // `synced` the session is already closed on the server.
+    //
+    // This used to POST `.../my-bookings/:id/end` (`sessionApi.complete`), a route that
+    // has never existed (verified 2026-08-18: Express answers its unmatched-route 404). Every
+    // completed visit therefore failed here and retried until the row parked as `error`, which
+    // is what surfaced as a permanently "unsynced" session in the UI despite the server having
+    // the record.
+    //
+    // The API's other completion route, `POST /treatment-session/:id/improvement-record`, is
+    // NOT a drop-in replacement: it requires `painScoreAfter` and `improvementNotes`, and
+    // nothing in the app collects either. Synthesising them here would write invented numbers
+    // into a patient's clinical record. It needs a screen first — tracked in BACKEND_TODO §1.9.
+    await markSessionSyncResult(db, row.id, { syncStatus: "synced", syncAttempts: row.syncAttempts, nextRetryAt: 0 });
+    sessionsSynced++;
   }
 
   return { treatmentsSynced, sessionsSynced, failed };
@@ -128,9 +135,10 @@ async function runFlush(db: DrizzleDB): Promise<SyncResult> {
 
 /**
  * Flushes locally-queued session photo uploads. Deliberately separate from
- * `flushPendingSync` — a photo has no completion-ordering constraint (it can upload any
- * time during a live session, not just after submission) and no idempotency-key-on-payout
- * stakes; it's "get this file to the server eventually", not "never double-charge". Same
+ * `flushPendingSync` — a file has no completion-ordering constraint (it can upload any
+ * time during a live session, not just after submission) and no payout stakes; it's "get this
+ * file to the server eventually", not "never double-charge". It does still need de-duplication,
+ * which is enforced by the stored document id rather than an idempotency key — see below. Same
  * backoff policy and single-flight guard as the main queue, for the same reasons: capture
  * (`active.tsx`'s handleCapturePhoto) can trigger an immediate flush that races
  * `useSyncEngine`'s edge/interval triggers.
@@ -156,12 +164,25 @@ async function runPhotoFlush(db: DrizzleDB): Promise<PhotoSyncResult> {
   const pending = await getPendingPhotoUploads(db, now);
   for (const row of pending) {
     try {
-      const result = await uploadApi.uploadSessionPhoto(row.sessionId, row.localUri, row.fileName, row.mimeType);
+      // `sessionApi.addDocument`, NOT the generic uploader. These are photographs of a patient
+      // and their clinical documents: `add-docs` stores them in the server's private area behind
+      // `GET /api/v1/file/:id`, whereas `/file-upload/single` — what this used to call — puts
+      // them on an ungated static path. The server id is persisted alongside the url because the
+      // endpoint has no `Idempotency-Key`, and `getPendingPhotoUploads` refuses to hand back a
+      // row that already has one; without that a lost response means the same photo is attached
+      // to the plan twice.
+      const doc = await sessionApi.addDocument(
+        row.sessionId,
+        row.localUri,
+        row.fileName,
+        row.mimeType,
+      );
       await markPhotoSyncResult(db, row.id, {
         syncStatus: "synced",
         syncAttempts: row.syncAttempts,
         nextRetryAt: 0,
-        remoteUrl: result.url,
+        remoteUrl: doc.url,
+        remoteDocId: doc.id,
       });
       uploaded++;
     } catch (e) {

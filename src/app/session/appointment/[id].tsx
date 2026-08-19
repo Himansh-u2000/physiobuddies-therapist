@@ -4,12 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronLeft, ChevronRight, Share2, Phone, MessageSquare, Navigation, Play, CheckCircle2 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Avatar, Badge, Button, PaymentBadge, StatusBadge } from "@/components/ui";
+import { Avatar, Badge, Button, PaymentBadge, Skeleton, StatusBadge } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useSessionStore } from "@/lib/stores/session.store";
 import { callPatient as dialPatient } from "@/lib/services/callService";
-import { COLORS } from "@/constants/config";
+import { COLORS, OTP_CONFIG } from "@/constants/config";
 import { getSessionTypeLabel } from "@/lib/utils/format";
 
 export default function AppointmentDetailScreen() {
@@ -19,16 +19,45 @@ export default function AppointmentDetailScreen() {
   const showToast = useAppStore((s) => s.showToast);
   const sessionIsActive = useSessionStore((s) => s.isActive);
   const activeAppointmentId = useSessionStore((s) => s.appointmentId);
-  const { data: appointment } = useQuery({
+  const { data: appointment, isLoading, isError, refetch } = useQuery({
     queryKey: ["appointment", id],
     queryFn: () => appointmentApi.getById(id),
     enabled: !!id,
   });
 
-  if (!appointment) return <View className="flex-1 bg-bg" />;
+  // The detail call fans out to the booking endpoint and can take a beat on a bad connection.
+  // Previously this rendered a bare background — indistinguishable from a screen that had
+  // failed — so the therapist had no way to tell "loading" from "broken" while standing at the
+  // patient's door. The skeleton mirrors the real layout: header block, patient card, workflow.
+  if (isLoading || (!appointment && !isError)) return <AppointmentDetailSkeleton />;
+
+  if (!appointment) {
+    return (
+      <View className="flex-1 bg-bg items-center justify-center px-8" style={{ gap: 12 }}>
+        <Text className="text-[15px] font-bold text-fg text-center">
+          Couldn&apos;t load this session
+        </Text>
+        <Text className="text-muted text-[12.5px] text-center leading-5">
+          We couldn&apos;t reach the server. This is usually temporary.
+        </Text>
+        <View className="flex-row" style={{ gap: 8 }}>
+          <Button variant="secondary" fullWidth={false} onPress={() => refetch()}>
+            <Text className="text-accent font-bold text-[13px]">Try again</Text>
+          </Button>
+          <Button variant="secondary" fullWidth={false} onPress={() => router.back()}>
+            <Text className="text-accent font-bold text-[13px]">Go back</Text>
+          </Button>
+        </View>
+      </View>
+    );
+  }
 
   const callPatient = async () => {
-    const phone = appointment.patientPhone ?? "+919876543210";
+    const phone = appointment.patientPhone;
+    if (!phone) {
+      showToast("No phone number on file for this patient", "error");
+      return;
+    }
     await dialPatient(phone, appointment.id);
   };
 
@@ -56,7 +85,7 @@ export default function AppointmentDetailScreen() {
 
   const steps = [
     { num: 1, title: "Navigate to patient", sub: "Route, call if needed", done: appointment.workflowStep > 1 },
-    { num: 2, title: "Enter patient OTP", sub: "Patient provides 4-digit OTP to start the session timer", current: appointment.workflowStep === 2 },
+    { num: 2, title: "Enter patient OTP", sub: `Patient provides ${OTP_CONFIG.sessionOtpLength}-digit OTP to start the session timer`, current: appointment.workflowStep === 2 },
     { num: 3, title: "Run treatment", sub: "Checklist, notes, photos, exercises", done: appointment.workflowStep > 3 },
     { num: 4, title: "Submit treatment record", sub: "Locks note and triggers payout review", done: appointment.workflowStep > 4 },
   ];
@@ -73,7 +102,11 @@ export default function AppointmentDetailScreen() {
               <Share2 size={18} color={COLORS.accent} />
             </Pressable>
           </View>
-          <View className="absolute bottom-3 left-3.5">
+          {/* `bottom-8`, not `bottom-3`: the content below pulls itself up with `-mt-4`, so the
+              white card's top edge sits 16px ABOVE the gradient's bottom. At bottom-3 the visit
+              type and time badges were tucked under that card. 32px clears the overlap and leaves
+              a 16px gap. Keep this in step with the skeleton's header, which mirrors the layout. */}
+          <View className="absolute bottom-8 left-3.5">
             <Text className="text-white text-[20px] font-extrabold">Session details</Text>
             <View className="flex-row mt-1.5" style={{ gap: 6 }}>
               <Badge variant="info" tone="solid" size="sm">{getSessionTypeLabel(appointment.type)}</Badge>
@@ -184,6 +217,73 @@ export default function AppointmentDetailScreen() {
           <Play size={16} color="#fff" />
           <Text className="text-white font-bold text-[14px]">Start session</Text>
         </Button>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Loading placeholder shaped like the loaded screen — gradient header, patient card, workflow
+ * list — so the layout doesn't jump when the data lands. Deliberately not animated: the rest of
+ * the app's `Skeleton` is a flat block, and one pulsing screen would read as a different app.
+ */
+function AppointmentDetailSkeleton() {
+  const insets = useSafeAreaInsets();
+  return (
+    <View className="flex-1 bg-bg">
+      <LinearGradient
+        colors={["#003554", "#004060"]}
+        className="relative overflow-hidden"
+        style={{ height: 180 + insets.top }}
+      >
+        <View className="absolute bottom-8 left-3.5" style={{ gap: 8 }}>
+          <Skeleton width={170} height={22} radius={8} style={{ backgroundColor: "rgba(255,255,255,0.25)" }} />
+          <View className="flex-row" style={{ gap: 6 }}>
+            <Skeleton width={80} height={18} radius={9} style={{ backgroundColor: "rgba(255,255,255,0.2)" }} />
+            <Skeleton width={130} height={18} radius={9} style={{ backgroundColor: "rgba(255,255,255,0.2)" }} />
+          </View>
+        </View>
+      </LinearGradient>
+
+      <View className="px-3.5 -mt-4" style={{ gap: 12 }}>
+        <View
+          className="bg-white border border-border rounded-md p-4"
+          style={{ gap: 14, shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 28, elevation: 6 }}
+        >
+          <View className="flex-row items-start" style={{ gap: 14 }}>
+            <Skeleton width={56} height={56} radius={16} />
+            <View className="flex-1" style={{ gap: 7 }}>
+              <Skeleton width="65%" height={16} />
+              <Skeleton width="85%" height={12} />
+              <Skeleton width="75%" height={12} />
+            </View>
+          </View>
+          <View className="h-px bg-border" />
+          <View className="flex-row" style={{ gap: 8 }}>
+            <View className="flex-1">
+              <Skeleton height={36} radius={10} />
+            </View>
+            <View className="flex-1">
+              <Skeleton height={36} radius={10} />
+            </View>
+          </View>
+        </View>
+
+        <View className="bg-white border border-border rounded-md p-3.5" style={{ gap: 14 }}>
+          <View className="flex-row items-center justify-between">
+            <Skeleton width={130} height={14} />
+            <Skeleton width={72} height={18} radius={9} />
+          </View>
+          {[0, 1, 2, 3].map((i) => (
+            <View key={i} className="flex-row items-center" style={{ gap: 10 }}>
+              <Skeleton width={28} height={28} radius={14} />
+              <View className="flex-1" style={{ gap: 6 }}>
+                <Skeleton width="55%" height={13} />
+                <Skeleton width="80%" height={11} />
+              </View>
+            </View>
+          ))}
+        </View>
       </View>
     </View>
   );

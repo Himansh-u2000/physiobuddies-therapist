@@ -26,10 +26,6 @@ adb install -r android/app/build/outputs/apk/release/app-release.apk
 Sign in with **"Continue with email"** using the seed therapist:
 `aarav@physiobuddies.com` / `Password@123`.
 
-> ⚠️ **The phone-number login on the first screen is mock-only.** It accepts any 6-digit code and
-> mints a fake session that the real backend rejects. Use the email path. Tracked as blocker P1 in
-> [`../progress.md`](../progress.md).
-
 ### Why not Expo Go?
 
 **Expo Go cannot run this app at all.** It depends on native modules Expo Go doesn't bundle:
@@ -38,20 +34,30 @@ Google Sign-In, SQLCipher-encrypted SQLite, camera, biometrics, and the image/do
 
 ## Environments
 
-The API base and per-domain mock flags come from `EXPO_PUBLIC_*` env vars — see `.env.development`.
+There are **two** env files, both git-ignored, and neither holds a secret (`EXPO_PUBLIC_*` values
+are inlined into the JS bundle and readable out of any APK):
 
-| Env | API |
-|---|---|
-| development / staging | `https://api.dev.physiobuddies.in/api/v1` |
-| production | `https://api.physiobuddies.in/api/v1` (not yet live) |
+| File | When it loads | API |
+|---|---|---|
+| `.env` | always | `https://api.dev.physiobuddies.in/api/v1` |
+| `.env.production` | layered on top when `NODE_ENV=production` | `https://api.physiobuddies.in/api/v1` (not yet live) |
 
-Mock flags are **per domain** (`EXPO_PUBLIC_USE_MOCK_*`), so individual features can run on fixtures
-while the rest hit the real server. Today only **notifications** is mocked — its backend controllers
-are empty method bodies that never respond, so a request there hangs rather than failing.
+Both files also carry `EXPO_PUBLIC_SHOW_TEST_OTP`, which controls whether the app displays the
+session OTP the backend echoes back to the therapist. It is a **testing affordance** — a real
+one-time password shown to someone who isn't the patient — so `.env` sets it `true` and
+`.env.production` (and the EAS production profile) pin it `false`.
 
-For a release build the flags must be **real process env vars**, not `.env` files: a release runs
-with `NODE_ENV=production` and would otherwise load `.env.production`. `scripts/build-local-apk.ps1`
-handles that.
+`.env.production` must restate every key `.env` sets — an omitted key falls through to the dev
+value rather than being unset. Cloud builds read neither file: their values live in
+`eas.json > build.<profile>.env`. `scripts/build-local-apk.ps1` exports its values as real process
+env vars, which win over both files, so a local release APK can be pointed at the dev backend.
+
+**There is no mock mode.** The bundled fixtures and the `EXPO_PUBLIC_USE_MOCK_*` flags were removed
+on 2026-08-18 — every service in `src/lib/api/services.ts` calls the backend unconditionally, so a
+broken endpoint surfaces as a real error instead of as plausible-looking fake data.
+
+There is no content-write flag either. Articles and FAQs were briefly read-only while the backend's
+write routes were missing; those routes are live again and the app is wired straight to them.
 
 ## Scripts
 
@@ -96,11 +102,11 @@ src/
 ├── app/            expo-router routes — (auth), (app), session/, patient/, learn/
 ├── components/     ui/ (design system), dashboard/, session/, appointments/, charts/
 ├── lib/
-│   ├── api/        client.ts (axios + refresh), services.ts, mappers.ts, mock.ts
+│   ├── api/        client.ts (axios + refresh), services.ts, mappers.ts, netlog.ts
 │   ├── db/         SQLite + Drizzle: schema, migrations, repositories/, sync/
 │   ├── hooks/      biometric, camera, location, network, notifications, file picker
 │   └── stores/     zustand: auth, app, session
-├── constants/      config.ts (colors, flags, slots), clinical.ts (assessment enums)
+├── constants/      config.ts (colors, slots, storage keys), clinical.ts (assessment enums)
 └── types/          domain types
 ```
 

@@ -9,8 +9,8 @@ interface UseOtpOptions {
    * Fires on EVERY change, including deletions.
    *
    * `onComplete` alone is not enough to drive a parent's copy of the code: it never fires when a
-   * digit is removed, so a parent that types 4 digits and then backspaces one keeps holding the
-   * full 4-digit string. That let the session-OTP screen submit a code the therapist had
+   * digit is removed, so a parent that fills every box and then backspaces one keeps holding the
+   * full-length string. That let the session-OTP screen submit a code the therapist had
    * already partly erased, and kept its submit button enabled while the input looked incomplete.
    */
   onChangeCode?: (code: string) => void;

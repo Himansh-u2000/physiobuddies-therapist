@@ -6,7 +6,7 @@ import { Platform } from "react-native";
  * offered on iOS).
  *
  * STUB STATUS: the backend has no `/auth/apple` endpoint yet, so this obtains the Apple
- * credential natively but the exchange is stubbed in `authApi.loginWithApple` (mock only).
+ * credential natively but `authApi.loginWithApple` throws rather than exchanging it.
  * On-device Apple verification is deferred to Phase 8 (needs an Apple Developer account).
  */
 
