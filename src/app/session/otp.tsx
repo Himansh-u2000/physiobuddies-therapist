@@ -2,9 +2,9 @@ import { useState, useCallback } from "react";
 import { View, Text, Pressable } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, FlaskConical, HelpCircle, Lock, Send, ShieldCheck } from "lucide-react-native";
-import { Avatar, Badge, Button, OTPInput, PaymentBadge } from "@/components/ui";
+import { Avatar, Badge, Button, OTPInput, PaymentBadge, Skeleton } from "@/components/ui";
 import { appointmentApi, sessionApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useAuthStore } from "@/lib/stores/auth.store";
@@ -20,6 +20,7 @@ export default function SessionOtpScreen() {
   const showToast = useAppStore((s) => s.showToast);
   const therapist = useAuthStore((s) => s.therapist);
   const startSession = useSessionStore((s) => s.startSession);
+  const queryClient = useQueryClient();
   const [code, setCode] = useState("");
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -27,7 +28,7 @@ export default function SessionOtpScreen() {
   const [otpSent, setOtpSent] = useState(false);
   const [hintOtp, setHintOtp] = useState<string | null>(null);
 
-  const { data: appointment } = useQuery({
+  const { data: appointment, isError, refetch } = useQuery({
     queryKey: ["appointment", appointmentId],
     queryFn: () => appointmentApi.getById(appointmentId),
     enabled: !!appointmentId,
@@ -82,6 +83,12 @@ export default function SessionOtpScreen() {
       const { sessionId } = await sessionApi.start(sessionTargetId, code);
       if (appointment) {
         startSession(sessionId, appointment.id, appointment.patientName, appointment.condition, appointment.patientId, appointment.type);
+        // The session's server status has just moved to `active`, which is what the detail
+        // screen derives its workflow ticks from. Without this the cached appointment keeps
+        // reporting the pre-OTP step, so going back showed the OTP row as still outstanding
+        // until the cache happened to expire.
+        queryClient.invalidateQueries({ queryKey: ["appointment", appointment.id] });
+        queryClient.invalidateQueries({ queryKey: ["appointments"] });
       }
       showToast("Session started — timer running");
       setTimeout(() => router.replace("/session/active"), 500);
@@ -109,7 +116,14 @@ export default function SessionOtpScreen() {
     if (!opened) showToast(`Email us at ${SUPPORT_EMAIL}`, "info");
   };
 
-  if (!appointment) return <View className="flex-1 bg-bg" />;
+  // This screen is opened at the patient's door, often on a bad connection, and the detail
+  // fetch behind it can take several seconds. It used to render a bare background for that
+  // whole time — indistinguishable from a screen that had failed to open — so the therapist
+  // had no way to tell "loading" from "broken" while the patient waited. The skeleton mirrors
+  // the real layout (patient card, then the OTP card) so nothing shifts when the data lands.
+  if (!appointment) {
+    return isError ? <StartSessionError onRetry={() => refetch()} onBack={() => router.back()} /> : <StartSessionSkeleton />;
+  }
 
   return (
     <View className="flex-1 bg-bg">
@@ -250,6 +264,124 @@ export default function SessionOtpScreen() {
           >
             <Text className="text-accent text-[12px] font-bold">Contact support</Text>
           </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Header shared by the skeleton and the error state below, so a therapist who lands on either
+ * still has a working way back — the loading screen this replaced had no back button at all.
+ */
+function StartSessionHeader() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      className="px-3.5 flex-row items-center justify-between"
+      style={{ paddingTop: insets.top + 12 }}
+    >
+      <Pressable
+        onPress={() => router.back()}
+        className="w-10 h-10 rounded-md border border-border bg-white items-center justify-center"
+        style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
+      >
+        <ChevronLeft size={18} color={COLORS.accent} />
+      </Pressable>
+      <Text className="text-[18px] font-extrabold text-fg">Start session</Text>
+      <View className="w-10" />
+    </View>
+  );
+}
+
+/**
+ * Placeholder shaped like the loaded screen — patient card, then the OTP card with its icon,
+ * headings, send button and digit boxes. Flat rather than animated, matching every other
+ * `Skeleton` in the app.
+ */
+function StartSessionSkeleton() {
+  return (
+    <View className="flex-1 bg-bg">
+      <StartSessionHeader />
+      <View className="px-3.5 pt-4" style={{ gap: 12 }}>
+        <View
+          className="bg-white border border-border rounded-md p-4"
+          style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
+        >
+          <View className="flex-row items-start" style={{ gap: 14 }}>
+            <Skeleton width={60} height={60} radius={16} />
+            <View className="flex-1" style={{ gap: 7 }}>
+              <Skeleton width="60%" height={16} />
+              <Skeleton width="85%" height={12} />
+              <View className="flex-row" style={{ gap: 6 }}>
+                <Skeleton width={74} height={18} radius={9} />
+                <Skeleton width={62} height={18} radius={9} />
+              </View>
+            </View>
+          </View>
+          <View className="h-px bg-border" />
+          <View className="rounded-[10px] p-2.5 flex-row" style={{ backgroundColor: "rgba(0,64,96,0.03)", gap: 8 }}>
+            <View className="flex-1" style={{ gap: 6 }}>
+              <Skeleton width={70} height={11} />
+              <Skeleton width="90%" height={13} />
+            </View>
+            <View className="flex-1" style={{ gap: 6 }}>
+              <Skeleton width={40} height={11} />
+              <Skeleton width="60%" height={13} />
+            </View>
+          </View>
+        </View>
+
+        <View className="bg-white border border-border rounded-md p-5 items-center" style={{ gap: 10 }}>
+          <Skeleton width={52} height={52} radius={14} />
+          <Skeleton width="62%" height={18} />
+          <Skeleton width="88%" height={12} />
+          <Skeleton width="70%" height={12} />
+          <View className="w-full mt-2">
+            <Skeleton height={46} radius={12} />
+          </View>
+          <View className="flex-row w-full justify-between mt-2" style={{ gap: 8 }}>
+            {Array.from({ length: OTP_CONFIG.sessionOtpLength }).map((_, i) => (
+              <View key={i} className="flex-1">
+                <Skeleton height={52} radius={12} />
+              </View>
+            ))}
+          </View>
+          <View className="w-full mt-1">
+            <Skeleton height={46} radius={12} />
+          </View>
+          <Skeleton width={200} height={11} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Shown when the detail fetch actually failed rather than merely being slow. Kept distinct from
+ * the skeleton so a therapist standing at the door isn't left watching a placeholder that will
+ * never resolve.
+ */
+function StartSessionError({ onRetry, onBack }: { onRetry: () => void; onBack: () => void }) {
+  return (
+    <View className="flex-1 bg-bg">
+      <StartSessionHeader />
+      <View className="flex-1 items-center justify-center px-8" style={{ gap: 12 }}>
+        <Text className="text-[15px] font-bold text-fg text-center">
+          Couldn&apos;t load this appointment
+        </Text>
+        <Text className="text-muted text-[12.5px] text-center leading-5">
+          The session can&apos;t be started until we can reach the server. This is usually
+          temporary.
+        </Text>
+        <View className="flex-row" style={{ gap: 8 }}>
+          <Button variant="secondary" fullWidth={false} onPress={onRetry}>
+            <Text className="text-accent font-bold text-[13px]">Try again</Text>
+          </Button>
+          <Button variant="secondary" fullWidth={false} onPress={onBack}>
+            <Text className="text-accent font-bold text-[13px]">Go back</Text>
+          </Button>
         </View>
       </View>
     </View>

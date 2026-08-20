@@ -232,6 +232,43 @@ describe("mapBookingDetailToAppointment", () => {
     expect(a.sessions?.map((s) => s.id)).toEqual(["s-early", "s-late"]);
     expect(a.currentSessionId).toBe("s-late");
   });
+
+  // The therapist route omits `location.coords` today, so the app navigates by address text.
+  // These pin the behaviour both ways round: no coordinates must stay `undefined` (so the route
+  // screen takes the address path), and real ones must come through (so it stops the day the
+  // backend starts sending them).
+  it("leaves coordinates unset when the backend omits them, as it does today", () => {
+    const a = mapBookingDetailToAppointment(detail);
+    expect(a.latitude).toBeUndefined();
+    expect(a.longitude).toBeUndefined();
+  });
+
+  it("reads coordinates from location.coords when the backend sends them", () => {
+    const a = mapBookingDetailToAppointment({
+      ...detail,
+      location: { ...detail.location, coords: { lat: 28.6139, lng: 77.209 } },
+    });
+    expect(a.latitude).toBe(28.6139);
+    expect(a.longitude).toBe(77.209);
+  });
+
+  it("rejects a half-populated or null-island coordinate pair", () => {
+    // Either of these would send navigation to 0,0 off the coast of Africa instead of falling
+    // back to the address the screen already displays.
+    const partial = mapBookingDetailToAppointment({
+      ...detail,
+      location: { ...detail.location, coords: { lat: 28.6139 } },
+    });
+    expect(partial.latitude).toBeUndefined();
+    expect(partial.longitude).toBeUndefined();
+
+    const nullIsland = mapBookingDetailToAppointment({
+      ...detail,
+      location: { ...detail.location, coords: { lat: 0, lng: 0 } },
+    });
+    expect(nullIsland.latitude).toBeUndefined();
+    expect(nullIsland.longitude).toBeUndefined();
+  });
 });
 
 describe("mapBookingStatus", () => {

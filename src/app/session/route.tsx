@@ -3,7 +3,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { Phone, MessageSquare, Lock, ChevronLeft, MapPinOff } from "lucide-react-native";
-import { Avatar, Badge, Button, ErrorState } from "@/components/ui";
+import { Avatar, Badge, Button, ErrorState, Skeleton } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useLocation } from "@/lib/hooks/useLocation";
@@ -15,21 +15,38 @@ export default function RouteScreen() {
   const insets = useSafeAreaInsets();
   const { appointmentId } = useLocalSearchParams<{ appointmentId: string }>();
   const showToast = useAppStore((s) => s.showToast);
-  const { getCurrentLocation, openInMaps, permissionBlocked } = useLocation();
-  const { data: appointment } = useQuery({
+  const { getCurrentLocation, openInMaps, openAddressInMaps, permissionBlocked } = useLocation();
+  const { data: appointment, isError, refetch } = useQuery({
     queryKey: ["appointment", appointmentId],
     queryFn: () => appointmentApi.getById(appointmentId),
     enabled: !!appointmentId,
   });
 
+  /**
+   * Coordinates first, address second.
+   *
+   * The therapist booking detail carries the patient's address but not their lat/lng — the
+   * server has the point (`PatientLocation.location`) and drops it when it formats the
+   * therapist's copy, so `appointment.latitude` is undefined against the real API today. This
+   * used to stop here with "Patient coordinates unavailable", which meant the Open Maps button
+   * never worked at all even though the full address was on screen right above it. The web app
+   * hit the same gap and resolved it the same way, by searching Maps for the address, so the
+   * two apps now behave alike. The coordinate path stays first for the day the backend starts
+   * sending them — the mapper already reads them.
+   */
   const handleOpenMaps = async () => {
-    if (!appointment?.latitude || !appointment.longitude) {
-      showToast("Patient coordinates unavailable");
-      return;
-    }
+    if (!appointment) return;
     try {
-      await getCurrentLocation();
-      await openInMaps(appointment.latitude, appointment.longitude, appointment.patientName);
+      if (appointment.latitude && appointment.longitude) {
+        await getCurrentLocation();
+        await openInMaps(appointment.latitude, appointment.longitude, appointment.patientName);
+        return;
+      }
+      if (appointment.address?.trim()) {
+        await openAddressInMaps(appointment.address);
+        return;
+      }
+      showToast("No address on file for this patient");
     } catch {
       showToast("Unable to open maps");
     }
@@ -81,6 +98,21 @@ export default function RouteScreen() {
               badge="Permission"
               description="Enable location permission to see travel time to patients and verify your presence at home visit locations."
               action={{ label: "Open app settings", onPress: () => Linking.openSettings() }}
+            />
+          </View>
+        )}
+
+        {!appointment && !isError && <RouteSkeleton />}
+
+        {!appointment && isError && (
+          <View className="mx-4 -mt-8 relative z-10">
+            <ErrorState
+              icon={MapPinOff}
+              tone="danger"
+              title="Couldn't load this visit"
+              badge="Offline"
+              description="We couldn't reach the server for the patient's address and contact details. This is usually temporary."
+              action={{ label: "Try again", onPress: () => refetch() }}
             />
           </View>
         )}
@@ -168,5 +200,76 @@ function RouteStat({ value, label }: { value: string; label: string }) {
       <Text className="text-[16px] font-black text-fg">{value}</Text>
       <Text className="text-muted text-[10px] uppercase tracking-wide">{label}</Text>
     </View>
+  );
+}
+
+/**
+ * Placeholder for everything below the map header while the appointment loads. This screen
+ * previously rendered the decorative map and then simply nothing — no address, no patient row,
+ * no buttons — which read as a broken screen rather than a slow one. The shapes mirror the real
+ * cards (address block + four stats, the two actions, the patient row, the checklist) so the
+ * page doesn't reflow when the data arrives.
+ */
+function RouteSkeleton() {
+  return (
+    <>
+      <View
+        className="mx-4 -mt-8 bg-surface-strong rounded-lg border-[1.5px] border-border p-4 relative z-10"
+        style={{ gap: 14, shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 28, elevation: 6 }}
+      >
+        <View className="flex-row items-start" style={{ gap: 12 }}>
+          <Skeleton width={44} height={44} radius={14} />
+          <View className="flex-1" style={{ gap: 7 }}>
+            <Skeleton width="55%" height={15} />
+            <Skeleton width="90%" height={12} />
+          </View>
+        </View>
+        <View className="flex-row rounded-md overflow-hidden border-[1.5px] border-border" style={{ backgroundColor: COLORS.bg }}>
+          {[0, 1, 2, 3].map((i) => (
+            <View key={i} className="flex-1 items-center py-2.5 border-r border-border last:border-r-0" style={{ gap: 6 }}>
+              <Skeleton width={38} height={16} />
+              <Skeleton width={46} height={10} />
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View className="flex-row px-4 mt-3.5" style={{ gap: 10 }}>
+        <View className="flex-1">
+          <Skeleton height={46} radius={12} />
+        </View>
+        <View className="flex-1">
+          <Skeleton height={46} radius={12} />
+        </View>
+      </View>
+
+      <View className="mx-4 mt-3.5 bg-surface-strong rounded-md border-[1.5px] border-border p-3.5 flex-row items-center" style={{ gap: 12 }}>
+        <Skeleton width={44} height={44} radius={22} />
+        <View className="flex-1" style={{ gap: 6 }}>
+          <Skeleton width="50%" height={13} />
+          <Skeleton width="70%" height={11} />
+        </View>
+        <View className="flex-row" style={{ gap: 8 }}>
+          <Skeleton width={40} height={40} radius={20} />
+          <Skeleton width={40} height={40} radius={20} />
+        </View>
+      </View>
+
+      <View className="mx-4 mt-3.5 bg-surface-strong rounded-md border-[1.5px] border-border overflow-hidden">
+        <View className="px-4 py-3.5 border-b border-border flex-row items-center justify-between">
+          <Skeleton width={150} height={14} />
+          <Skeleton width={70} height={18} radius={9} />
+        </View>
+        {[0, 1, 2].map((i) => (
+          <View key={i} className="flex-row px-4 py-3.5 border-b border-border last:border-b-0" style={{ gap: 14 }}>
+            <Skeleton width={28} height={28} radius={14} />
+            <View className="flex-1" style={{ gap: 6 }}>
+              <Skeleton width="65%" height={13} />
+              <Skeleton width="90%" height={11} />
+            </View>
+          </View>
+        ))}
+      </View>
+    </>
   );
 }

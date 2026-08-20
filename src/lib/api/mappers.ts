@@ -186,6 +186,18 @@ export interface BackendBookingDetail {
     city?: string;
     state?: string;
     postalCode?: string;
+    country?: string;
+    /**
+     * ⚠️ Not sent on the therapist route today (verified live 2026-08-20). The record has the
+     * point — `PatientLocation.location` is `Json { lat, lng }`, and the therapist query even
+     * selects it — but `formatTherapistBookingDetail` omits it when it builds the response.
+     * The PATIENT's copy of the same booking (`GET /patient/my-bookings/:id`) does return it,
+     * under this name, which is why the field is typed to match: the moment the backend copies
+     * that line across, navigation starts using real coordinates with no further app change.
+     * Until then the route screen falls back to searching maps for the address string, which is
+     * what the web app does. Tracked in BACKEND_TODO.md.
+     */
+    coords?: { lat?: number; lng?: number } | null;
   };
   sessions?: BackendBookingSession[];
   documents?: BackendDocRecord[];
@@ -671,6 +683,12 @@ export function mapBookingDetailToAppointment(d: BackendBookingDetail): Appointm
         .filter(Boolean)
         .join(", ")
     : undefined;
+  // Guarded rather than passed straight through: `coords` is absent on this route today, and a
+  // half-populated pair (one of lat/lng present) would send navigation to a point on the equator
+  // rather than fall back to the address search.
+  const lat = loc?.coords?.lat;
+  const lng = loc?.coords?.lng;
+  const hasCoords = typeof lat === "number" && typeof lng === "number" && (lat !== 0 || lng !== 0);
   return {
     id: d.id,
     patientId: d.patient?.id ?? "",
@@ -689,6 +707,8 @@ export function mapBookingDetailToAppointment(d: BackendBookingDetail): Appointm
     amount: 0,
     condition: d.condition?.title ?? "Therapy session",
     address,
+    latitude: hasCoords ? lat : undefined,
+    longitude: hasCoords ? lng : undefined,
     notes: d.problemDescription,
     workflowStep: workflowStepFor(current?.status ?? status),
     sessions,

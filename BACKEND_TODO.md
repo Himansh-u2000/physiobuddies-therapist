@@ -325,6 +325,42 @@ in the therapist app that emptied the whole day grid, since `/therapist/slots/bl
 hour. The app now derives the hour from `startMinute` and accepts both shapes. Flagging it only as
 a process point: a rename in a response payload needs the same deprecation window as a route move.
 
+### 1.12 The therapist's copy of a booking drops the patient's coordinates and phone
+
+Verified live 2026-08-20 against the seed therapist. `GET /therapist/sessions/my-bookings/:id`
+returns:
+
+```jsonc
+"location": { "address": "…", "landmark": "…", "city": "…", "state": "…", "postalCode": "…" },
+"patient":  { "id": "PAT-2026-001", "name": "…", "dob": "…", "gender": "FEMALE" }
+```
+
+Two fields the therapist needs on a home visit are missing, and **the data is already loaded when
+the response is built** — this is a formatting omission, not a schema gap:
+
+- **`location.coords` (lat/lng).** `PatientLocation.location` is `Json { lat, lng }`, and
+  `therapistSession.service.ts` already selects it (`locations: { … location: true }`). But
+  `formatTherapistBookingDetail` (`therapistSession.helper.ts`, the `location:` block) copies
+  address/landmark/city/state/postalCode and drops `location`. The **patient's** formatter for the
+  same booking does return it — `patient.helper.ts` emits `location.coords` — so the two sides of
+  one booking disagree.
+- **`patient.phone`.** Same helper: the patient-side formatter emits `phone`, the therapist-side
+  one doesn't. The therapist app's Call button and the patient row on the route screen both read
+  it, so they show blank and toast "Patient phone unavailable" against the real API.
+
+**Fix:** in `formatTherapistBookingDetail`, add `coords: patientLocation?.location` to the
+`location` object and `phone: patientDetail.phone` to `patient` — mirroring `patient.helper.ts`
+so a booking reads the same from both sides. (`patientDetail` will need `phone: true` added to its
+`select`.)
+
+**Consequence today, and the workaround.** Turn-by-turn navigation to an exact point is
+impossible for a therapist. The web app hit this first and worked around it the same way the
+mobile app now does: hand Google Maps the **address string** rather than coordinates
+(`maps/search/?api=1&query=…` — see `VisitLogistics.tsx` in `client2/`). That geocodes to a
+best-guess pin, which is usually good enough for a street address and useless for anything
+ambiguous. The app reads `location.coords` already and prefers it whenever it appears, so this
+needs no app change once the field is sent.
+
 ---
 
 ## 2. Notifications — still empty, still hanging

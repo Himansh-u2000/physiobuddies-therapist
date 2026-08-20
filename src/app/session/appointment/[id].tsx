@@ -83,12 +83,38 @@ export default function AppointmentDetailScreen() {
     }
   };
 
+  /**
+   * The step the workflow list renders against.
+   *
+   * Two corrections over the raw `appointment.workflowStep`:
+   *
+   * 1. A locally running session counts as at least step 3. `workflowStep` is derived from the
+   *    server's session status, and the cached detail query still says `1` for the first moments
+   *    after the OTP is verified — so coming back to this screen from /session/active showed the
+   *    OTP step as untouched, even though the timer was already running.
+   * 2. Clamped to 0–5. `workflowStepFor` returns 5 for a completed plan, which the "Step N of 4"
+   *    badge printed verbatim as "Step 5 of 4".
+   */
+  const rawStep = sessionActiveHere ? Math.max(appointment.workflowStep, 3) : appointment.workflowStep;
+  const currentStep = Math.min(Math.max(rawStep, 0), 5);
+
+  /**
+   * `done` and `current` are both derived from the same number so no step can fall through the
+   * gaps. Step 2 previously carried only `current: workflowStep === 2` — and `workflowStepFor`
+   * never returns 2 (it maps status → 1 / 3 / 5 / 0), so a verified OTP left this row showing a
+   * plain grey "2" while every other finished step showed a green tick. It now ticks green as
+   * soon as the session is past it, the same as the rest of the list.
+   */
   const steps = [
-    { num: 1, title: "Navigate to patient", sub: "Route, call if needed", done: appointment.workflowStep > 1 },
-    { num: 2, title: "Enter patient OTP", sub: `Patient provides ${OTP_CONFIG.sessionOtpLength}-digit OTP to start the session timer`, current: appointment.workflowStep === 2 },
-    { num: 3, title: "Run treatment", sub: "Checklist, notes, photos, exercises", done: appointment.workflowStep > 3 },
-    { num: 4, title: "Submit treatment record", sub: "Locks note and triggers payout review", done: appointment.workflowStep > 4 },
-  ];
+    { num: 1, title: "Navigate to patient", sub: "Route, call if needed" },
+    { num: 2, title: "Enter patient OTP", sub: `Patient provides ${OTP_CONFIG.sessionOtpLength}-digit OTP to start the session timer` },
+    { num: 3, title: "Run treatment", sub: "Checklist, notes, photos, exercises" },
+    { num: 4, title: "Submit treatment record", sub: "Locks note and triggers payout review" },
+  ].map((step) => ({
+    ...step,
+    done: currentStep > step.num,
+    current: currentStep === step.num,
+  }));
 
   return (
     <View className="flex-1 bg-bg">
@@ -169,7 +195,9 @@ export default function AppointmentDetailScreen() {
           <View className="mt-3 bg-white border border-border rounded-md p-3.5">
             <View className="flex-row items-center justify-between mb-2.5">
               <Text className="text-[14px] font-bold text-fg">Session workflow</Text>
-              <Badge variant="neutral" size="sm" dot={false}>Step {appointment.workflowStep} of 4</Badge>
+              <Badge variant="neutral" size="sm" dot={false}>
+                {currentStep > 4 ? "All steps done" : `Step ${Math.max(currentStep, 1)} of 4`}
+              </Badge>
             </View>
             {steps.map((step) => (
               <Pressable key={step.num} onPress={() => goToStep(step.num)} className="flex-row items-center py-3 border-b border-border active:opacity-70" style={{ gap: 10 }}>

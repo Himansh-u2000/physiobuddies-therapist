@@ -50,5 +50,40 @@ export function useLocation() {
     [],
   );
 
-  return { location, errorMsg, permissionBlocked, requestPermission, getCurrentLocation, openInMaps };
+  /**
+   * Open the maps app on a free-text address instead of coordinates.
+   *
+   * This is the path the therapist app actually takes today: the therapist-side booking detail
+   * (`GET /therapist/sessions/my-bookings/:id`) returns the patient's address but strips the
+   * lat/lng that the record carries — see `formatTherapistBookingDetail` server-side — so
+   * `openInMaps` has nothing to aim at. The Physiobuddies web app's therapist booking page has
+   * the same gap and solves it the same way, by handing Google Maps the address string
+   * (`maps/search/?api=1&query=…`). Maps geocodes it and offers directions from there.
+   *
+   * Kept separate from `openInMaps` rather than folded into it: a text query resolves to a
+   * best-guess pin, which is right for "take me to this address" but wrong anywhere the caller
+   * genuinely needs the recorded point.
+   */
+  const openAddressInMaps = useCallback(async (address: string) => {
+    const query = encodeURIComponent(address.trim());
+    if (!query) return false;
+    // `geo:0,0?q=` is the Android intent for "search for this text"; the leading 0,0 is the
+    // documented way to say "no coordinates, use the query". iOS takes the same idea as `?q=`.
+    const nativeUrl =
+      Platform.OS === "ios" ? `maps://?q=${query}` : `geo:0,0?q=${query}`;
+    const webUrl = `https://www.google.com/maps/search/?api=1&query=${query}`;
+    const canOpenNative = await Linking.canOpenURL(nativeUrl);
+    await Linking.openURL(canOpenNative ? nativeUrl : webUrl);
+    return true;
+  }, []);
+
+  return {
+    location,
+    errorMsg,
+    permissionBlocked,
+    requestPermission,
+    getCurrentLocation,
+    openInMaps,
+    openAddressInMaps,
+  };
 }
