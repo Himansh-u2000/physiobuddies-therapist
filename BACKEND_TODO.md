@@ -171,14 +171,19 @@ GET /therapist/6a830016f85ba191340ff715/articles
   → 200 [{"title":"…","content":"…","createdAt":"…"}]          ← no id
 ```
 
-So the practical behaviour for a therapist is: **creating always works; editing or deleting works
-only until the list refetches**, at which point every row loses the id its `PATCH`/`DELETE` needs.
-The screens mark those rows read-only with the reason stated rather than offering controls that
-fail on tap.
+So the practical behaviour would be: **creating always works; editing or deleting works only
+until the list refetches**, at which point every row loses the id its `PATCH`/`DELETE` needs.
+
+**As of 2026-08-20 the app no longer offers edit or delete at all.** Both sections are
+create-and-view: FAQs list as plain cards, and an article opens on a read-only `/article-view`
+screen that renders its Markdown. The `updateFaq`/`deleteFaq`/`updateArticle`/`deleteArticle`
+wrappers were removed from `contentApi` along with the UI, so restoring editing means re-adding
+them — they are four one-line `client.patch`/`client.delete` calls.
 
 **Fix: add `id` to the select in both list projections.** It is one field in each query, the
 models already have it, and the write endpoints already return it — the two reads are the only
-place it is missing.
+place it is missing. That is the only thing standing between here and editable content; the
+routes themselves are live and were verified working.
 
 ### 1.9 The session-lifecycle paths the app was calling do not exist
 

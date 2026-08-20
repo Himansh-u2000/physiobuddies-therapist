@@ -7,6 +7,10 @@
     "icon": "./assets/images/icon.png",
     "scheme": "physiobuddiestherapist",
     "userInterfaceStyle": "automatic",
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "runtimeVersion": {
       "policy": "fingerprint"
     },
@@ -21,7 +25,8 @@
         "NSCameraUsageDescription": "Physiobuddies needs camera access to capture session photos and document scans.",
         "NSLocationWhenInUseUsageDescription": "Physiobuddies uses your location to navigate to patient home visits and calculate ETA.",
         "NSFaceIDUsageDescription": "Physiobuddies uses Face ID to securely unlock the app.",
-        "NSPhotoLibraryUsageDescription": "Physiobuddies needs photo library access to upload session photos and documents."
+        "NSPhotoLibraryUsageDescription": "Physiobuddies needs photo library access to upload session photos and documents.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

@@ -8,6 +8,7 @@ import { Badge, Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { blogApi } from "@/lib/api/services";
 import { COLORS } from "@/constants/config";
 import type { BlogPost } from "@/types";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /**
  * Patient-education library — platform-authored articles from `GET /blog`.
@@ -29,15 +30,16 @@ export default function LearnScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-3 flex-row items-center bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-3 flex-row items-center border-b border-border"
         style={{ paddingTop: insets.top + 10, gap: 8 }}
       >
         <Pressable onPress={() => router.back()} hitSlop={8} className="w-8 h-8 items-center justify-center">
           <ChevronLeft size={22} color={COLORS.fg} />
         </Pressable>
         <Text className="text-[16px] font-extrabold text-fg flex-1">Learn</Text>
-      </View>
+      </GlassSurface>
 
       <ScrollView
         className="flex-1"

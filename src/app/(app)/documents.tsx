@@ -16,7 +16,7 @@ import {
 } from "lucide-react-native";
 import * as WebBrowser from "expo-web-browser";
 import { TopBar } from "@/components/shared/TopBar";
-import { Badge, BottomSheet, Button } from "@/components/ui";
+import { Badge, BottomSheet, Button, FLOATING_TAB_BAR_INSET } from "@/components/ui";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useFileUpload, pickImageFromLibrary, captureImage, pickDocument } from "@/lib/hooks/useFilePicker";
@@ -28,6 +28,7 @@ import {
   type KycDocumentRecord,
 } from "@/lib/db/repositories";
 import { COLORS } from "@/constants/config";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /**
  * KYC / credential documents.
@@ -139,7 +140,12 @@ export default function DocumentsScreen() {
   return (
     <View className="flex-1 bg-bg">
       <TopBar therapist={therapist} title="Documents" subtitle="Verification" showNotification={false} />
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerClassName="px-3.5 pb-8">
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        contentContainerClassName="px-3.5"
+        contentContainerStyle={{ paddingBottom: 32 + FLOATING_TAB_BAR_INSET }}
+      >
         <View
           className="rounded-md p-4 border"
           style={{
@@ -182,9 +188,11 @@ export default function DocumentsScreen() {
           {REQUIRED_DOCUMENTS.map((doc) => {
             const uploaded = documents[doc.id];
             return (
-              <View
+              <GlassSurface
+                fallbackClassName="bg-white"
+                glassRadius={12}
                 key={doc.id}
-                className="bg-white border border-border rounded-md p-3.5"
+                className="border border-border rounded-md p-3.5"
                 style={{ gap: 10, shadowColor: COLORS.nav, shadowOpacity: 0.06, shadowRadius: 8, elevation: 1 }}
               >
                 <View className="flex-row items-center" style={{ gap: 12 }}>
@@ -260,7 +268,7 @@ export default function DocumentsScreen() {
                         : "Upload document"}
                   </Text>
                 </Pressable>
-              </View>
+              </GlassSurface>
             );
           })}
         </View>

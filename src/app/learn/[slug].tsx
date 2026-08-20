@@ -29,6 +29,7 @@ import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
 import { relativeCommentTime } from "@/lib/utils/format";
 import type { BlogPost } from "@/types";
+import { GlassSurface } from "@/components/ui/Glass";
 
 const COMMENT_MAX = 500;
 
@@ -129,8 +130,9 @@ export default function LearnPostScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-3 flex-row items-center bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-3 flex-row items-center border-b border-border"
         style={{ paddingTop: insets.top + 10, gap: 8 }}
       >
         <Pressable onPress={() => router.back()} hitSlop={8} className="w-8 h-8 items-center justify-center">
@@ -144,7 +146,7 @@ export default function LearnPostScreen() {
             <Share2 size={18} color={COLORS.accent} />
           </Pressable>
         )}
-      </View>
+      </GlassSurface>
 
       {/* The comment composer sits at the bottom of a long scroll, so the keyboard has to lift
           it rather than cover it. */}
@@ -266,7 +268,10 @@ export default function LearnPostScreen() {
                 Comments{post.reviews?.length ? ` (${post.reviews.length})` : ""}
               </Text>
 
-              <View className="bg-white border border-border rounded-md p-3" style={{ gap: 10 }}>
+              <GlassSurface
+                fallbackClassName="bg-white"
+                glassRadius={12}
+                className="border border-border rounded-md p-3" style={{ gap: 10 }}>
                 <TextArea
                   value={comment}
                   onChangeText={(t) => setComment(t.slice(0, COMMENT_MAX))}
@@ -297,13 +302,15 @@ export default function LearnPostScreen() {
                     </Text>
                   </Pressable>
                 </View>
-              </View>
+              </GlassSurface>
 
               {post.reviews && post.reviews.length > 0 ? (
                 post.reviews.map((review) => (
-                  <View
+                  <GlassSurface
+                    fallbackClassName="bg-white"
+                    glassRadius={12}
                     key={review.id}
-                    className="bg-white border border-border rounded-md p-3"
+                    className="border border-border rounded-md p-3"
                     style={{ gap: 4 }}
                   >
                     <View className="flex-row items-center justify-between">
@@ -315,7 +322,7 @@ export default function LearnPostScreen() {
                       ) : null}
                     </View>
                     <Text className="text-muted text-[12.5px] leading-5">{review.comment}</Text>
-                  </View>
+                  </GlassSurface>
                 ))
               ) : (
                 <Text className="text-muted text-[12.5px] italic">

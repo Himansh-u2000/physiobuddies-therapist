@@ -16,3 +16,4 @@ export { ToastContainer } from "./Toast";
 export { BottomSheet, useBottomSheet } from "./BottomSheet";
 export { MarkdownText } from "./MarkdownText";
 export { RichTextEditor } from "./RichTextEditor";
+export { GlassSurface, GlassLayer, GLASS_ENABLED, FLOATING_TAB_BAR_INSET } from "./Glass";

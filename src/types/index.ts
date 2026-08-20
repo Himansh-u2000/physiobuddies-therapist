@@ -39,7 +39,6 @@ export interface DashboardStats {
   weeklyEarnings: number;
   weeklyChangePercent: number;
   weeklyChart: { day: string; amount: number; isToday: boolean }[];
-  pendingTasks: number;
 }
 
 export interface Patient {

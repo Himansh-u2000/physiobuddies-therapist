@@ -19,6 +19,7 @@ import { availabilityApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS, SLOT_CONFIG, WEEKDAYS, type SlotShiftId } from "@/constants/config";
 import type { AvailabilityDay, AvailabilitySlot, SlotShift, WeeklySchedule } from "@/types";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /** "14" → "2 PM". The grid is hourly, so minutes never need showing. */
 function hourLabel(hour: number): string {
@@ -148,8 +149,9 @@ export default function AvailabilityScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-2 bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-2 border-b border-border"
         style={{ paddingTop: insets.top + 10 }}
       >
         <View className="flex-row items-center" style={{ gap: 8 }}>
@@ -174,7 +176,7 @@ export default function AvailabilityScreen() {
           <TabButton label="By day" active={tab === "days"} onPress={() => setTab("days")} />
           <TabButton label="Weekly defaults" active={tab === "weekly"} onPress={() => setTab("weekly")} />
         </View>
-      </View>
+      </GlassSurface>
 
       {tab === "weekly" ? (
         <WeeklyDefaults />
@@ -316,8 +318,9 @@ export default function AvailabilityScreen() {
           </ScrollView>
 
           {selected.length > 0 && (
-            <View
-              className="absolute left-0 right-0 bottom-0 bg-white border-t border-border px-3.5 pt-3"
+            <GlassSurface
+              fallbackClassName="bg-white"
+              className="absolute left-0 right-0 bottom-0 border-t border-border px-3.5 pt-3"
               style={{ paddingBottom: insets.bottom + 12, gap: 10 }}
             >
               <View className="flex-row items-center" style={{ gap: 8 }}>
@@ -362,7 +365,7 @@ export default function AvailabilityScreen() {
                   </Button>
                 </View>
               </View>
-            </View>
+            </GlassSurface>
           )}
         </>
       )}
@@ -567,9 +570,11 @@ function WeeklyDefaults() {
           const daySchedule = schedule[weekday.id] ?? { shifts: [], disabledHours: [] };
           const off = daySchedule.shifts.length === 0;
           return (
-            <View
+            <GlassSurface
+              fallbackClassName="bg-white"
+              glassRadius={12}
               key={weekday.id}
-              className="bg-white border border-border rounded-md p-3 mb-2.5"
+              className="border border-border rounded-md p-3 mb-2.5"
               style={{ gap: 10 }}
             >
               <View className="flex-row items-center">
@@ -612,14 +617,15 @@ function WeeklyDefaults() {
                   );
                 })}
               </View>
-            </View>
+            </GlassSurface>
           );
         })}
       </ScrollView>
 
       {dirty && (
-        <View
-          className="absolute left-0 right-0 bottom-0 bg-white border-t border-border px-3.5 pt-3 pb-6"
+        <GlassSurface
+          fallbackClassName="bg-white"
+          className="absolute left-0 right-0 bottom-0 border-t border-border px-3.5 pt-3 pb-6"
           style={{ gap: 8 }}
         >
           <View className="flex-row" style={{ gap: 8 }}>
@@ -634,7 +640,7 @@ function WeeklyDefaults() {
               </Button>
             </View>
           </View>
-        </View>
+        </GlassSurface>
       )}
     </View>
   );

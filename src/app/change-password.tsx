@@ -15,6 +15,7 @@ import { Button, Input } from "@/components/ui";
 import { therapistApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /** Change the account password (PATCH /user/password). */
 export default function ChangePasswordScreen() {
@@ -51,8 +52,9 @@ export default function ChangePasswordScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-3 flex-row items-center bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-3 flex-row items-center border-b border-border"
         style={{ paddingTop: insets.top + 10, gap: 8 }}
       >
         <Pressable
@@ -63,7 +65,7 @@ export default function ChangePasswordScreen() {
           <ChevronLeft size={22} color={COLORS.fg} />
         </Pressable>
         <Text className="text-[16px] font-extrabold text-fg">Change password</Text>
-      </View>
+      </GlassSurface>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -76,8 +78,10 @@ export default function ChangePasswordScreen() {
           contentContainerClassName="px-3.5 pt-4"
           contentContainerStyle={{ paddingBottom: insets.bottom + 32, gap: 14 }}
         >
-          <View
-            className="bg-white border border-border rounded-md p-3.5 flex-row items-center"
+          <GlassSurface
+            fallbackClassName="bg-white"
+            glassRadius={12}
+            className="border border-border rounded-md p-3.5 flex-row items-center"
             style={{ gap: 12 }}
           >
             <View className="w-9 h-9 rounded-[10px] items-center justify-center bg-success/10">
@@ -86,7 +90,7 @@ export default function ChangePasswordScreen() {
             <Text className="text-muted text-[12px] flex-1">
               Use at least 8 characters. You&apos;ll stay signed in on this device after changing it.
             </Text>
-          </View>
+          </GlassSurface>
 
           <Input
             label="Current password"

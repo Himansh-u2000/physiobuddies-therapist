@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Pressable, View, Text } from "react-native";
 import { COLORS } from "@/constants/config";
 import { formatCurrency } from "@/lib/utils/format";
+import { GlassSurface } from "@/components/ui/Glass";
 
 interface WeeklyChartProps {
   data: { day: string; amount: number; isToday: boolean }[];
@@ -14,7 +15,10 @@ export function WeeklyChart({ data }: WeeklyChartProps) {
   const selected = data.find((d) => d.day === selectedDay) ?? data.find((d) => d.day === defaultDay) ?? data[0];
 
   return (
-    <View className="bg-white border border-border rounded-md p-4">
+    <GlassSurface
+      fallbackClassName="bg-white"
+      glassRadius={12}
+      className="border border-border rounded-md p-4">
       <View className="flex-row items-center justify-between mb-4">
         <Text className="text-[13px] font-bold text-fg">Daily performance</Text>
         {selected && (
@@ -64,6 +68,6 @@ export function WeeklyChart({ data }: WeeklyChartProps) {
           );
         })}
       </View>
-    </View>
+    </GlassSurface>
   );
 }

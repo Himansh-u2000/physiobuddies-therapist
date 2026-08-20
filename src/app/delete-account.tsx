@@ -7,6 +7,7 @@ import { useAppStore } from "@/lib/stores/app.store";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { authApi } from "@/lib/api/services";
 import { COLORS } from "@/constants/config";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /**
  * In-app account deletion (mandated by both app stores; DPDP Act deletion path).
@@ -45,12 +46,13 @@ export default function DeleteAccountScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View className="pt-14 px-4 pb-3 flex-row items-center gap-2 bg-white border-b border-border">
+      <GlassSurface
+        fallbackClassName="bg-white" className="pt-14 px-4 pb-3 flex-row items-center gap-2 border-b border-border">
         <Pressable onPress={() => router.back()} hitSlop={8} className="w-8 h-8 items-center justify-center">
           <ChevronLeft size={22} color={COLORS.fg} />
         </Pressable>
         <Text className="text-[16px] font-extrabold text-fg">Delete account</Text>
-      </View>
+      </GlassSurface>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -75,14 +77,17 @@ export default function DeleteAccountScreen() {
             This permanently removes your Physiobuddies therapist account.
           </Text>
 
-          <View className="bg-white border border-border rounded-md p-3.5 mt-4" style={{ gap: 10 }}>
+          <GlassSurface
+            fallbackClassName="bg-white"
+            glassRadius={12}
+            className="border border-border rounded-md p-3.5 mt-4" style={{ gap: 10 }}>
             {consequences.map((c) => (
               <View key={c} className="flex-row items-start gap-2.5">
                 <View className="w-1.5 h-1.5 rounded-full bg-danger mt-1.5" />
                 <Text className="text-fg text-[13px] flex-1 leading-5">{c}</Text>
               </View>
             ))}
-          </View>
+          </GlassSurface>
 
           <View className="mt-4">
             <TextArea

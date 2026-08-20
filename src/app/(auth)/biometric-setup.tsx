@@ -18,6 +18,7 @@ import { useAppStore } from "@/lib/stores/app.store";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useBiometric } from "@/lib/hooks/useBiometric";
 import { AUTH_CONFIG, COLORS } from "@/constants/config";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /**
  * Biometric login — both the first-run setup and the ongoing setting.
@@ -130,15 +131,16 @@ export default function BiometricSetupScreen() {
 
     return (
       <View className="flex-1 bg-bg">
-        <View
-          className="px-4 pb-3 flex-row items-center bg-white border-b border-border"
+        <GlassSurface
+          fallbackClassName="bg-white"
+          className="px-4 pb-3 flex-row items-center border-b border-border"
           style={{ paddingTop: insets.top + 10, gap: 8 }}
         >
           <Pressable onPress={() => router.back()} hitSlop={8} className="w-8 h-8 items-center justify-center">
             <ChevronLeft size={22} color={COLORS.fg} />
           </Pressable>
           <Text className="text-[16px] font-extrabold text-fg flex-1">Biometric login</Text>
-        </View>
+        </GlassSurface>
 
         <ScrollView
           className="flex-1"
@@ -147,8 +149,10 @@ export default function BiometricSetupScreen() {
           contentContainerStyle={{ paddingBottom: insets.bottom + 24, gap: 12 }}
         >
           {/* Current state + the switch, together — the one thing this screen exists to do. */}
-          <View
-            className="bg-white border border-border rounded-md p-4"
+          <GlassSurface
+            fallbackClassName="bg-white"
+            glassRadius={12}
+            className="border border-border rounded-md p-4"
             style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
           >
             <View className="flex-row items-center" style={{ gap: 12 }}>
@@ -188,7 +192,7 @@ export default function BiometricSetupScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </GlassSurface>
 
           {unavailable && (
             <View className="flex-row bg-danger/5 border border-danger/20 rounded-md p-3" style={{ gap: 8 }}>
@@ -209,7 +213,10 @@ export default function BiometricSetupScreen() {
             </View>
           )}
 
-          <View className="bg-white border border-border rounded-md p-3.5" style={{ gap: 14 }}>
+          <GlassSurface
+            fallbackClassName="bg-white"
+            glassRadius={12}
+            className="border border-border rounded-md p-3.5" style={{ gap: 14 }}>
             <Text className="text-[13px] font-bold text-fg">How it works</Text>
             <FactRow
               icon={Lock}
@@ -226,7 +233,7 @@ export default function BiometricSetupScreen() {
               title="Password always works"
               body="If biometrics fail or you switch phones, signing in with your password still works."
             />
-          </View>
+          </GlassSurface>
 
           {biometricEnabled && (
             <Button variant="secondary" fullWidth onPress={enable} disabled={busy}>

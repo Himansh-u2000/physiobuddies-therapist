@@ -16,6 +16,7 @@ import { therapistApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /** Format 10 raw digits the way `PhoneInput` displays them ("98765 43210"). */
 function formatPhone(raw: string): string {
@@ -67,8 +68,9 @@ export default function EditProfileScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-3 flex-row items-center bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-3 flex-row items-center border-b border-border"
         style={{ paddingTop: insets.top + 10, gap: 8 }}
       >
         <Pressable
@@ -79,7 +81,7 @@ export default function EditProfileScreen() {
           <ChevronLeft size={22} color={COLORS.fg} />
         </Pressable>
         <Text className="text-[16px] font-extrabold text-fg">Edit profile</Text>
-      </View>
+      </GlassSurface>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}

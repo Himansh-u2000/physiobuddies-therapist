@@ -16,6 +16,7 @@ import { availabilityApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
 import { formatDateLabel, toIsoDate } from "@/lib/utils/format";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /**
  * Time off.
@@ -136,8 +137,9 @@ export default function LeaveScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-2.5 bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-2.5 border-b border-border"
         style={{ paddingTop: insets.top + 10 }}
       >
         <View className="flex-row items-center" style={{ gap: 8 }}>
@@ -153,7 +155,7 @@ export default function LeaveScreen() {
             <Text className="text-muted text-[11px]">Block a range of days you can&apos;t work</Text>
           </View>
         </View>
-      </View>
+      </GlassSurface>
 
       <ScrollView
         className="flex-1"

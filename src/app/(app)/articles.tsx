@@ -1,19 +1,29 @@
 import { View, Text, ScrollView, Pressable } from "react-native";
 import { useRouter } from "expo-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpenText, Lock, PencilLine, Plus, Trash2, TriangleAlert } from "lucide-react-native";
+import { useQuery } from "@tanstack/react-query";
+import { BookOpenText, ChevronRight, PencilLine, Plus, TriangleAlert } from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
-import { Button, Skeleton, EmptyState, ErrorState } from "@/components/ui";
+import {
+  Button,
+  Skeleton,
+  EmptyState,
+  ErrorState,
+  FLOATING_TAB_BAR_INSET,
+} from "@/components/ui";
 import { contentApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/stores/auth.store";
-import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
 import type { TherapistArticle } from "@/types";
+import { GlassSurface, GlassLayer, GLASS_ENABLED } from "@/components/ui/Glass";
 
 /**
- * Patient-education articles, backed by real endpoints: read via GET /therapist/:id/articles,
- * written via POST/PATCH/DELETE /therapist/articles. Create/edit happens on a full-screen
- * Markdown editor (`/article-editor`); content is stored as Markdown.
+ * Patient-education articles.
+ *
+ * **Write and read only.** You can publish a new article (`/article-editor`) and open any
+ * published one to read it (`/article-view`); there is deliberately no edit or delete. The list
+ * read `GET /therapist/:id/articles` returns rows without an `id`, so a row that came back from
+ * a refetch has nothing to address a `PATCH`/`DELETE` to — see BACKEND_TODO §1.8. Content is
+ * stored as Markdown.
  */
 
 /** Strip Markdown markers for a plain-text card preview. */
@@ -31,8 +41,6 @@ function stripMarkdown(md: string): string {
 export default function ArticlesScreen() {
   const router = useRouter();
   const therapist = useAuthStore((s) => s.therapist);
-  const showToast = useAppStore((s) => s.showToast);
-  const queryClient = useQueryClient();
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["articles"],
@@ -42,30 +50,17 @@ export default function ArticlesScreen() {
 
   const openCreate = () => router.push("/article-editor");
 
-  const openEdit = (article: TherapistArticle) => {
-    if (!article.id) {
-      showToast("This article can't be edited — the server didn't return its id.", "error");
-      return;
-    }
+  // The article is handed over as params rather than fetched by id, because the list read
+  // doesn't return one. Native params are passed in memory, so a long article is fine here.
+  const openArticle = (article: TherapistArticle) =>
     router.push({
-      pathname: "/article-editor",
-      params: { edit: "1", id: article.id, title: article.title, content: article.content },
+      pathname: "/article-view",
+      params: {
+        title: article.title,
+        content: article.content,
+        dateLabel: article.dateLabel ?? "",
+      },
     });
-  };
-
-  const handleDelete = async (article: TherapistArticle) => {
-    if (!article.id) {
-      showToast("This article can't be deleted — the server didn't return its id.", "error");
-      return;
-    }
-    try {
-      await contentApi.deleteArticle(article.id);
-      showToast("Article deleted", "success");
-      await queryClient.invalidateQueries({ queryKey: ["articles"] });
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : "Couldn't delete the article.", "error");
-    }
-  };
 
   return (
     <View className="flex-1 bg-bg">
@@ -78,11 +73,13 @@ export default function ArticlesScreen() {
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
-        contentContainerClassName="px-3.5 pb-8"
-        contentContainerStyle={{ gap: 12 }}
+        contentContainerClassName="px-3.5"
+        contentContainerStyle={{ gap: 12, paddingBottom: 32 + FLOATING_TAB_BAR_INSET }}
       >
-        <View
-          className="bg-white border border-border rounded-md p-4"
+        <GlassSurface
+          fallbackClassName="bg-white"
+          glassRadius={12}
+          className="border border-border rounded-md p-4"
           style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
         >
           <View className="flex-row items-center justify-between">
@@ -99,7 +96,7 @@ export default function ArticlesScreen() {
           <View className="flex-row mt-4" style={{ gap: 8 }}>
             <Metric value={isLoading ? "—" : String(articles.length)} label="Published" />
           </View>
-        </View>
+        </GlassSurface>
 
         {isLoading ? (
           <View style={{ gap: 10 }}>
@@ -127,8 +124,7 @@ export default function ArticlesScreen() {
               <ArticleCard
                 key={article.id ?? `${article.title}-${i}`}
                 article={article}
-                onEdit={() => openEdit(article)}
-                onDelete={() => handleDelete(article)}
+                onPress={() => openArticle(article)}
               />
             ))}
           </View>
@@ -154,22 +150,16 @@ function Metric({ value, label }: { value: string; label: string }) {
   );
 }
 
-function ArticleCard({
-  article,
-  onEdit,
-  onDelete,
-}: {
-  article: TherapistArticle;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
+function ArticleCard({ article, onPress }: { article: TherapistArticle; onPress: () => void }) {
   return (
     <Pressable
-      onPress={onEdit}
-      disabled={!article.id}
-      className="bg-white border border-border rounded-md p-3.5 active:opacity-90"
-      style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Read ${article.title}`}
+      className={`border border-border rounded-md p-3.5 active:opacity-90 ${GLASS_ENABLED ? "" : "bg-white"}`}
+      style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
     >
+      <GlassLayer radius={12} />
       <View className="flex-row items-start" style={{ gap: 12 }}>
         <View className="w-11 h-11 rounded-[13px] bg-primary-soft items-center justify-center">
           <PencilLine size={20} color={COLORS.accent} />
@@ -183,39 +173,8 @@ function ArticleCard({
             {stripMarkdown(article.content)}
           </Text>
         </View>
+        <ChevronRight size={18} color={COLORS.muted} style={{ marginTop: 2 }} />
       </View>
-      {/* PATCH/DELETE are live, but the LIST read omits the id they address, so an article that
-          came from a refetch can't be edited. Say so once instead of failing on tap. */}
-      {!article.id ? (
-        <View className="flex-row items-center border-t border-border pt-2.5" style={{ gap: 8 }}>
-          <Lock size={12} color={COLORS.muted} />
-          <Text className="text-muted text-[11px] flex-1">
-            Read-only — the server doesn&apos;t return an id for this article, so it can&apos;t be
-            edited or deleted from the app yet.
-          </Text>
-        </View>
-      ) : (
-      <View className="flex-row border-t border-border pt-2.5" style={{ gap: 16 }}>
-        <Pressable
-          onPress={onEdit}
-          className="flex-row items-center active:opacity-70"
-          style={{ gap: 5 }}
-          hitSlop={6}
-        >
-          <PencilLine size={14} color={COLORS.accent} />
-          <Text className="text-accent text-[12px] font-bold">Edit</Text>
-        </Pressable>
-        <Pressable
-          onPress={onDelete}
-          className="flex-row items-center active:opacity-70"
-          style={{ gap: 5 }}
-          hitSlop={6}
-        >
-          <Trash2 size={14} color={COLORS.danger} />
-          <Text className="text-danger text-[12px] font-bold">Delete</Text>
-        </Pressable>
-      </View>
-      )}
     </Pressable>
   );
 }

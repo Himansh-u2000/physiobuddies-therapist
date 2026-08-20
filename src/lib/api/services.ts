@@ -286,9 +286,16 @@ export const therapistApi = {
  },
 
  /**
-  * No backend `/dashboard` endpoint exists — compose it client-side from the earnings list
-  * (weekly chart + today's earnings), the bookings list (today's session count) and the
-  * public profile (rating).
+  * Composed client-side from the earnings list (weekly chart + today's earnings), the bookings
+  * list (today's session count) and the public profile (rating).
+  *
+  * ⚠️ This used to say no `/dashboard` endpoint existed. It does — `GET /therapist/dashboard`
+  * is in the live spec and answers 401 unauthenticated (an unmatched route answers 500 here),
+  * so the route is real. It returns a different shape though: `todaySessions` as an array,
+  * plus `activePatients`, `newPatientsThisWeek`, `monthlyRevenue`, `commissionRate`,
+  * `totalRatings`, `weeklyTrend`, `monthlyTrend` and `treatmentModeData` — no `earnedToday`
+  * and no per-day chart in the form `buildDashboardStats` produces. Switching to it would
+  * collapse four calls into one; it needs the mapper reworked around the new fields first.
   */
  async getDashboard(): Promise<DashboardStats> {
   const [user, commissions, bookings] = await Promise.all([
@@ -550,15 +557,13 @@ export const availabilityApi = {
 /**
  * Therapist-authored content: articles and FAQs shown on the public profile.
  *
- * The write routes were missing for a stretch (every POST/PATCH/DELETE answered Express's
- * unmatched-route 404) and the app was made read-only behind a flag. They are live again as of
- * 2026-08-18 — all six verified against api.dev.physiobuddies.in — so the flag is gone.
- *
- * ⚠️ One gap remains: **the list reads still omit `id`.** `POST`/`PATCH` return the full row
- * including its id, but `GET /therapist/:id/{articles,faqs}` returns only
- * `{ title|question, content|answer, createdAt }`. So a row that came back from a list refetch
- * has nothing to address a `PATCH`/`DELETE` to, and the screens mark those rows read-only rather
- * than offering controls that would fail on tap. Tracked in BACKEND_TODO §1.8.
+ * **Create and read only, by product decision.** The backend also exposes
+ * `PATCH`/`DELETE` for both resources and they work, but the app deliberately doesn't offer
+ * editing or deleting: `GET /therapist/:id/{articles,faqs}` omits `id` from its rows, so
+ * anything read back from a list has nothing to address those calls to. Rather than ship
+ * controls that work until the first refetch and then stop, the screens create and display.
+ * If the list reads start returning `id` (BACKEND_TODO §1.8) that constraint goes away and
+ * edit can come back — the wrappers were removed with it, so restoring means re-adding them.
  */
 export const contentApi = {
  /** The therapist's published articles (GET /therapist/:id/articles). */
@@ -576,17 +581,6 @@ export const contentApi = {
   await client.post("/therapist/articles", { title, content });
  },
 
- async updateArticle(
-  id: string,
-  updates: { title?: string; content?: string }
- ): Promise<void> {
-  await client.patch(`/therapist/articles/${id}`, updates);
- },
-
- async deleteArticle(id: string): Promise<void> {
-  await client.delete(`/therapist/articles/${id}`);
- },
-
  /** The therapist's FAQs (GET /therapist/:id/faqs). */
  async listFaqs(): Promise<TherapistFaq[]> {
   const { data: user } = await client.get<BackendUser>("/user");
@@ -602,16 +596,6 @@ export const contentApi = {
   await client.post("/therapist/faqs", { question, answer });
  },
 
- async updateFaq(
-  id: string,
-  updates: { question?: string; answer?: string }
- ): Promise<void> {
-  await client.patch(`/therapist/faqs/${id}`, updates);
- },
-
- async deleteFaq(id: string): Promise<void> {
-  await client.delete(`/therapist/faqs/${id}`);
- },
 };
 
 export const appointmentApi = {

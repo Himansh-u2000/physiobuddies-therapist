@@ -35,6 +35,7 @@ import { COLORS, NETWORK_LOG_ENABLED, SUPPORT_EMAIL } from "@/constants/config";
 import { therapistApi } from "@/lib/api/services";
 import { useFileUpload, pickImageFromLibrary, captureImage } from "@/lib/hooks/useFilePicker";
 import { openSupportEmail } from "@/lib/utils/support";
+import { GlassSurface, GlassLayer, GLASS_ENABLED } from "@/components/ui/Glass";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -198,7 +199,10 @@ export default function ProfileScreen() {
     <View className="flex-1 bg-bg">
       <TopBar therapist={therapist} title="Profile" subtitle="Account & settings" showNotification={false} />
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerClassName="px-3.5 pt-3 pb-24">
-        <View className="bg-white border border-border rounded-md p-4 items-center relative" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
+        <GlassSurface
+          fallbackClassName="bg-white"
+          glassRadius={12}
+          className="border border-border rounded-md p-4 items-center relative" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
           <Pressable
             onPress={() => router.push("/edit-profile")}
             hitSlop={6}
@@ -246,7 +250,7 @@ export default function ProfileScreen() {
               </View>
             )}
           </View>
-        </View>
+        </GlassSurface>
 
         {sections.map((section) => (
           <View key={section.title} className="mt-4" style={{ gap: 10 }}>
@@ -262,9 +266,10 @@ export default function ProfileScreen() {
                 <Pressable
                   key={s.label}
                   onPress={() => router.push(s.href)}
-                  className="bg-white border border-border rounded-md p-3.5 flex-row items-center active:opacity-80"
+                  className={`border border-border rounded-md p-3.5 flex-row items-center active:opacity-80 ${GLASS_ENABLED ? "" : "bg-white"}`}
                   style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
                 >
+                  <GlassLayer radius={12} />
                   <View className="w-9 h-9 rounded-[10px] items-center justify-center" style={{ backgroundColor: COLORS.primarySoft }}>
                     <Icon size={18} color={s.color} />
                   </View>
@@ -289,9 +294,10 @@ export default function ProfileScreen() {
 
           <Pressable
             onPress={handleSupport}
-            className="bg-white border border-border rounded-md p-3.5 flex-row items-center active:opacity-80"
+            className={`border border-border rounded-md p-3.5 flex-row items-center active:opacity-80 ${GLASS_ENABLED ? "" : "bg-white"}`}
             style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
           >
+            <GlassLayer radius={12} />
             <View className="w-9 h-9 rounded-[10px] items-center justify-center" style={{ backgroundColor: COLORS.primarySoft }}>
               <HelpCircle size={18} color={COLORS.danger} />
             </View>
@@ -307,9 +313,10 @@ export default function ProfileScreen() {
           {NETWORK_LOG_ENABLED && (
             <Pressable
               onPress={() => router.push("/network-log")}
-              className="bg-white border border-border rounded-md p-3.5 flex-row items-center active:opacity-80"
+              className={`border border-border rounded-md p-3.5 flex-row items-center active:opacity-80 ${GLASS_ENABLED ? "" : "bg-white"}`}
               style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
             >
+              <GlassLayer radius={12} />
               <View className="w-9 h-9 rounded-[10px] items-center justify-center" style={{ backgroundColor: COLORS.primarySoft }}>
                 <Radio size={18} color={COLORS.info} />
               </View>

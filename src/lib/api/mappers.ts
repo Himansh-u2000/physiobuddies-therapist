@@ -1393,6 +1393,5 @@ export function buildDashboardStats(
     weeklyEarnings,
     weeklyChangePercent,
     weeklyChart: chart,
-    pendingTasks: 0,
   };
 }

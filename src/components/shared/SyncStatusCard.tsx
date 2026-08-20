@@ -4,6 +4,7 @@ import { CloudUpload, CloudOff, Image as ImageIcon } from "lucide-react-native";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useRetrySync } from "@/lib/hooks/useSyncEngine";
 import { COLORS } from "@/constants/config";
+import { GlassSurface } from "@/components/ui/Glass";
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -66,7 +67,10 @@ export function SyncStatusCard() {
   const bg = stuck ? "bg-danger/10" : "bg-warning/10";
 
   return (
-    <View className="bg-white border border-border rounded-md p-3 mt-3" style={{ gap: 8 }}>
+    <GlassSurface
+      fallbackClassName="bg-white"
+      glassRadius={12}
+      className="border border-border rounded-md p-3 mt-3" style={{ gap: 8 }}>
       <View className="flex-row items-center" style={{ gap: 10 }}>
         <View className={`w-9 h-9 rounded-[10px] items-center justify-center ${bg}`}>
           <Icon size={18} color={tint} />
@@ -107,6 +111,6 @@ export function SyncStatusCard() {
           <Text className="text-muted text-[11px]">Photos upload after the session record.</Text>
         </View>
       )}
-    </View>
+    </GlassSurface>
   );
 }

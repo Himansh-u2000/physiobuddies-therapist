@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Bell } from "lucide-react-native";
 import { Avatar } from "@/components/ui/Avatar";
+import { GlassSurface } from "@/components/ui/Glass";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
 import type { Therapist } from "@/types";
@@ -23,8 +24,9 @@ export function TopBar({ therapist, title = "Physiobuddies", subtitle = "Therapi
   const topInset = isOnline ? insets.top : 0;
 
   return (
-    <View
-      className="bg-white/92 border-b border-border px-3.5 flex-row items-center justify-between"
+    <GlassSurface
+      className="border-b border-border px-3.5 flex-row items-center justify-between"
+      fallbackClassName="bg-white/92"
       style={{ zIndex: 10, paddingTop: topInset, minHeight: 56 + topInset }}
     >
       <Pressable className="flex-row items-center gap-2.5" onPress={() => router.push("/(app)")}>
@@ -51,6 +53,6 @@ export function TopBar({ therapist, title = "Physiobuddies", subtitle = "Therapi
           <Avatar name={therapist?.name} url={therapist?.avatarUrl} size={36} radius={18} />
         </Pressable>
       </View>
-    </View>
+    </GlassSurface>
   );
 }

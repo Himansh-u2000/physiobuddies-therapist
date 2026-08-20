@@ -8,7 +8,7 @@ import {
   Platform,
   ActivityIndicator,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronLeft } from "lucide-react-native";
@@ -16,28 +16,23 @@ import { Input, RichTextEditor } from "@/components/ui";
 import { contentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /**
- * Full-screen create/edit for a patient-education article, using the Markdown rich-text editor.
- * Reached from the Articles screen with `edit=1` + the article fields for edit, or with no params
- * for a new article. Content is a Markdown string
- * (`POST /therapist/articles`, `PATCH /therapist/articles/:id`).
+ * Full-screen composer for a new patient-education article, using the WYSIWYG rich-text editor.
+ *
+ * **Create only.** Published articles are read on `/article-view` and can't be edited from the
+ * app — the list read omits the `id` a `PATCH` would need (BACKEND_TODO §1.8). Content is stored
+ * as Markdown (`POST /therapist/articles`).
  */
 export default function ArticleEditorScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const showToast = useAppStore((s) => s.showToast);
   const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{
-    id?: string;
-    title?: string;
-    content?: string;
-    edit?: string;
-  }>();
 
-  const isEdit = params.edit === "1";
-  const [title, setTitle] = useState(params.title ?? "");
-  const [content, setContent] = useState(params.content ?? "");
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
 
   const canSave = !saving && title.trim().length > 0 && content.trim().length > 0;
@@ -46,18 +41,8 @@ export default function ArticleEditorScreen() {
     if (!canSave) return;
     setSaving(true);
     try {
-      if (isEdit) {
-        // The list read shape omits `id`, so an article can be un-editable — block rather than
-        // fall back to create (which would silently duplicate).
-        if (!params.id) {
-          throw new Error("This article can't be edited — the server didn't return its id.");
-        }
-        await contentApi.updateArticle(params.id, { title: title.trim(), content: content.trim() });
-        showToast("Article updated", "success");
-      } else {
-        await contentApi.createArticle(title.trim(), content.trim());
-        showToast("Article published", "success");
-      }
+      await contentApi.createArticle(title.trim(), content.trim());
+      showToast("Article published", "success");
       await queryClient.invalidateQueries({ queryKey: ["articles"] });
       router.back();
     } catch (e) {
@@ -69,8 +54,9 @@ export default function ArticleEditorScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-3 pb-3 flex-row items-center bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-3 pb-3 flex-row items-center border-b border-border"
         style={{ paddingTop: insets.top + 10, gap: 6 }}
       >
         <Pressable
@@ -80,9 +66,7 @@ export default function ArticleEditorScreen() {
         >
           <ChevronLeft size={22} color={COLORS.fg} />
         </Pressable>
-        <Text className="text-[16px] font-extrabold text-fg flex-1">
-          {isEdit ? "Edit article" : "New article"}
-        </Text>
+        <Text className="text-[16px] font-extrabold text-fg flex-1">New article</Text>
         <Pressable
           onPress={handleSave}
           disabled={!canSave}
@@ -96,9 +80,9 @@ export default function ArticleEditorScreen() {
           ) : (
             <Check size={16} color="#fff" />
           )}
-          <Text className="text-white font-bold text-[13px]">{isEdit ? "Save" : "Publish"}</Text>
+          <Text className="text-white font-bold text-[13px]">Publish</Text>
         </Pressable>
-      </View>
+      </GlassSurface>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}

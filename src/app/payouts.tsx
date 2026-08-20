@@ -19,6 +19,7 @@ import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
 import { formatCurrency } from "@/lib/utils/format";
 import type { Payout } from "@/types";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /**
  * Wallet balance + payout history + a request form (GET /therapist/wallet, GET /therapist/payout,
@@ -77,8 +78,9 @@ export default function PayoutsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-3 flex-row items-center bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-3 flex-row items-center border-b border-border"
         style={{ paddingTop: insets.top + 10, gap: 8 }}
       >
         <Pressable
@@ -89,7 +91,7 @@ export default function PayoutsScreen() {
           <ChevronLeft size={22} color={COLORS.fg} />
         </Pressable>
         <Text className="text-[16px] font-extrabold text-fg">Payouts</Text>
-      </View>
+      </GlassSurface>
 
       <ScrollView
         className="flex-1"
@@ -230,8 +232,10 @@ function PayoutRow({ payout }: { payout: Payout }) {
   const meta = STATUS_META[payout.status];
   const Icon = meta.Icon;
   return (
-    <View
-      className="bg-white border border-border rounded-md p-3 flex-row items-center"
+    <GlassSurface
+      fallbackClassName="bg-white"
+      glassRadius={12}
+      className="border border-border rounded-md p-3 flex-row items-center"
       style={{ gap: 10, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
     >
       <View
@@ -255,6 +259,6 @@ function PayoutRow({ payout }: { payout: Payout }) {
           {meta.label}
         </Text>
       </View>
-    </View>
+    </GlassSurface>
   );
 }
