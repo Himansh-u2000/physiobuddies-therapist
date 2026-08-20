@@ -14,6 +14,7 @@
     "expo-camera": "~56.0.8",
     "expo-constants": "~56.0.18",
     "expo-crypto": "~56.0.4",
+    "expo-dev-client": "~56.0.25",
     "expo-device": "~56.0.4",
     "expo-document-picker": "~56.0.4",
     "expo-file-system": "~56.0.8",
@@ -75,7 +76,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "apk": "powershell -ExecutionPolicy Bypass -File scripts/build-local-apk.ps1",
-      "lint": "expo lint",
+    "lint": "expo lint",
     "test": "jest",
     "test:watch": "jest --watch"
   },
