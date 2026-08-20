@@ -5,6 +5,7 @@ import { Bell } from "lucide-react-native";
 import { Avatar } from "@/components/ui/Avatar";
 import { GlassSurface } from "@/components/ui/Glass";
 import { useAppStore } from "@/lib/stores/app.store";
+import { useUnreadNotifications } from "@/lib/hooks/useUnreadNotifications";
 import { COLORS } from "@/constants/config";
 import type { Therapist } from "@/types";
 
@@ -22,6 +23,7 @@ export function TopBar({ therapist, title = "Physiobuddies", subtitle = "Therapi
   // status bar when it's showing — adding this too would double that gap.
   const isOnline = useAppStore((s) => s.isOnline);
   const topInset = isOnline ? insets.top : 0;
+  const unread = useUnreadNotifications();
 
   return (
     <GlassSurface
@@ -46,7 +48,15 @@ export function TopBar({ therapist, title = "Physiobuddies", subtitle = "Therapi
             hitSlop={8}
           >
             <Bell size={18} color={COLORS.accent} />
-            <View className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-danger border-[1.5px] border-white" />
+            {unread > 0 && (
+              <View
+                className="absolute top-0.5 right-0.5 h-[15px] min-w-[15px] px-[3px] rounded-full bg-danger border-[1.5px] border-white items-center justify-center"
+              >
+                <Text className="text-white text-[9px] font-bold leading-[11px]">
+                  {unread > 99 ? "99+" : unread}
+                </Text>
+              </View>
+            )}
           </Pressable>
         )}
         <Pressable onPress={() => router.push("/(app)/profile")}>

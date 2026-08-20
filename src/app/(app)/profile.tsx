@@ -6,6 +6,7 @@ import {
   Shield,
   FileText,
   Bell,
+  BellRing,
   Lock,
   HelpCircle,
   LogOut,
@@ -167,6 +168,13 @@ export default function ProfileScreen() {
           sub: "Your alerts and updates",
           color: COLORS.info,
           href: "/(app)/notifications",
+        },
+        {
+          icon: BellRing,
+          label: "Notification settings",
+          sub: "Push, email and reminder preferences",
+          color: COLORS.accent,
+          href: "/notification-settings",
         },
         {
           icon: Fingerprint,

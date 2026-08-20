@@ -1,77 +1,145 @@
-# FCM (Android push) setup — Phase 1 handoff
+# Push notifications — status
 
-Everything in Phase 1 that can be automated is done. Firebase Cloud Messaging is the
-one item that needs **your Google account** (creating a Firebase project and downloading
-a client config file), so it is left as a short manual checklist below. APNs (iOS push)
-is intentionally deferred to **Phase 8** — it needs an Apple Developer account.
+Android push is configured end to end: the device registers an FCM token, taps deep-link into the
+right screen, preferences are editable, and sign-out retires the token. The Firebase Android app
+exists and `google-services.json` is in the repo, so a build produced from this tree can obtain a
+token.
 
-Until these steps are done, remote push testing on Android in later phases is blocked.
-Local notifications work fine without it.
-
-> Why this can't be scripted: it requires signing into the Firebase console with your
-> Google account and downloading `google-services.json`. `app.json` is deliberately left
-> **without** a `googleServicesFile` reference so the first `eas build` doesn't fail on a
-> missing file — you add that one line in step 3 once the file exists.
+**One thing is left, and it is on the server side:** the backend needs the Firebase
+service-account key in order to *send* anything. Until then the app will register successfully
+and receive nothing. See "What is left" below, and the delivery risk noted at the end.
 
 ---
 
-## 1. Create the Firebase project + Android app
-1. Go to <https://console.firebase.google.com> → **Add project** (e.g. `physiobuddies`).
-   Google Analytics is optional.
-2. In the project, **Add app → Android**.
-3. **Android package name** must exactly match `app.json`:
-   ```
-   in.physiobuddies.therapist
-   ```
-4. Register the app and **download `google-services.json`**.
+## What the app now does
 
-## 2. Drop the file into the repo
-Place the downloaded file at the project root:
+| Piece | Where | Status |
+| --- | --- | --- |
+| Permission + Android channels | `src/lib/notifications/push.ts` | done |
+| FCM token acquisition | `getDevicePushTokenAsync()`, Android only | done |
+| `POST /notifications/device-token` | `notificationApi.registerPushToken` | done |
+| `DELETE /notifications/device-token/:token` on logout | `auth.store.ts` → `unregisterDeviceToken` | done |
+| Token rotation | `addPushTokenListener` → re-register, retire the old row | done |
+| Foreground display, cold-start taps, deep links | `src/lib/hooks/useNotifications.ts`, `links.ts` | done |
+| Preferences UI (6 flags) | `src/app/notification-settings.tsx` | done |
+| Unread badge (bell + app icon) | `useUnreadNotifications` | done |
+| Firebase Android app + `google-services.json` | Firebase console → repo root | done |
+| **Backend able to send (service-account key)** | backend / firebase-admin | **TODO — see below** |
+| iOS / APNs | — | deferred, see "iOS" below |
+
+The app degrades honestly if the Firebase config is ever missing: the notification settings screen
+says *"Push isn't available in this build"* rather than silently doing nothing, and the in-app
+notification list, preferences and unread badge all work regardless — they are polled, not pushed.
+
+## Why the `NOTIFICATION_*` values in `.env.*` are not enough
+
+The credentials already in the env files are the Firebase **Web** SDK config:
+
 ```
-physiobuddies-therapist/google-services.json
-```
-It is Firebase *client* config (not a secret — it already ships inside the APK), so it is
-safe to commit to this private repo. If you'd rather not commit it, add it as an EAS
-file secret instead (`eas env:create --name GOOGLE_SERVICES_JSON --type file ...`) and
-reference that — but committing is simplest here.
-
-## 3. Point `app.json` at it (one line)
-Add `googleServicesFile` inside the `android` block of `app.json`:
-```jsonc
-"android": {
-  "package": "in.physiobuddies.therapist",
-  "googleServicesFile": "./google-services.json",   // <-- add this line
-  "adaptiveIcon": { ... }
-}
+NOTIFICATION_APP_ID=1:162686649484:web:deaf5bb41c794fe5ece7a9    ← "web"
+NOTIFICATION_VAPID_KEY=BOdyDH_…                                   ← web push only
 ```
 
-## 4. Upload the FCM V1 credential to EAS
-SDK 56 / `expo-notifications` uses **FCM V1** (the legacy server key is gone).
-1. Firebase console → **Project settings → Service accounts → Generate new private key**
-   → downloads a service-account JSON.
-2. Upload it to EAS:
-   ```
-   eas credentials -p android
-   ```
-   Choose the build profile → **Push Notifications: Manage your FCM V1 Service Account Key**
-   → **Upload a new key** → select the service-account JSON from step 1.
-   (You can also do this from the project's **Credentials** page on expo.dev.)
+A `web` app ID and a VAPID key are what the Firebase **JavaScript** SDK uses to subscribe a
+*browser*. React Native does not use them at all — it registers through the native Firebase
+Android SDK, which reads `google-services.json` and needs an **android** app ID
+(`1:162686649484:android:…`). It cannot be fabricated: FCM rejects a registration for an app ID it
+has never issued.
 
-## 5. Verify
-- Build a development client (`eas build -p android --profile development`), install it.
-- On first authenticated launch the app calls `Notifications.getExpoPushTokenAsync` and
-  registers the token (see `src/lib/hooks/useNotifications.ts`) — it needs the real
-  `projectId` (already set: `e73e2219-8f33-41f9-8f83-ccab827af8af`) **and** the FCM key.
-- Send a test push from <https://expo.dev/notifications> to the printed
-  `ExponentPushToken[...]`.
+Same Firebase project (`physiobuddies-d6a31`), same sender ID — just a second app registered in
+it, which now exists.
 
 ---
 
-### Status checklist
-- [ ] Firebase project created, Android app registered as `in.physiobuddies.therapist`
-- [ ] `google-services.json` at repo root
-- [ ] `googleServicesFile` line added to `app.json`
-- [ ] FCM V1 service-account key uploaded to EAS
-- [ ] Test push received on a dev build
+## Done: the Android app is registered
 
-Once all five are checked, flip the **FCM** checkbox in `../progress.md` (Phase 1).
+Completed 2026-08-20. `google-services.json` is at the repo root and committed, and the native
+project has been regenerated against it. Verified by running the Google Services Gradle task,
+which resolves the **android** app ID (not the web one):
+
+```
+google_app_id     1:162686649484:android:6bf509d5f514ac4cece7a9
+gcm_defaultSenderId 162686649484
+project_id        physiobuddies-d6a31
+```
+
+### The package name changed to `com.physiobuddies.therapist`
+
+The app was `in.physiobuddies.therapist` on both platforms. The Firebase Android app was
+registered as `com.physiobuddies.therapist`, and rather than re-register, **the app moved to
+`com.`** — a product decision taken while the app is still in development, so no installed copy
+and no store listing is affected. `app.json` (android *and* iOS, kept in step), the regenerated
+`android/` project, and the build script all say `com.physiobuddies.therapist` now.
+
+Two consequences worth knowing:
+
+- **EAS will mint a new Android keystore** on the next cloud build, because credentials are keyed
+  by package name. Any previously installed EAS build must be uninstalled before a new one will
+  install (signature mismatch) — `adb uninstall in.physiobuddies.therapist`.
+- **`npx expo prebuild -p android --clean` is required after a package change**, not just a plain
+  prebuild: the Kotlin sources live under `android/app/src/main/java/<package path>/`, and a
+  non-clean prebuild leaves the old `in/physiobuddies/` directory behind alongside the new one.
+  Note `android/local.properties` is *not* regenerated — it carries this machine's `sdk.dir` and
+  the load-bearing `cmake.dir` override, so back it up before a `--clean` and restore it after.
+
+## What is left
+
+### 1. Give the backend the FCM V1 credential
+The **server** is the sender here, not Expo, so the service-account key goes to the backend team,
+not to EAS:
+
+Firebase console → **Project settings → Service accounts → Generate new private key** → hand the
+downloaded JSON to whoever configures the API's firebase-admin credentials.
+
+> Never commit that file. It is a private key that can push to every user and read the whole
+> project — the opposite of `google-services.json`. `.gitignore` carries patterns for the usual
+> filenames (`*service-account*.json`, `*-firebase-adminsdk-*.json`) so a stray download cannot
+> be committed by accident.
+
+> EAS credentials (`eas credentials -p android`) are only needed if something ever sends through
+> **Expo's** push service. This app registers a raw FCM token with our own backend and does not
+> use Expo's relay, so that step is not required.
+
+### 2. Verify on a device
+1. `npm run apk`, install it, sign in. (The script now preflights Firebase and refuses to build
+   an APK that would silently have no push — it checks the file was applied to `android/` and
+   that its package matches `app.json`.)
+2. Profile → **Notification settings**. The banner should read **"Push notifications are on"**.
+   Anything else names the reason.
+3. Trigger a real event — the easiest is a booking on the seed patient account, which fires
+   `booking.therapist_assigned` (an event with a `push` channel).
+4. Background the app. The notification should appear in the tray, and tapping it should open
+   that booking, not the app's home screen.
+
+### Checklist
+- [x] Android app registered inside `physiobuddies-d6a31`
+- [x] `google-services.json` at the repo root
+- [x] App package aligned to `com.physiobuddies.therapist`, native project regenerated
+- [ ] Service-account key handed to the backend
+- [ ] Test push received and its tap opened the right screen
+
+
+---
+
+## iOS
+
+Still deferred, and there is a second reason beyond the Apple Developer account.
+`getDevicePushTokenAsync()` returns a raw **APNs** token on iOS, which an FCM sender cannot
+address — bridging it needs the Firebase iOS SDK in the app *and* the APNs key uploaded to
+Firebase. Until both exist, `registerDeviceToken()` skips iOS deliberately and reports
+`unsupported-platform`, rather than filling the server's token table with values it can never
+deliver to.
+
+## Known server-side risk
+
+The backend's device-token endpoint describes itself as storing an "FCM **web-push** token", and
+its `platform` field is `enum: ["web"]` — it 400s on `"android"`. That is only a labelling
+problem for registration (the app omits the field), but it hints the sender may build a
+**web-push-shaped** message, putting the title and body inside `webpush.notification`. A native
+Android client receiving that gets a data-only message and displays nothing.
+
+The app mitigates the foreground case — `useNotifications.ts` re-presents a data-only push as a
+local notification — but a message arriving while the app is killed cannot be rescued client-side.
+If step 4 above delivers silence rather than a tray notification, that is the cause. Filed in
+`BACKEND_TODO.md`; the fix is for the sender to include a common `notification` block (or an
+`android` block) alongside the `webpush` one.

@@ -20,7 +20,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "in.physiobuddies.therapist",
+      "bundleIdentifier": "com.physiobuddies.therapist",
       "infoPlist": {
         "NSCameraUsageDescription": "Physiobuddies needs camera access to capture session photos and document scans.",
         "NSLocationWhenInUseUsageDescription": "Physiobuddies uses your location to navigate to patient home visits and calculate ETA.",
@@ -30,7 +30,7 @@
       }
     },
     "android": {
-      "package": "in.physiobuddies.therapist",
+      "package": "com.physiobuddies.therapist",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -99,7 +99,9 @@
       [
         "expo-notifications",
         {
-          "color": "#004060"
+          "color": "#004060",
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "defaultChannel": "default"
         }
       ],
       "expo-local-authentication",

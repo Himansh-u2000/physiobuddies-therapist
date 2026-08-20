@@ -19,6 +19,29 @@ jest.mock("expo-local-authentication", () => ({
   supportedAuthenticationTypesAsync: jest.fn(async () => []),
 }));
 
+/**
+ * Reachable from the auth store since logout retires this device's push token
+ * (`lib/notifications/push`). Importing the real module under Jest also trips
+ * expo-notifications' "remote push was removed from Expo Go" warning on every suite that
+ * touches the store, which is noise rather than a signal here.
+ */
+jest.mock("expo-notifications", () => ({
+  getPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
+  requestPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
+  getDevicePushTokenAsync: jest.fn(async () => ({ type: "fcm", data: "mock-fcm-token" })),
+  setNotificationChannelAsync: jest.fn(async () => {}),
+  setNotificationHandler: jest.fn(),
+  setBadgeCountAsync: jest.fn(async () => {}),
+  scheduleNotificationAsync: jest.fn(async () => "mock-notification-id"),
+  addPushTokenListener: jest.fn(() => ({ remove: jest.fn() })),
+  addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  useLastNotificationResponse: jest.fn(() => null),
+  clearLastNotificationResponse: jest.fn(),
+  DEFAULT_ACTION_IDENTIFIER: "expo.modules.notifications.actions.DEFAULT",
+  AndroidImportance: { MIN: 1, LOW: 2, DEFAULT: 3, HIGH: 4, MAX: 5 },
+}));
+
 let mockUuidCounter = 0;
 jest.mock("expo-crypto", () => ({
   randomUUID: jest.fn(() => `mock-uuid-${++mockUuidCounter}`),

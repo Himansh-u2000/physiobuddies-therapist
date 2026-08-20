@@ -8,6 +8,10 @@
 > and `.env.development` files this checklist refers to no longer exist either — there are two
 > env files now, `.env` and `.env.production`. Kept only as the record of how the flow worked,
 > in case Google login is ever restored.
+>
+> If it ever is: the package name / bundle id below is **out of date**. The app moved to
+> `com.physiobuddies.therapist` on 2026-08-20 (see FCM_SETUP.md), so any OAuth client would have
+> to be created against `com.`, not the `in.` shown here.
 
 The app-side Google Sign-In is fully wired; it just needs your OAuth client IDs. This is the
 one auth item that needs your Google account, so it's a short checklist (like `FCM_SETUP.md`).

@@ -1215,14 +1215,44 @@ export function mapBlogPosts(list: BackendBlogPost[]): BlogPost[] {
  * back to the channel. And the body field is `description`, not `body`.
  */
 export function mapNotifications(list: BackendNotification[]): AppNotification[] {
-  return (list ?? []).map((n) => ({
-    id: n.id,
-    type: notificationCategory(n),
-    title: n.title ?? "",
-    body: n.description ?? "",
-    timestamp: n.time ?? n.createdAt ?? "",
-    read: !!n.isRead,
-  }));
+  return (list ?? []).map((n) => {
+    const iso = n.time ?? n.createdAt ?? "";
+    const at = iso ? new Date(iso) : null;
+    return {
+      id: n.id,
+      type: notificationCategory(n),
+      title: n.title ?? "",
+      body: n.description ?? "",
+      timestamp: at && !Number.isNaN(at.getTime()) ? notificationTimeLabel(at) : "",
+      read: !!n.isRead,
+      actionUrl: notificationLink(n.metadata),
+    };
+  });
+}
+
+/**
+ * The row's deep link lives at `metadata.url` — the backend's notification catalog sets it per
+ * event (`therapistBookingPath(...)` → `/therapist/my-bookings/<planId>`, and so on). `metadata`
+ * is typed `unknown` because the server stores an arbitrary JSON blob per event, so narrow it
+ * here rather than trusting the shape.
+ */
+function notificationLink(metadata: unknown): string | undefined {
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const url = (metadata as { url?: unknown }).url;
+  return typeof url === "string" && url.length > 0 ? url : undefined;
+}
+
+/**
+ * Notifications are read as a stream, so recency matters more than the calendar date — minutes
+ * and hours for today, then `relativeDateLabel`'s Today/Yesterday/date wording. The raw ISO
+ * instant used to be rendered verbatim, which put `2026-08-18T13:10:02.647Z` under every row.
+ */
+function notificationTimeLabel(at: Date): string {
+  const diffMin = Math.floor((Date.now() - at.getTime()) / 60_000);
+  if (diffMin < 1) return "Just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 24 * 60) return `${Math.floor(diffMin / 60)}h ago`;
+  return relativeDateLabel(at);
 }
 
 function notificationCategory(n: BackendNotification): AppNotification["type"] {

@@ -8,6 +8,7 @@ import type {
  Transaction,
  EarningsSummary,
  AppNotification,
+ NotificationPreferences,
  ActivityEntry,
  AuthTokens,
  BlogPost,
@@ -1064,13 +1065,70 @@ export const notificationApi = {
   await client.patch("/notifications/read-all");
  },
 
+ /**
+  * `POST /notifications/device-token` — live since 2026-08-20, replacing the no-op this used
+  * to be (the route genuinely did not exist before). Upserted by token, so re-registering the
+  * same device updates its row instead of duplicating.
+  *
+  * **`platform` is deliberately not sent.** Its schema is `enum: ["web"]` and the server 400s
+  * on anything else — `{"message":"Invalid input: expected \"web\"","field":"platform"}` for
+  * `"android"`, probed live. Omitting it lets the server apply its own default rather than the
+  * app asserting a lie about the device. Filed in BACKEND_TODO.md; when the enum grows an
+  * `android`/`ios` member this should start sending `Platform.OS`.
+  */
  async registerPushToken(token: string): Promise<void> {
-  // Still genuinely absent: there is no push-token registration route on the server, so a
-  // device token has nowhere to go and push cannot be delivered even with FCM configured.
-  // The in-app list above works regardless — it is polled, not pushed.
-  void token;
+  await client.post("/notifications/device-token", { token });
+ },
+
+ /**
+  * `DELETE /notifications/device-token/:token`, scoped to the caller. Returns
+  * `{ success: false }` — not a 404 — when the token was not registered, so a redundant
+  * unregister is harmless. Must run *before* the access token is cleared on logout.
+  */
+ async unregisterPushToken(token: string): Promise<void> {
+  await client.delete(`/notifications/device-token/${encodeURIComponent(token)}`);
+ },
+
+ /**
+  * Opt-in flags for promotional and reminder traffic. Transactional notifications are always
+  * sent and are not represented here — see `NotificationPreferences`.
+  */
+ async getPreferences(): Promise<NotificationPreferences> {
+  const { data } = await client.get<Partial<NotificationPreferences>>(
+   "/notifications/preferences"
+  );
+  return normalizePreferences(data);
+ },
+
+ /** PATCH is partial: send only the flags that changed. Echoes the full updated set back. */
+ async updatePreferences(
+  patch: Partial<NotificationPreferences>
+ ): Promise<NotificationPreferences> {
+  const { data } = await client.patch<Partial<NotificationPreferences>>(
+   "/notifications/preferences",
+   patch
+  );
+  return normalizePreferences(data);
  },
 };
+
+/**
+ * Default every flag to `true` when absent. The server always sends all six, but a missing key
+ * must not render as "opted out" — that would show a therapist their reminders are off and,
+ * worse, let a toggle write that false back on the next PATCH.
+ */
+function normalizePreferences(
+ data: Partial<NotificationPreferences> | undefined
+): NotificationPreferences {
+ return {
+  promotionalEmail: data?.promotionalEmail ?? true,
+  promotionalInApp: data?.promotionalInApp ?? true,
+  promotionalPush: data?.promotionalPush ?? true,
+  reminderEmail: data?.reminderEmail ?? true,
+  reminderInApp: data?.reminderInApp ?? true,
+  reminderPush: data?.reminderPush ?? true,
+ };
+}
 
 /**
  * `POST /treatment-session/:id/add-docs`, verified live 2026-08-18. The server also echoes

@@ -52,3 +52,19 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Firebase
+#
+# `google-services.json` is deliberately NOT ignored. It is Firebase *client* config, not a
+# credential: it is compiled into the APK, so anyone holding the app already has it. Its API key
+# is restricted to this Android package + signing certificate and grants no server access.
+# Committing it is what lets a fresh clone (and an EAS cloud build) produce a push-capable
+# build with no extra setup. `app.config.js` also accepts a GOOGLE_SERVICES_JSON path if you
+# would rather supply it as an EAS file secret instead.
+#
+# The Firebase **service-account key** is the opposite — it is a private key that can send push
+# to every user and read the whole project. It belongs to the BACKEND, never to this repo. These
+# patterns exist so that downloading one to the wrong folder can't quietly commit it:
+*service-account*.json
+*serviceaccount*.json
+*-firebase-adminsdk-*.json

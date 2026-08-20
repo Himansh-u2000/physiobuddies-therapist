@@ -1,13 +1,17 @@
-import { useEffect } from "react";
-import { View, Text, Pressable } from "react-native";
-import * as Notifications from "expo-notifications";
+import { useCallback } from "react";
+import { View, Text, Pressable, RefreshControl } from "react-native";
+import { useRouter } from "expo-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FlashList } from "@shopify/flash-list";
-import { Calendar, IndianRupee, ClipboardList, Info, MessageSquare, BellOff, TriangleAlert } from "lucide-react-native";
+import { Calendar, IndianRupee, ClipboardList, Info, MessageSquare, BellOff, TriangleAlert, CheckCheck, Settings2 } from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
 import { Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { notificationApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/stores/auth.store";
+import { useAppStore } from "@/lib/stores/app.store";
 import { useSyncedQuery } from "@/lib/hooks/useSyncedQuery";
+import { useUnreadNotifications } from "@/lib/hooks/useUnreadNotifications";
+import { toAppHref } from "@/lib/notifications/links";
 import { getCachedNotifications, cacheNotifications } from "@/lib/db/repositories";
 import { COLORS } from "@/constants/config";
 import type { AppNotification } from "@/types";
@@ -21,27 +25,50 @@ const iconMap = {
 };
 
 export default function NotificationsScreen() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const therapist = useAuthStore((s) => s.therapist);
-  const { data: notifications, isLoading, isError, refetch } = useSyncedQuery({
+  const showToast = useAppStore((s) => s.showToast);
+  const unread = useUnreadNotifications();
+
+  const { data: notifications, isLoading, isFetching, isError, refetch } = useSyncedQuery({
     queryKey: ["notifications"],
     queryFn: notificationApi.list,
     readCache: getCachedNotifications,
     writeCache: cacheNotifications,
   });
 
-  // The therapist looking at this screen is the "seen" signal — there's no per-notification
-  // read mutation yet (a separate, larger gap: nothing anywhere lets the user mark one
-  // notification read), so clearing the badge on arrival here is the honest scope for now
-  // rather than a half-built read-tracking system.
-  useEffect(() => {
-    Notifications.setBadgeCountAsync(0).catch(() => {});
-  }, []);
+  const markAllRead = useMutation({
+    mutationFn: notificationApi.markAllRead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onError: () => showToast("Couldn't mark these as read. Try again.", "error"),
+  });
+
+  /**
+   * Tapping a row does two things, and only one of them is allowed to block the navigation:
+   * `PATCH /notifications/:id/read` is fire-and-forget so a slow or offline mark-read never
+   * leaves the therapist staring at a row that seemingly ignored them. The list is invalidated
+   * afterwards to pick up the server's new `isRead` and unread count.
+   */
+  const openNotification = useCallback(
+    (item: AppNotification) => {
+      if (!item.read) {
+        notificationApi
+          .markRead(item.id)
+          .then(() => queryClient.invalidateQueries({ queryKey: ["notifications"] }))
+          .catch(() => {});
+      }
+      router.push(toAppHref(item.actionUrl));
+    },
+    [router, queryClient],
+  );
 
   const renderItem = ({ item }: { item: AppNotification }) => {
     const config = iconMap[item.type] ?? iconMap.system;
     const Icon = config.icon;
     return (
       <Pressable
+        onPress={() => openNotification(item)}
         className={`border rounded-[13px] p-3 mb-2.5 flex-row items-start active:opacity-80 ${item.read ? "bg-white border-border" : "bg-tint border-info/10"}`}
         style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
       >
@@ -61,11 +88,42 @@ export default function NotificationsScreen() {
   return (
     <View className="flex-1 bg-bg">
       <TopBar therapist={therapist} title="Notifications" subtitle="Recent updates" showNotification={false} />
+
+      <View className="flex-row items-center justify-between px-3.5 pt-3">
+        <Text className="text-[12px] text-muted">
+          {unread > 0 ? `${unread} unread` : "All caught up"}
+        </Text>
+        <View className="flex-row items-center" style={{ gap: 8 }}>
+          {unread > 0 && (
+            <Pressable
+              onPress={() => markAllRead.mutate()}
+              disabled={markAllRead.isPending}
+              hitSlop={6}
+              className="flex-row items-center px-2.5 py-1.5 rounded-md border border-border bg-white active:opacity-70"
+              style={{ gap: 5, opacity: markAllRead.isPending ? 0.6 : 1 }}
+            >
+              <CheckCheck size={14} color={COLORS.accent} />
+              <Text className="text-[11px] font-semibold text-accent">Mark all read</Text>
+            </Pressable>
+          )}
+          <Pressable
+            onPress={() => router.push("/notification-settings")}
+            hitSlop={6}
+            className="w-8 h-8 rounded-md border border-border bg-white items-center justify-center active:opacity-70"
+          >
+            <Settings2 size={15} color={COLORS.accent} />
+          </Pressable>
+        </View>
+      </View>
+
       <FlashList
         data={notifications ?? []}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: 14, paddingBottom: 96 }}
+        refreshControl={
+          <RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={COLORS.accent} />
+        }
         ListEmptyComponent={
           isLoading ? (
             <View style={{ gap: 10 }}>

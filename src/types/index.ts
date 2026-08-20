@@ -556,9 +556,32 @@ export interface AppNotification {
   type: "appointment" | "payment" | "task" | "system" | "message";
   title: string;
   body: string;
+  /** Display label ("2h ago", "Yesterday", "18 Aug") — not a parseable instant. */
   timestamp: string;
   read: boolean;
+  /**
+   * The *backend's* deep link, verbatim — a web-app path such as
+   * `/therapist/my-bookings/<planId>` (see `metadata.url` on the row and `url` on the push
+   * payload). It is not an app route; `toAppHref()` in `@/lib/notifications/links` is what
+   * turns it into one.
+   */
   actionUrl?: string;
+}
+
+/**
+ * The six opt-in flags behind `GET`/`PATCH /notifications/preferences`.
+ *
+ * Only *promotional* and *reminder* traffic is gated. Transactional notifications (a booking
+ * landing, a cancellation, a payout) are always delivered and deliberately have no switch —
+ * so the settings screen must not imply otherwise.
+ */
+export interface NotificationPreferences {
+  promotionalEmail: boolean;
+  promotionalInApp: boolean;
+  promotionalPush: boolean;
+  reminderEmail: boolean;
+  reminderInApp: boolean;
+  reminderPush: boolean;
 }
 
 export interface AuthTokens {

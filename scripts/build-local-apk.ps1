@@ -108,6 +108,54 @@ $env:EXPO_PUBLIC_SHOW_TEST_OTP = "true"
 
 Write-Host "Target ABI = $Abi (pass -Abi x86_64 for an emulator)" -ForegroundColor Cyan
 
+# --- Firebase preflight ---
+# This script builds the EXISTING android/ project; it never runs `expo prebuild`. That is fine
+# for JS and config changes, but Firebase is wired in by a prebuild step: the config plugin
+# copies google-services.json into android/app/ and applies the google-services Gradle plugin.
+# So a google-services.json added at the project root AFTER android/ was generated is invisible
+# here, and the build would quietly produce an APK with no FCM support at all - push would fail
+# on the device with "not-configured" and nothing in this log would say why.
+#
+# Checked rather than auto-prebuilt: a prebuild rewrites android/, and that is not something a
+# build script should do behind your back.
+$rootGoogleServices = Join-Path $projectRoot "google-services.json"
+$appGoogleServices = Join-Path $projectRoot "android\app\google-services.json"
+if (Test-Path $rootGoogleServices) {
+  $needsPrebuild = $false
+  if (-not (Test-Path $appGoogleServices)) {
+    $needsPrebuild = $true
+  } else {
+    $rootHash = (Get-FileHash $rootGoogleServices -Algorithm SHA256).Hash
+    $appHash = (Get-FileHash $appGoogleServices -Algorithm SHA256).Hash
+    if ($rootHash -ne $appHash) { $needsPrebuild = $true }
+  }
+
+  if ($needsPrebuild) {
+    Write-Error @'
+google-services.json is present but has not been applied to android/.
+
+The native project predates it (or the file changed), so this build would have NO push support.
+Run a prebuild first, then re-run this script:
+
+    npx expo prebuild -p android
+
+Also verify the package name matches, or the Google Services Gradle plugin will fail the build
+with "No matching client found for package name". It must equal app.json's android.package -
+the android_client_info.package_name in google-services.json must say exactly the same thing.
+'@
+  }
+
+  # Confirm the client in the file actually matches this app before spending 20-40 min on it.
+  $gsPackage = (Get-Content $rootGoogleServices -Raw | ConvertFrom-Json).client[0].client_info.android_client_info.package_name
+  $appPackage = (Get-Content (Join-Path $projectRoot "app.json") -Raw | ConvertFrom-Json).expo.android.package
+  if ($gsPackage -ne $appPackage) {
+    Write-Error "google-services.json is registered for '$gsPackage' but this app is '$appPackage'. Re-register the Android app in Firebase with the package name '$appPackage' and download a new google-services.json."
+  }
+  Write-Host "Firebase: google-services.json applied for $gsPackage" -ForegroundColor Cyan
+} else {
+  Write-Host "Firebase: no google-services.json - this build will have NO push notifications (see FCM_SETUP.md)" -ForegroundColor Yellow
+}
+
 Push-Location (Join-Path $projectRoot "android")
 try {
   Write-Host "`nBuilding release APK (first run downloads Gradle + deps, be patient)...`n" -ForegroundColor Yellow
@@ -122,7 +170,7 @@ if (Test-Path $apk) {
   $sizeMb = [math]::Round((Get-Item $apk).Length / 1MB, 1)
   Write-Host "`nAPK built: $apk ($sizeMb MB)" -ForegroundColor Green
   Write-Host "Install with:  adb install -r `"$apk`"" -ForegroundColor Green
-  Write-Host "(If install fails with a signature mismatch, uninstall the EAS build first: adb uninstall in.physiobuddies.therapist)" -ForegroundColor DarkGray
+  Write-Host "(If install fails with a signature mismatch, uninstall the EAS build first: adb uninstall com.physiobuddies.therapist)" -ForegroundColor DarkGray
 } else {
   Write-Error "Build reported success but no APK found at $apk"
 }

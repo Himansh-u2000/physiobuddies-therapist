@@ -91,4 +91,10 @@ export async function clearAllSecureData(): Promise<void> {
   await SecureStore.deleteItemAsync(STORAGE_KEYS.therapistProfile);
   await SecureStore.deleteItemAsync(STORAGE_KEYS.biometricEnabled);
   await SecureStore.deleteItemAsync(STORAGE_KEYS.phone);
+  // The push token is per-account, not per-device: it records which therapist this handset is
+  // registered as. `logout` unregisters it server-side first (see the store); this also covers
+  // `sessionExpired`, where the credential to do that is exactly what just died — dropping the
+  // local copy is what makes the next sign-in re-register instead of matching the stale value
+  // and skipping the POST.
+  await SecureStore.deleteItemAsync(STORAGE_KEYS.pushToken);
 }

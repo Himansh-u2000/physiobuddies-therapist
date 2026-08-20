@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "162686649484",
+    "project_id": "physiobuddies-d6a31",
+    "storage_bucket": "physiobuddies-d6a31.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:162686649484:android:6bf509d5f514ac4cece7a9",
+        "android_client_info": {
+          "package_name": "com.physiobuddies.therapist"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC5-xz0pBcVGFhotovKottYEJlTO1mQvMs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

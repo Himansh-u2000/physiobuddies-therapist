@@ -12,6 +12,7 @@ import {
   clearAllSecureData,
 } from "@/lib/storage/secure";
 import { authApi } from "@/lib/api/services";
+import { unregisterDeviceToken } from "@/lib/notifications/push";
 import { clearNetLog } from "@/lib/api/netlog";
 import { useAppStore } from "@/lib/stores/app.store";
 
@@ -95,6 +96,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   unlock: () => set({ isLocked: false }),
 
   logout: async () => {
+    // Retire this device's push token FIRST — the DELETE is authenticated, so once
+    // `clearAllSecureData()` has run there is no credential left to authorize it and the token
+    // would keep receiving the departing therapist's session and payout alerts on a phone that
+    // is now someone else's.
+    await unregisterDeviceToken().catch(() => {});
     // Best-effort server + native sign-out, then clear all local state.
     await authApi.logout().catch(() => {});
     await clearAllSecureData();

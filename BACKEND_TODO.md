@@ -27,12 +27,19 @@ written**, and the app has been updated to match:
   a silent relocation of the app's single most important write is expensive.
 - **`/notifications/*` (plural) is implemented and working**; `/notification/*` (singular) returns
   **500**. Same split for `/complaints/` vs `/complaint/`. `/activity/` is unaffected. Please retire
-  the dead singular mounts rather than leaving them answering 500 — §2 below is now largely obsolete.
+  the dead singular mounts rather than leaving them answering 500. §2 has been rewritten around
+  what is actually left there (2026-08-20) — it is no longer the "empty controllers" list.
 - **`GET /payment/` and `/payments/` now both return 500.** They returned 200 on 2026-08-13, so this
   is a regression. The therapist billing screen has no working source until it's fixed.
 
-Still missing, unchanged: `POST /notification/token` (so push is undeliverable), `POST /auth/apple`
-and `DELETE /account` (both store-submission blockers).
+Still missing, unchanged: `POST /auth/apple` and `DELETE /account` (both store-submission
+blockers).
+
+**Push-token registration landed 2026-08-20** — `POST`/`DELETE /notifications/device-token`,
+probed live and now used by the app, superseding the "push is undeliverable" note that stood here.
+Two issues remain and §2 has both: the `platform` enum rejects `"android"` (§2.1), and a
+web-push-shaped send would display nothing on a native client (§2.2 — this one still blocks actual
+delivery).
 
 Two smaller gaps found in the same pass:
 
@@ -368,47 +375,79 @@ needs no app change once the field is sent.
 
 ---
 
-## 2. Notifications — still empty, still hanging
+## 2. Notifications — implemented; two issues left, one of them blocking push delivery
 
-`NotificationController`'s methods are still literally empty:
+**Superseded 2026-08-20.** The plural `/notifications/*` mount is live and the app is fully wired
+to it, including the device-token routes that did not exist when this section was written. What
+was here — empty controllers, a missing `POST /notification/token`, "push cannot work no matter
+what the app does" — is no longer true. The singular `/notification/*` mount is still dead (500),
+and nothing calls it.
 
-```ts
-async getUserNotifications(_req: Request, _res: Response, _next: NextFunction) {}
+Verified live against `api.dev.physiobuddies.in` on 2026-08-20 with the seed therapist:
+
+| Route | Result |
+|---|---|
+| `GET /notifications/` | 200 `{ items, nextCursor, hasMore, unreadCount }` |
+| `GET /notifications/unread-count` | 200 `{ unreadCount }` |
+| `PATCH /notifications/:id/read`, `/read-all` | 200 |
+| `GET`/`PATCH /notifications/preferences` | 200, six booleans |
+| `POST /notifications/device-token` | 200, upsert by token |
+| `DELETE /notifications/device-token/:token` | 200 `{ success }` — `false`, not 404, when unknown |
+
+### 2.1 `device-token.platform` is `enum: ["web"]` and rejects mobile clients
+
+```
+POST /notifications/device-token  { "token": "…", "platform": "android" }
+→ 400 {"message":"Invalid input: expected \"web\"","code":"VALIDATION_ERROR","details":{"field":"platform"}}
 ```
 
-The request never gets a response, so a mobile client blocks until timeout. **A hang is worse than a
-404** — the app can't distinguish it from a dead network, so it can't fail fast or fall back.
+The stored row then reads `platform: "web"` for what is an Android handset, because the field
+defaults to `"web"` when omitted — so the table cannot distinguish a browser from a phone, which
+is exactly the distinction the sender needs to make in §2.2.
 
-The app now calls the plural `/notifications/*` mount, which is implemented; the singular routes
-below are the dead ones. There is no fixture fallback any more — the mock layer was deleted on
-2026-08-18, so a hanging endpoint surfaces as a request timeout in the UI.
+**Ask:** widen the enum to `["web", "android", "ios"]`. The app currently omits `platform`
+entirely to avoid the 400; it will start sending `Platform.OS` as soon as the enum accepts it
+(one-line change, `notificationApi.registerPushToken`).
 
-| Route | Purpose | Response `data` |
-|---|---|---|
-| `GET /notification` | list for the authed user | `AppNotification[]` (below) |
-| `GET /notification/unread-count` | badge count | `{ count: number }` |
-| `PATCH /notification/:id/read` | mark one read | `{ id, read: true }` or 202 |
-| `PATCH /notification/read-all` | mark all read | 202 |
-| `POST /notification/token` | register a push token | 202 — body `{ token: string }` (**route does not exist yet**) |
+### 2.2 A web-push-shaped payload displays nothing on a native client — blocks push delivery
+
+The endpoint documents itself as registering "an FCM **web-push** token for the signed-in user's
+current browser", which suggests the sender builds the message as web push:
 
 ```ts
-// AppNotification (src/types/index.ts)
-{
-  id: string;
-  type: "appointment" | "payment" | "task" | "system" | "message";
-  title: string;
-  body: string;            // backend field is `description` — map it
-  timestamp: string;       // ISO; app displays it verbatim
-  read: boolean;           // backend field is `isRead`
-  actionUrl?: string;      // deep link, e.g. "/appointment/<id>"
-}
+messaging.send({ token, webpush: { notification: { title, body }, fcmOptions: { link: url } } })
 ```
 
-The `Notification` Prisma model already exists (`title`, `description`, `isRead`, `priority`, `time`,
-`userId`) — this is mostly a query plus a field rename.
+FCM will deliver that to a native Android token, but Android ignores the `webpush` block — the
+message arrives as **data-only** and the system tray shows nothing. The therapist gets silence.
 
-**Push depends on this too.** Without `POST /notification/token` there is nowhere to register an FCM
-token, so remote push cannot work no matter what the app does.
+**Ask:** when the target token is not a browser, include a common `notification` block (and
+ideally an `android` block) alongside the `webpush` one:
+
+```ts
+messaging.send({
+  token,
+  notification: { title, body },                     // ← what native clients render
+  android: { priority: 'high', notification: { channelId: 'default', clickAction: '…' } },
+  data: { url },                                     // ← the app reads `data.url` for deep links
+  webpush: { notification: { title, body }, fcmOptions: { link: url } },
+});
+```
+
+`data.url` matters independently of the above: it is how the app deep-links a tap. It should carry
+the same path the catalog already puts on `metadata.url` (`/therapist/my-bookings/<planId>` etc.) —
+the app translates those web paths to its own routes in `src/lib/notifications/links.ts`.
+
+The app mitigates the foreground case only (it re-presents a data-only push as a local
+notification). A push arriving while the app is killed cannot be rescued client-side.
+
+### 2.3 Not a defect, just worth knowing
+
+`metadata.url` on the in-app rows is already correct and the app now uses it — rows are tappable.
+Note the app's `AppNotification.timestamp` is a *display label* ("3h ago"), derived from `time`;
+`type` is a subject category derived from `event`, not the server's `transactional` /
+`activity` / `promotional` channel. Both live in `src/lib/api/mappers.ts`.
+
 
 ---
 

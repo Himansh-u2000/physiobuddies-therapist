@@ -16,6 +16,12 @@ interface SyncedQueryOptions<T> {
 interface SyncedQueryResult<T> {
   data: T | undefined;
   isLoading: boolean;
+  /**
+   * A fetch is in flight, including a background refresh over a warm cache — which
+   * `isLoading` deliberately hides. Pull-to-refresh needs exactly this: the spinner has to stay
+   * down until the request lands, and `isLoading` is already false in that case.
+   */
+  isFetching: boolean;
   isError: boolean;
   refetch: () => void;
 }
@@ -68,6 +74,7 @@ export function useSyncedQuery<T>({ queryKey, queryFn, readCache, writeCache }: 
     // Only show a loading state if there's truly nothing to show yet — a warm cache means
     // the network refresh happens quietly in the background, no skeleton flash.
     isLoading: query.isLoading && cachedData === undefined,
+    isFetching: query.isFetching,
     isError: query.isError,
     refetch: () => query.refetch(),
   };
