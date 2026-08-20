@@ -12,6 +12,7 @@ import { useSessionStore } from "@/lib/stores/session.store";
 import { COLORS, OTP_CONFIG, SHOW_TEST_OTP, SLOT_CONFIG, SUPPORT_EMAIL } from "@/constants/config";
 import { getSessionTypeLabel } from "@/lib/utils/format";
 import { openSupportEmail } from "@/lib/utils/support";
+import { GlassSurface } from "@/components/ui/Glass";
 
 export default function SessionOtpScreen() {
   const router = useRouter();
@@ -122,7 +123,10 @@ export default function SessionOtpScreen() {
       </View>
 
       <View className="px-3.5 pt-4" style={{ paddingBottom: 40 }}>
-        <View className="bg-white border border-border rounded-md p-4" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
+        <GlassSurface
+          fallbackClassName="bg-white"
+          glassRadius={12}
+          className="border border-border rounded-md p-4" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
           <View className="flex-row items-start" style={{ gap: 14 }}>
             <Avatar name={appointment.patientName} size={60} radius={16} />
             <View className="flex-1" style={{ gap: 5 }}>
@@ -151,9 +155,12 @@ export default function SessionOtpScreen() {
               </Text>
             </View>
           </View>
-        </View>
+        </GlassSurface>
 
-        <View className="bg-white border border-border rounded-md p-5 items-center mt-3 flex flex-col gap-2">
+        <GlassSurface
+          fallbackClassName="bg-white"
+          glassRadius={12}
+          className="border border-border rounded-md p-5 items-center mt-3 flex flex-col gap-2">
           <View className="w-13 h-13 rounded-[14px] bg-primary-soft items-center justify-center mb-3" style={{ width: 52, height: 52 }}>
             <Lock size={26} color={COLORS.accent} />
           </View>
@@ -224,7 +231,7 @@ export default function SessionOtpScreen() {
               </Text>
             </View>
           )}
-        </View>
+        </GlassSurface>
 
         {/* The "Start without OTP (flagged)" escape hatch that used to live here is gone
             (2026-08-17, on request). It was never real: no backend endpoint accepts a flagged

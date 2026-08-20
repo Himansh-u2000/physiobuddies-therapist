@@ -8,6 +8,7 @@ import { billingApi } from "@/lib/api/services";
 import { COLORS } from "@/constants/config";
 import { formatCurrency } from "@/lib/utils/format";
 import type { PaymentRecord } from "@/types";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /**
  * Payment history — money *in* (subscription charges), as opposed to `payouts.tsx`, which is money
@@ -62,15 +63,16 @@ export default function BillingScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-3 flex-row items-center bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-3 flex-row items-center border-b border-border"
         style={{ paddingTop: insets.top + 10, gap: 8 }}
       >
         <Pressable onPress={() => router.back()} hitSlop={8} className="w-8 h-8 items-center justify-center">
           <ChevronLeft size={22} color={COLORS.fg} />
         </Pressable>
         <Text className="text-[16px] font-extrabold text-fg flex-1">Payments</Text>
-      </View>
+      </GlassSurface>
 
       <ScrollView
         className="flex-1"
@@ -78,8 +80,10 @@ export default function BillingScreen() {
         contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: insets.bottom + 24, gap: 12 }}
       >
         {payments.length > 0 && (
-          <View
-            className="bg-white border border-border rounded-md p-4"
+          <GlassSurface
+            fallbackClassName="bg-white"
+            glassRadius={12}
+            className="border border-border rounded-md p-4"
             style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
           >
             <Text className="text-muted text-[11px] font-bold uppercase" style={{ letterSpacing: 0.6 }}>
@@ -89,7 +93,7 @@ export default function BillingScreen() {
             <Text className="text-muted text-[12px] mt-0.5">
               Across {payments.length} payment{payments.length === 1 ? "" : "s"}
             </Text>
-          </View>
+          </GlassSurface>
         )}
 
         {isLoading ? (
@@ -139,8 +143,10 @@ export default function BillingScreen() {
 function PaymentRow({ payment }: { payment: PaymentRecord }) {
   const refunded = !!payment.refundedAt;
   return (
-    <View
-      className="bg-white border border-border rounded-md p-3.5 flex-row items-center"
+    <GlassSurface
+      fallbackClassName="bg-white"
+      glassRadius={12}
+      className="border border-border rounded-md p-3.5 flex-row items-center"
       style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.06, shadowRadius: 8, elevation: 1 }}
     >
       <View className="w-10 h-10 rounded-[12px] bg-primary-soft items-center justify-center">
@@ -166,6 +172,6 @@ function PaymentRow({ payment }: { payment: PaymentRecord }) {
           {refunded ? "Refunded" : payment.status}
         </Badge>
       </View>
-    </View>
+    </GlassSurface>
   );
 }

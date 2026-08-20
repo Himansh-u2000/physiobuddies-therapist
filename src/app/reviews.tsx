@@ -7,6 +7,7 @@ import { Avatar, Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { therapistApi } from "@/lib/api/services";
 import { COLORS } from "@/constants/config";
 import type { TherapistReview } from "@/types";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /** Patient reviews for the signed-in therapist (GET /therapist/:id/reviews). */
 export default function ReviewsScreen() {
@@ -26,8 +27,9 @@ export default function ReviewsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-3 flex-row items-center bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-3 flex-row items-center border-b border-border"
         style={{ paddingTop: insets.top + 10, gap: 8 }}
       >
         <Pressable
@@ -38,7 +40,7 @@ export default function ReviewsScreen() {
           <ChevronLeft size={22} color={COLORS.fg} />
         </Pressable>
         <Text className="text-[16px] font-extrabold text-fg">Reviews</Text>
-      </View>
+      </GlassSurface>
 
       <ScrollView
         className="flex-1"
@@ -68,14 +70,16 @@ export default function ReviewsScreen() {
           />
         ) : (
           <>
-            <View
-              className="bg-white border border-border rounded-md p-4 flex-row items-center"
+            <GlassSurface
+              fallbackClassName="bg-white"
+              glassRadius={12}
+              className="border border-border rounded-md p-4 flex-row items-center"
               style={{
-                gap: 14,
-                shadowColor: COLORS.nav,
-                shadowOpacity: 0.07,
-                shadowRadius: 8,
-                elevation: 2,
+              gap: 14,
+              shadowColor: COLORS.nav,
+              shadowOpacity: 0.07,
+              shadowRadius: 8,
+              elevation: 2,
               }}
             >
               <View className="items-center">
@@ -101,7 +105,7 @@ export default function ReviewsScreen() {
                   Based on completed sessions with your patients.
                 </Text>
               </View>
-            </View>
+            </GlassSurface>
 
             {reviews.map((r, i) => (
               <ReviewCard key={`${r.reviewerName}-${r.createdAt}-${i}`} review={r} />
@@ -115,8 +119,10 @@ export default function ReviewsScreen() {
 
 function ReviewCard({ review }: { review: TherapistReview }) {
   return (
-    <View
-      className="bg-white border border-border rounded-md p-3.5"
+    <GlassSurface
+      fallbackClassName="bg-white"
+      glassRadius={12}
+      className="border border-border rounded-md p-3.5"
       style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
     >
       <View className="flex-row items-center" style={{ gap: 10 }}>
@@ -133,6 +139,6 @@ function ReviewCard({ review }: { review: TherapistReview }) {
       {review.comment ? (
         <Text className="text-fg text-[13px] mt-2.5 leading-5">{review.comment}</Text>
       ) : null}
-    </View>
+    </GlassSurface>
   );
 }

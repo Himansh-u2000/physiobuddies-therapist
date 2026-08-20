@@ -12,22 +12,13 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ChevronLeft,
-  MessagesSquare,
-  Plus,
-  PencilLine,
-  Trash2,
-  TriangleAlert,
-  X,
-  Check,
-  Lock,
-} from "lucide-react-native";
-import { Badge, Button, Input, TextArea, Skeleton, EmptyState, ErrorState } from "@/components/ui";
+import { ChevronLeft, MessagesSquare, Plus, TriangleAlert, X, Check } from "lucide-react-native";
+import { Button, Input, TextArea, Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { contentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
 import type { TherapistFaq } from "@/types";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /** Enough to answer properly; long enough that hitting it is a sign to split the FAQ in two. */
 const QUESTION_MAX = 160;
@@ -44,17 +35,15 @@ const SUGGESTIONS = [
 /**
  * Therapist FAQs — the Q&A shown on the public profile.
  *
+ * **Add and read: you can publish a FAQ and see the published set, and that is all.** There is
+ * deliberately no edit or delete here. `GET /therapist/:id/faqs` returns rows without an `id`,
+ * so anything read back from the list has nothing to address a `PATCH`/`DELETE` to — controls
+ * that work until the first refetch and then stop are worse than controls that aren't there.
+ *
  * The composer used to be a `BottomSheet`. On a phone that meant the answer field sat directly
  * under the keyboard with no way to scroll it into view, so writing more than a line was a
  * fight. It is now an inline card inside the screen's own `KeyboardAvoidingView` + `ScrollView`,
- * with character counters, tap-to-fill starters, and a submit button whose disabled reason is
- * visible rather than implied.
- *
- * ⚠️ `GET /therapist/:id/faqs` returns `{ question, answer, createdAt }` and **no `id`** — even
- * though `POST` and `PATCH` both return one. So a FAQ read back from the list has nothing to
- * address a `PATCH`/`DELETE` to, and `FaqCard` marks those rows read-only with the reason stated
- * rather than offering Edit/Delete that fail on tap. Creating always works; editing only works
- * within the same session, before a refetch drops the id. Tracked in BACKEND_TODO §1.8.
+ * with character counters and tap-to-fill starters.
  */
 export default function FaqsScreen() {
   const router = useRouter();
@@ -64,7 +53,6 @@ export default function FaqsScreen() {
   const answerRef = useRef<TextInput>(null);
 
   const [composerOpen, setComposerOpen] = useState(false);
-  const [editing, setEditing] = useState<TherapistFaq | null>(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [saving, setSaving] = useState(false);
@@ -77,7 +65,6 @@ export default function FaqsScreen() {
   const faqs = data ?? [];
 
   const resetComposer = () => {
-    setEditing(null);
     setQuestion("");
     setAnswer("");
     setTouched(false);
@@ -88,13 +75,9 @@ export default function FaqsScreen() {
     setComposerOpen(true);
   };
 
-  const openEdit = (faq: TherapistFaq) => {
-    if (!faq.id) return;
-    setEditing(faq);
-    setQuestion(faq.question);
-    setAnswer(faq.answer);
-    setTouched(false);
-    setComposerOpen(true);
+  const closeComposer = () => {
+    setComposerOpen(false);
+    resetComposer();
   };
 
   const questionError = touched && question.trim().length === 0 ? "Write the question first" : "";
@@ -107,18 +90,11 @@ export default function FaqsScreen() {
     setSaving(true);
     try {
       // Verified against the live API 2026-08-18: POST /therapist/faqs { question, answer }
-      // → 200 { id, question, answer, createdAt }; PATCH /therapist/faqs/:id → 200 with the
-      // updated row. Trimmed because trailing whitespace from a soft keyboard would otherwise
-      // end up on the public profile.
-      if (editing?.id) {
-        await contentApi.updateFaq(editing.id, { question: question.trim(), answer: answer.trim() });
-        showToast("FAQ updated", "success");
-      } else {
-        await contentApi.createFaq(question.trim(), answer.trim());
-        showToast("FAQ added", "success");
-      }
-      setComposerOpen(false);
-      resetComposer();
+      // → 200 { id, question, answer, createdAt }. Trimmed because trailing whitespace from a
+      // soft keyboard would otherwise end up on the public profile.
+      await contentApi.createFaq(question.trim(), answer.trim());
+      showToast("FAQ added", "success");
+      closeComposer();
       await queryClient.invalidateQueries({ queryKey: ["faqs"] });
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Couldn't save the FAQ.", "error");
@@ -127,21 +103,11 @@ export default function FaqsScreen() {
     }
   };
 
-  const handleDelete = async (faq: TherapistFaq) => {
-    if (!faq.id) return;
-    try {
-      await contentApi.deleteFaq(faq.id);
-      showToast("FAQ deleted", "success");
-      await queryClient.invalidateQueries({ queryKey: ["faqs"] });
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : "Couldn't delete the FAQ.", "error");
-    }
-  };
-
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-3 flex-row items-center bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-3 flex-row items-center border-b border-border"
         style={{ paddingTop: insets.top + 10, gap: 8 }}
       >
         <Pressable
@@ -163,7 +129,7 @@ export default function FaqsScreen() {
             <Text className="text-accent text-[12.5px] font-bold">Add</Text>
           </Pressable>
         )}
-      </View>
+      </GlassSurface>
 
       <KeyboardAvoidingView
         className="flex-1"
@@ -183,8 +149,10 @@ export default function FaqsScreen() {
           }}
         >
           {!composerOpen && (
-            <View
-              className="bg-white border border-border rounded-md p-4"
+            <GlassSurface
+              fallbackClassName="bg-white"
+              glassRadius={12}
+              className="border border-border rounded-md p-4"
               style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
             >
               <View className="flex-row items-center justify-between">
@@ -200,23 +168,24 @@ export default function FaqsScreen() {
                   <MessagesSquare size={24} color={COLORS.accent} />
                 </View>
               </View>
-            </View>
+            </GlassSurface>
           )}
 
           {composerOpen && (
             <View
               className="bg-white border-[1.5px] border-accent/25 rounded-md p-4"
-              style={{ gap: 14, shadowColor: COLORS.nav, shadowOpacity: 0.1, shadowRadius: 14, elevation: 4 }}
+              style={{
+                gap: 14,
+                shadowColor: COLORS.nav,
+                shadowOpacity: 0.1,
+                shadowRadius: 14,
+                elevation: 4,
+              }}
             >
               <View className="flex-row items-center">
-                <Text className="text-[15px] font-extrabold text-fg flex-1">
-                  {editing ? "Edit FAQ" : "New FAQ"}
-                </Text>
+                <Text className="text-[15px] font-extrabold text-fg flex-1">New FAQ</Text>
                 <Pressable
-                  onPress={() => {
-                    setComposerOpen(false);
-                    resetComposer();
-                  }}
+                  onPress={closeComposer}
                   hitSlop={8}
                   accessibilityRole="button"
                   accessibilityLabel="Close"
@@ -242,9 +211,12 @@ export default function FaqsScreen() {
                 <Counter value={question.length} max={QUESTION_MAX} />
               </View>
 
-              {!editing && question.trim().length === 0 && (
+              {question.trim().length === 0 && (
                 <View style={{ gap: 7 }}>
-                  <Text className="text-muted text-[11px] font-bold uppercase" style={{ letterSpacing: 0.5 }}>
+                  <Text
+                    className="text-muted text-[11px] font-bold uppercase"
+                    style={{ letterSpacing: 0.5 }}
+                  >
                     Common questions
                   </Text>
                   <View className="flex-row flex-wrap" style={{ gap: 7 }}>
@@ -274,23 +246,13 @@ export default function FaqsScreen() {
                   maxLength={ANSWER_MAX}
                   className="min-h-[130px]"
                 />
-                {answerError ? (
-                  <Text className="text-[11px] text-danger">{answerError}</Text>
-                ) : null}
+                {answerError ? <Text className="text-[11px] text-danger">{answerError}</Text> : null}
                 <Counter value={answer.length} max={ANSWER_MAX} />
               </View>
 
               <View className="flex-row" style={{ gap: 8 }}>
                 <View className="flex-1">
-                  <Button
-                    variant="secondary"
-                    fullWidth
-                    onPress={() => {
-                      setComposerOpen(false);
-                      resetComposer();
-                    }}
-                    disabled={saving}
-                  >
+                  <Button variant="secondary" fullWidth onPress={closeComposer} disabled={saving}>
                     Cancel
                   </Button>
                 </View>
@@ -304,9 +266,7 @@ export default function FaqsScreen() {
                     ) : (
                       <>
                         <Check size={16} color="#fff" />
-                        <Text className="text-white font-bold text-[14px]">
-                          {editing ? "Save changes" : "Publish FAQ"}
-                        </Text>
+                        <Text className="text-white font-bold text-[14px]">Publish FAQ</Text>
                       </>
                     )}
                   </Button>
@@ -339,16 +299,14 @@ export default function FaqsScreen() {
             )
           ) : (
             <View style={{ gap: 10 }}>
-              <Text className="text-muted text-[11px] font-bold uppercase" style={{ letterSpacing: 0.5 }}>
+              <Text
+                className="text-muted text-[11px] font-bold uppercase"
+                style={{ letterSpacing: 0.5 }}
+              >
                 {`${faqs.length} published`}
               </Text>
               {faqs.map((faq, i) => (
-                <FaqCard
-                  key={faq.id ?? `${faq.question}-${i}`}
-                  faq={faq}
-                  onEdit={() => openEdit(faq)}
-                  onDelete={() => handleDelete(faq)}
-                />
+                <FaqCard key={faq.id ?? `${faq.question}-${i}`} faq={faq} />
               ))}
             </View>
           )}
@@ -374,60 +332,17 @@ function Counter({ value, max }: { value: number; max: number }) {
   );
 }
 
-function FaqCard({
-  faq,
-  onEdit,
-  onDelete,
-}: {
-  faq: TherapistFaq;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  // PATCH/DELETE are live, but the LIST read omits the id they address, so a row that came
-  // from a refetch can't be edited. Said once, here, instead of letting each control fail on tap.
-  const editable = !!faq.id;
-
+/** A published FAQ, shown the way a patient reads it. Read-only by design — see the screen doc. */
+function FaqCard({ faq }: { faq: TherapistFaq }) {
   return (
-    <View
-      className="bg-white border border-border rounded-md p-3.5"
-      style={{ gap: 10, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
+    <GlassSurface
+      fallbackClassName="bg-white"
+      glassRadius={12}
+      className="border border-border rounded-md p-3.5"
+      style={{ gap: 8, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
     >
       <Text className="text-[14px] font-bold text-fg leading-5">{faq.question}</Text>
       <Text className="text-muted text-[12.5px] leading-5">{faq.answer}</Text>
-
-      {editable ? (
-        <View className="flex-row border-t border-border pt-2.5" style={{ gap: 16 }}>
-          <Pressable
-            onPress={onEdit}
-            className="flex-row items-center active:opacity-70"
-            style={{ gap: 5 }}
-            hitSlop={6}
-          >
-            <PencilLine size={14} color={COLORS.accent} />
-            <Text className="text-accent text-[12px] font-bold">Edit</Text>
-          </Pressable>
-          <Pressable
-            onPress={onDelete}
-            className="flex-row items-center active:opacity-70"
-            style={{ gap: 5 }}
-            hitSlop={6}
-          >
-            <Trash2 size={14} color={COLORS.danger} />
-            <Text className="text-danger text-[12px] font-bold">Delete</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <View className="flex-row items-center border-t border-border pt-2.5" style={{ gap: 8 }}>
-          <Lock size={12} color={COLORS.muted} />
-          <Text className="text-muted text-[11px] flex-1">
-            Read-only — the server doesn&apos;t return an id for this FAQ, so it can&apos;t be
-            edited or deleted from the app yet.
-          </Text>
-          <Badge variant="neutral" size="sm" dot={false}>
-            Read-only
-          </Badge>
-        </View>
-      )}
-    </View>
+    </GlassSurface>
   );
 }

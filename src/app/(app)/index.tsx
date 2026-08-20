@@ -1,7 +1,7 @@
 import { View, Text, ScrollView, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { FileWarning, ClipboardList, ServerCrash } from "lucide-react-native";
+import { ServerCrash } from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
 import { HeroCard } from "@/components/dashboard/HeroCard";
 import { NextSessionCard } from "@/components/dashboard/NextSessionCard";
@@ -20,7 +20,7 @@ import {
   cacheAppointments,
 } from "@/lib/db/repositories";
 import { therapistApi, appointmentApi } from "@/lib/api/services";
-import { COLORS } from "@/constants/config";
+import { GlassSurface } from "@/components/ui/Glass";
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -135,50 +135,15 @@ export default function DashboardScreen() {
 
             <View className="mt-3">
               <View className="flex-row items-center justify-between mb-2.5">
-                <Text className="text-[17px] font-bold text-fg">Pending tasks</Text>
-                <Badge variant="danger" tone="solid" size="sm">{stats.pendingTasks} need action</Badge>
-              </View>
-              <View style={{ gap: 10 }}>
-                <Pressable className="bg-white border border-border rounded-md p-3 active:opacity-80" style={{ gap: 8, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center" style={{ gap: 10 }}>
-                      <View className="w-9 h-9 rounded-[10px] items-center justify-center" style={{ backgroundColor: "rgba(207,66,56,0.08)" }}>
-                        <FileWarning size={18} color={COLORS.danger} />
-                      </View>
-                      <Text className="text-[13px] font-bold text-fg">Registration certificate rejected</Text>
-                    </View>
-                    <Badge variant="danger" size="sm">Re-upload</Badge>
-                  </View>
-                  <Text className="text-muted text-[12px]">
-                    Image is blurred. Upload a clear scan to unlock your public profile.
-                  </Text>
-                </Pressable>
-
-                <Pressable className="bg-white border border-border rounded-md p-3 active:opacity-80" style={{ gap: 8, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center" style={{ gap: 10 }}>
-                      <View className="w-9 h-9 rounded-[10px] items-center justify-center" style={{ backgroundColor: "rgba(209,154,18,0.1)" }}>
-                        <ClipboardList size={18} color={COLORS.warning} />
-                      </View>
-                      <Text className="text-[13px] font-bold text-fg">Complete Neha&apos;s treatment note</Text>
-                    </View>
-                    <Badge variant="warning" size="sm">Draft</Badge>
-                  </View>
-                  <Text className="text-muted text-[12px]">
-                    Session ended at 8:40 AM. Submit before payout review at 6 PM.
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-
-            <View className="mt-3">
-              <View className="flex-row items-center justify-between mb-2.5">
                 <Text className="text-[17px] font-bold text-fg">This week</Text>
                 <Pressable>
                   <Text className="text-accent font-bold text-[12px]">Full report</Text>
                 </Pressable>
               </View>
-              <View className="bg-white border border-border rounded-md p-4">
+              <GlassSurface
+                fallbackClassName="bg-white"
+                glassRadius={12}
+                className="border border-border rounded-md p-4">
                 <View className="flex-row items-center justify-between mb-3">
                   <View>
                     <Text className="text-[22px] font-black text-accent">
@@ -189,7 +154,7 @@ export default function DashboardScreen() {
                   <Badge variant="success" size="sm">+{stats.weeklyChangePercent}% vs last week</Badge>
                 </View>
                 <WeeklyChart data={stats.weeklyChart} />
-              </View>
+              </GlassSurface>
             </View>
           </>
         )}

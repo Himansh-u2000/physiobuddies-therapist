@@ -2,6 +2,7 @@ import { memo, useMemo } from "react";
 import { View, Text } from "react-native";
 import Svg, { Defs, LinearGradient, Stop, Line, Path, Polyline, Circle } from "react-native-svg";
 import { COLORS } from "@/constants/config";
+import { GlassSurface } from "@/components/ui/Glass";
 
 interface PayoutTrendChartProps {
   data: { day: string; amount: number; isToday: boolean }[];
@@ -42,7 +43,10 @@ function PayoutTrendChartImpl({ data, trendLabel }: PayoutTrendChartProps) {
   const areaPath = `M${points.map((p) => `${p.x},${p.y}`).join(" L")} L${last.x},${VIEW_H} L${points[0].x},${VIEW_H} Z`;
 
   return (
-    <View className="bg-white border border-border rounded-md p-4">
+    <GlassSurface
+      fallbackClassName="bg-white"
+      glassRadius={12}
+      className="border border-border rounded-md p-4">
       <View className="flex-row items-center justify-between mb-3">
         <Text className="text-[13px] font-bold text-fg">Payout trend</Text>
         {trendLabel && (
@@ -94,7 +98,7 @@ function PayoutTrendChartImpl({ data, trendLabel }: PayoutTrendChartProps) {
           </Text>
         ))}
       </View>
-    </View>
+    </GlassSurface>
   );
 }
 

@@ -10,6 +10,7 @@ import type { SubscriptionPlan } from "@/lib/subscription/plans";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
 import { formatCurrency } from "@/lib/utils/format";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /**
  * Therapist subscription plans (Quarterly / Half-Yearly / Annual). Plan selection is real; the
@@ -40,8 +41,9 @@ export default function SubscriptionScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-3 flex-row items-center bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-3 flex-row items-center border-b border-border"
         style={{ paddingTop: insets.top + 10, gap: 8 }}
       >
         <Pressable
@@ -52,7 +54,7 @@ export default function SubscriptionScreen() {
           <ChevronLeft size={22} color={COLORS.fg} />
         </Pressable>
         <Text className="text-[16px] font-extrabold text-fg">Subscription</Text>
-      </View>
+      </GlassSurface>
 
       <ScrollView
         className="flex-1"
@@ -160,8 +162,9 @@ export default function SubscriptionScreen() {
         </View>
       </ScrollView>
 
-      <View
-        className="absolute left-0 right-0 bottom-0 bg-white border-t border-border px-3.5 pt-3"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="absolute left-0 right-0 bottom-0 border-t border-border px-3.5 pt-3"
         style={{ paddingBottom: insets.bottom + 12 }}
       >
         <View className="flex-row items-center justify-between mb-2">
@@ -178,7 +181,7 @@ export default function SubscriptionScreen() {
             In-app subscription payment isn&apos;t available yet.
           </Text>
         )}
-      </View>
+      </GlassSurface>
     </View>
   );
 }

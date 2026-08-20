@@ -21,6 +21,7 @@ import {
 } from "@/lib/api/netlog";
 import { useAppStore } from "@/lib/stores/app.store";
 import { API_BASE_URL, COLORS, NETWORK_LOG_ENABLED } from "@/constants/config";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /**
  * Network log — the phone's version of Chrome DevTools' Network tab.
@@ -49,8 +50,9 @@ export default function NetworkLogScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-3 flex-row items-center bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-3 flex-row items-center border-b border-border"
         style={{ paddingTop: insets.top + 10, gap: 8 }}
       >
         <Pressable onPress={() => router.back()} hitSlop={8} className="w-8 h-8 items-center justify-center">
@@ -70,21 +72,24 @@ export default function NetworkLogScreen() {
         >
           <Trash2 size={18} color={COLORS.danger} />
         </Pressable>
-      </View>
+      </GlassSurface>
 
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: insets.bottom + 24, gap: 10 }}
       >
-        <View className="bg-white border border-border rounded-md p-3">
+        <GlassSurface
+          fallbackClassName="bg-white"
+          glassRadius={12}
+          className="border border-border rounded-md p-3">
           <Text className="text-[11px] font-bold text-muted uppercase" style={{ letterSpacing: 0.5 }}>
             Base URL
           </Text>
           <Text className="text-[12.5px] font-bold text-fg mt-1" selectable>
             {API_BASE_URL}
           </Text>
-        </View>
+        </GlassSurface>
 
         {!NETWORK_LOG_ENABLED ? (
           <EmptyState
@@ -134,7 +139,10 @@ function LogRow({
   const Chevron = expanded ? ChevronDown : ChevronRight;
 
   return (
-    <View className="bg-white border border-border rounded-md overflow-hidden">
+    <GlassSurface
+      fallbackClassName="bg-white"
+      glassRadius={12}
+      className="border border-border rounded-md overflow-hidden">
       <Pressable onPress={onToggle} className="px-3.5 py-3 flex-row items-center active:opacity-80" style={{ gap: 10 }}>
         <Chevron size={16} color={COLORS.muted} />
         <View className="flex-1">
@@ -173,7 +181,7 @@ function LogRow({
           ) : null}
         </View>
       )}
-    </View>
+    </GlassSurface>
   );
 }
 

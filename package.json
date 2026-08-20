@@ -50,6 +50,7 @@
     "react-native-svg": "15.15.4",
     "react-native-toast-message": "2.4.0",
     "react-native-web": "~0.21.0",
+    "react-native-webview": "13.16.1",
     "react-native-worklets": "0.8.3",
     "zustand": "5.0.14"
   },
@@ -74,8 +75,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "apk": "powershell -ExecutionPolicy Bypass -File scripts/build-local-apk.ps1",
-    "web": "expo start --web",
-    "lint": "expo lint",
+      "lint": "expo lint",
     "test": "jest",
     "test:watch": "jest --watch"
   },

@@ -14,6 +14,7 @@ import { getCachedEarningsSummary, cacheEarningsSummary, getCachedTransactions, 
 import { COLORS } from "@/constants/config";
 import { formatCurrency } from "@/lib/utils/format";
 import type { Transaction } from "@/types";
+import { GlassSurface } from "@/components/ui/Glass";
 
 export default function EarningsScreen() {
   const router = useRouter();
@@ -48,7 +49,10 @@ export default function EarningsScreen() {
   };
 
   const renderItem = ({ item }: { item: Transaction }) => (
-    <View className="bg-white border border-border rounded-md p-3 mb-2.5 flex-row items-center" style={{ gap: 10, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
+    <GlassSurface
+      fallbackClassName="bg-white"
+      glassRadius={12}
+      className="border border-border rounded-md p-3 mb-2.5 flex-row items-center" style={{ gap: 10, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
       <View className="w-10 h-10 rounded-[12px] items-center justify-center" style={{ backgroundColor: item.status === "paid" ? "rgba(35,145,73,0.1)" : item.status === "pending" ? "rgba(209,154,18,0.1)" : "rgba(207,66,56,0.1)" }}>
         {txIcon(item.status)}
       </View>
@@ -59,7 +63,7 @@ export default function EarningsScreen() {
       <Text className={`text-[14px] font-extrabold ${item.type === "payout" ? "text-danger" : "text-success"}`}>
         {item.type === "payout" ? "-" : "+"}{formatCurrency(item.amount)}
       </Text>
-    </View>
+    </GlassSurface>
   );
 
   return (

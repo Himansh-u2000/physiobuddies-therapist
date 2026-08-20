@@ -86,6 +86,7 @@ import type {
   RangeOfMotion,
   VisitFrequency,
 } from "@/types";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /**
  * The clinical assessment / treatment form.
@@ -490,8 +491,10 @@ export default function TreatmentFormScreen() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 28 }}
       >
-        <View
-          className="bg-white border border-border rounded-md p-3 flex-row items-center mb-2"
+        <GlassSurface
+          fallbackClassName="bg-white"
+          glassRadius={12}
+          className="border border-border rounded-md p-3 flex-row items-center mb-2"
           style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
         >
           <Avatar name={safeName} size={44} radius={12} />
@@ -502,7 +505,7 @@ export default function TreatmentFormScreen() {
           <Badge variant="info" size="sm" dot={false}>
             {ASSESSMENT_TYPES.find((t) => t.value === assessmentType)?.label ?? "Assessment"}
           </Badge>
-        </View>
+        </GlassSurface>
 
         {stepMissing && (
           <View className="flex-row bg-warning/8 border border-warning/30 rounded-md p-2.5 mb-2" style={{ gap: 8 }}>
@@ -1174,10 +1177,13 @@ function AttachmentThumb({ file, token }: { file: SessionPhotoRow; token: string
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View className="bg-white border border-border rounded-md p-3.5 mt-2" style={{ gap: 16 }}>
+    <GlassSurface
+      fallbackClassName="bg-white"
+      glassRadius={12}
+      className="border border-border rounded-md p-3.5 mt-2" style={{ gap: 16 }}>
       <Text className="text-[14px] font-bold text-accent">{title}</Text>
       {children}
-    </View>
+    </GlassSurface>
   );
 }
 

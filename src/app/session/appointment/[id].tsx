@@ -11,6 +11,7 @@ import { useSessionStore } from "@/lib/stores/session.store";
 import { callPatient as dialPatient } from "@/lib/services/callService";
 import { COLORS, OTP_CONFIG } from "@/constants/config";
 import { getSessionTypeLabel } from "@/lib/utils/format";
+import { GlassSurface } from "@/components/ui/Glass";
 
 export default function AppointmentDetailScreen() {
   const router = useRouter();
@@ -116,7 +117,10 @@ export default function AppointmentDetailScreen() {
         </LinearGradient>
 
         <View className="px-3.5 -mt-4" style={{ paddingBottom: 100 }}>
-          <View className="bg-white border border-border rounded-md p-4" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 28, elevation: 6 }}>
+          <GlassSurface
+            fallbackClassName="bg-white"
+            glassRadius={12}
+            className="border border-border rounded-md p-4" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 28, elevation: 6 }}>
             <View className="flex-row items-start" style={{ gap: 14 }}>
               <Avatar name={appointment.patientName} size={56} radius={16} />
               <View className="flex-1" style={{ gap: 5 }}>
@@ -139,7 +143,7 @@ export default function AppointmentDetailScreen() {
                 <Text className="text-accent font-bold text-[12px]">Message</Text>
               </Button>
             </View>
-          </View>
+          </GlassSurface>
 
           {appointment.distanceKm && (
             <View className="mt-3 bg-white border border-border rounded-lg overflow-hidden" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
@@ -166,7 +170,10 @@ export default function AppointmentDetailScreen() {
             </View>
           )}
 
-          <View className="mt-3 bg-white border border-border rounded-md p-3.5">
+          <GlassSurface
+            fallbackClassName="bg-white"
+            glassRadius={12}
+            className="mt-3 border border-border rounded-md p-3.5">
             <View className="flex-row items-center justify-between mb-2.5">
               <Text className="text-[14px] font-bold text-fg">Session workflow</Text>
               <Badge variant="neutral" size="sm" dot={false}>Step {appointment.workflowStep} of 4</Badge>
@@ -185,10 +192,13 @@ export default function AppointmentDetailScreen() {
                 <ChevronRight size={15} color={COLORS.muted} />
               </Pressable>
             ))}
-          </View>
+          </GlassSurface>
 
           {appointment.notes && (
-            <View className="mt-3 bg-white border border-border rounded-md p-3.5" style={{ gap: 10 }}>
+            <GlassSurface
+              fallbackClassName="bg-white"
+              glassRadius={12}
+              className="mt-3 border border-border rounded-md p-3.5" style={{ gap: 10 }}>
               <Text className="text-[14px] font-bold text-fg">Patient notes & history</Text>
               <View className="rounded-[10px] p-3" style={{ backgroundColor: "rgba(0,64,96,0.03)" }}>
                 <Text className="text-[13px] text-fg leading-6">{appointment.notes}</Text>
@@ -203,7 +213,7 @@ export default function AppointmentDetailScreen() {
                   <Text className="text-muted text-[12px]">{appointment.insurance}</Text>
                 </View>
               )}
-            </View>
+            </GlassSurface>
           )}
         </View>
       </ScrollView>
@@ -246,8 +256,10 @@ function AppointmentDetailSkeleton() {
       </LinearGradient>
 
       <View className="px-3.5 -mt-4" style={{ gap: 12 }}>
-        <View
-          className="bg-white border border-border rounded-md p-4"
+        <GlassSurface
+          fallbackClassName="bg-white"
+          glassRadius={12}
+          className="border border-border rounded-md p-4"
           style={{ gap: 14, shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 28, elevation: 6 }}
         >
           <View className="flex-row items-start" style={{ gap: 14 }}>
@@ -267,9 +279,12 @@ function AppointmentDetailSkeleton() {
               <Skeleton height={36} radius={10} />
             </View>
           </View>
-        </View>
+        </GlassSurface>
 
-        <View className="bg-white border border-border rounded-md p-3.5" style={{ gap: 14 }}>
+        <GlassSurface
+          fallbackClassName="bg-white"
+          glassRadius={12}
+          className="border border-border rounded-md p-3.5" style={{ gap: 14 }}>
           <View className="flex-row items-center justify-between">
             <Skeleton width={130} height={14} />
             <Skeleton width={72} height={18} radius={9} />
@@ -283,7 +298,7 @@ function AppointmentDetailSkeleton() {
               </View>
             </View>
           ))}
-        </View>
+        </GlassSurface>
       </View>
     </View>
   );

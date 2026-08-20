@@ -17,6 +17,7 @@ import { accountApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
 import type { LoginSession } from "@/types";
+import { GlassSurface } from "@/components/ui/Glass";
 
 /**
  * Account security — where you're signed in, and what's happened on the account.
@@ -60,15 +61,16 @@ export default function SecurityScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View
-        className="px-4 pb-3 flex-row items-center bg-white border-b border-border"
+      <GlassSurface
+        fallbackClassName="bg-white"
+        className="px-4 pb-3 flex-row items-center border-b border-border"
         style={{ paddingTop: insets.top + 10, gap: 8 }}
       >
         <Pressable onPress={() => router.back()} hitSlop={8} className="w-8 h-8 items-center justify-center">
           <ChevronLeft size={22} color={COLORS.fg} />
         </Pressable>
         <Text className="text-[16px] font-extrabold text-fg flex-1">Login activity</Text>
-      </View>
+      </GlassSurface>
 
       <ScrollView
         className="flex-1"
@@ -160,8 +162,10 @@ function SessionRow({ session, onRevoke }: { session: LoginSession; onRevoke: ()
   const Icon = isApp ? Smartphone : isApi ? Globe : Monitor;
 
   return (
-    <View
-      className="bg-white border border-border rounded-md p-3.5 flex-row items-center"
+    <GlassSurface
+      fallbackClassName="bg-white"
+      glassRadius={12}
+      className="border border-border rounded-md p-3.5 flex-row items-center"
       style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.06, shadowRadius: 8, elevation: 1 }}
     >
       <View
@@ -195,6 +199,6 @@ function SessionRow({ session, onRevoke }: { session: LoginSession; onRevoke: ()
       >
         <Text className="text-danger text-[11.5px] font-bold">Sign out</Text>
       </Pressable>
-    </View>
+    </GlassSurface>
   );
 }
