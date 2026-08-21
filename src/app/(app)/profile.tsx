@@ -24,7 +24,6 @@ import {
   Image as ImageIcon,
   Mail,
   GraduationCap,
-  Receipt,
   MonitorSmartphone,
   Radio,
 } from "lucide-react-native";
@@ -149,13 +148,6 @@ export default function ProfileScreen() {
           sub: "Your plan & membership",
           color: COLORS.accent,
           href: "/subscription",
-        },
-        {
-          icon: Receipt,
-          label: "Payments",
-          sub: "What you've been charged",
-          color: COLORS.warning,
-          href: "/billing",
         },
       ],
     },

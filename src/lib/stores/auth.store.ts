@@ -30,6 +30,8 @@ interface AuthStore {
   setSession: (tokens: AuthTokens, therapist: Therapist, phone?: string) => Promise<void>;
   /** Replace the cached therapist profile (persisted) — used after a profile edit. */
   setTherapist: (therapist: Therapist) => Promise<void>;
+  /** Re-read the profile from the server. Best-effort; see the implementation. */
+  refreshTherapist: () => Promise<void>;
   setBiometric: (enabled: boolean) => Promise<void>;
   lock: () => void;
   unlock: () => void;
@@ -80,6 +82,32 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   setTherapist: async (therapist) => {
     await saveTherapistProfile(therapist);
     set({ therapist });
+  },
+
+  /**
+   * Pull the profile fresh from `GET /user` and replace the cached copy.
+   *
+   * `hydrate` only ever restores the snapshot written at the last sign-in, so anything changed
+   * elsewhere since — a photo set from the web console, a name corrected by support, a
+   * verification that came through — stayed invisible in the app until the therapist signed out
+   * and back in. Called once per launch from the root layout.
+   *
+   * Best-effort on purpose: a failure here must leave the cached profile and the session alone.
+   * Offline is the common case (this runs at launch, often before the network settles), and the
+   * cached profile is exactly what the app should keep showing then. A genuinely dead session is
+   * handled by the API client's refresh path, not here.
+   */
+  refreshTherapist: async () => {
+    if (!get().isAuthenticated) return;
+    try {
+      const therapist = await authApi.getMyProfile();
+      await saveTherapistProfile(therapist);
+      // Re-checked after the await: a sign-out that landed while the request was in flight must
+      // not be undone by a late response writing the profile back.
+      if (get().isAuthenticated) set({ therapist });
+    } catch {
+      // keep the cached profile
+    }
   },
 
   setBiometric: async (enabled) => {

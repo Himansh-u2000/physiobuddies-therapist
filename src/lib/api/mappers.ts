@@ -26,7 +26,6 @@ import type {
   EarningsSummary,
   LoginSession,
   Patient,
-  PaymentRecord,
   Payout,
   ScheduleOverride,
   SessionDocument,
@@ -43,6 +42,7 @@ import type {
   WeeklySchedule,
 } from "@/types";
 import { toIsoDate } from "@/lib/utils/format";
+import { absoluteFileUrl } from "@/lib/api/urls";
 
 // ---------------------------------------------------------------------------
 // Backend response shapes (what the live API actually returns)
@@ -229,20 +229,6 @@ export interface BackendActivity {
   ip?: string;
   type?: string;
   createdAt?: string;
-}
-
-/** GET /payment/ — one element */
-export interface BackendPayment {
-  id: string;
-  invoiceId?: string;
-  amount?: number;
-  status?: string;
-  purpose?: string;
-  paidAt?: string | null;
-  failedAt?: string | null;
-  refundedAt?: string | null;
-  createdAt?: string;
-  subscriptionId?: string | null;
 }
 
 /** GET /blog/ (+ /:slug) — one element. `content`/`likes`/`reviews` only on the detail fetch. */
@@ -542,6 +528,12 @@ export function mapUserToTherapist(
   user: BackendUser,
   pub?: BackendTherapistPublic | null,
 ): Therapist {
+  // `image` comes back however it was stored, and the two writers disagree: this app PATCHes an
+  // absolute URL, but a photo set from the web console lands as the server-relative
+  // `/uploads/<file>` that multer hands back. React Native's <Image> cannot fetch a relative
+  // uri — it renders nothing and reports no error — so the same account showed its photo on the
+  // website and initials in the app. Absolutise on the way in, once, for both cases.
+  const image = user.image ?? pub?.image;
   return {
     id: user.id,
     name: user.name ?? "",
@@ -553,7 +545,7 @@ export function mapUserToTherapist(
     qualifications: "",
     experienceYears: pub?.experience ?? 0,
     rating: pub?.rating ?? 0,
-    avatarUrl: user.image ?? pub?.image ?? undefined,
+    avatarUrl: image ? absoluteFileUrl(image) : undefined,
     isOnline: false,
     isVerified: !!user.therapistStatus?.isVerified,
     clinicName: user.therapistProfile?.displayAddress ?? pub?.displayAddress ?? undefined,
@@ -1142,27 +1134,8 @@ function summariseActivityData(raw?: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Payments / blog
+// Blog
 // ---------------------------------------------------------------------------
-
-export function mapPayments(list: BackendPayment[]): PaymentRecord[] {
-  return (list ?? [])
-    .map((p) => {
-      const stamp = p.paidAt ?? p.createdAt;
-      const d = stamp ? new Date(stamp) : null;
-      return {
-        id: p.id,
-        invoiceNumber: p.invoiceId ?? undefined,
-        amount: p.amount ?? 0,
-        status: (p.status ?? "pending").toLowerCase(),
-        purpose: p.purpose ?? "payment",
-        paidAt: p.paidAt ?? undefined,
-        refundedAt: p.refundedAt ?? undefined,
-        dateLabel: d && !Number.isNaN(d.getTime()) ? relativeDateLabel(d) : "",
-      };
-    })
-    .sort((a, b) => (b.paidAt ?? "").localeCompare(a.paidAt ?? ""));
-}
 
 export function mapBlogPost(b: BackendBlogPost): BlogPost {
   const d = b.createdAt ? new Date(b.createdAt) : null;

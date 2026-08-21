@@ -19,7 +19,7 @@ and receive nothing. See "What is left" below, and the delivery risk noted at th
 | FCM token acquisition | `getDevicePushTokenAsync()`, Android only | done |
 | `POST /notifications/device-token` | `notificationApi.registerPushToken` | done |
 | `DELETE /notifications/device-token/:token` on logout | `auth.store.ts` → `unregisterDeviceToken` | done |
-| Token rotation | `addPushTokenListener` → re-register, retire the old row | done |
+| Token rotation | `addPushTokenListener` → `syncRotatedToken`, retire the old row | done |
 | Foreground display, cold-start taps, deep links | `src/lib/hooks/useNotifications.ts`, `links.ts` | done |
 | Preferences UI (6 flags) | `src/app/notification-settings.tsx` | done |
 | Unread badge (bell + app icon) | `useUnreadNotifications` | done |
@@ -81,6 +81,60 @@ Two consequences worth knowing:
   non-clean prebuild leaves the old `in/physiobuddies/` directory behind alongside the new one.
   Note `android/local.properties` is *not* regenerated — it carries this machine's `sdk.dir` and
   the load-bearing `cmake.dir` override, so back it up before a `--clean` and restore it after.
+
+- **A plain prebuild can also move the files without rewriting what is inside them.** Observed
+  2026-08-21: `MainActivity.kt` and `MainApplication.kt` were sitting in the new
+  `com/physiobuddies/therapist/` directory while both still declared
+
+  ```kotlin
+  package `in`.physiobuddies.therapist
+  ```
+
+  The old name is a Kotlin keyword, so it is backtick-escaped, and the rename step does not
+  rewrite it. Nothing complains until Kotlin compiles — **37 minutes in**, after all the native
+  CMake work — with `Unresolved reference 'BuildConfig'`: AGP generates `BuildConfig` into the
+  module's `namespace` (`com.physiobuddies.therapist`), which is not the package the file claims
+  to be in. Had it compiled, the manifest's `android:name=".MainApplication"` would then have
+  resolved to a class that does not exist and crashed at launch instead.
+
+  Check it in one second, before committing to a build:
+
+  ```
+  grep -rn "^package" android/app/src/main/java
+  ```
+
+  Every line must match `app.json`'s `android.package`. If it does not, either re-run with
+  `--clean` or fix the two `package` lines in place — the latter is the same end state and keeps
+  the native build cache. Also clear the orphaned classes the old package left behind
+  (`android/app/build/intermediates/**/in/physiobuddies/`) so they cannot be dexed into the APK.
+
+### The local `android/` project must be regenerated before it has FCM
+
+`android/` is git-ignored and generated, so a checkout that predates `google-services.json`
+carries a native project with **no Firebase at all**: no `android/app/google-services.json`, no
+`com.google.gms.google-services` Gradle plugin, and no
+`com.google.firebase.messaging.default_notification_channel_id` meta-data for `defaultChannel`.
+An APK built from it registers nothing and the settings screen reports *"Push isn't available in
+this build"*. Check with:
+
+```
+ls android/app/google-services.json
+```
+
+Missing or stale (different from the root copy) → run `npx expo prebuild -p android` before
+building. `scripts/build-local-apk.ps1` refuses to build in that state rather than producing a
+silently push-less APK, and says the same thing.
+
+### ⚠️ Never call `getDevicePushTokenAsync()` from a push-token listener
+
+Android's `PushTokenModule.getDevicePushTokenAsync` emits `onDevicePushToken` on success
+(`promise.resolve(token); onNewToken(token)`), so a listener that answers by re-registering
+re-enters the fetch and emits again. That loop shipped once: the rotation listener called
+`registerDeviceToken(true)`, and the app POSTed `/notifications/device-token` without end, which
+starved every other request in the app and made unrelated screens look like they had no data.
+`syncRotatedToken` exists for this — it uses the token the event already carried, never fetches,
+and only POSTs a value that differs from the stored one. Pinned by
+`src/lib/notifications/__tests__/push.test.ts`.
 
 ## What is left
 

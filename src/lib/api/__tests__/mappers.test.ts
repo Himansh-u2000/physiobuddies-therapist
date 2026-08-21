@@ -19,7 +19,6 @@ import {
   mapActivity,
   mapBlogPost,
   mapLoginSessions,
-  mapPayments,
   deviceLabelFromAgent,
   type BackendUser,
   type BackendTherapistPublic,
@@ -28,6 +27,10 @@ import {
   type BackendCommission,
   type BackendWallet,
 } from "@/lib/api/mappers";
+import { API_BASE_URL } from "@/constants/config";
+
+/** Where a server-relative `/uploads/...` path resolves to — the API base minus its `/api/v1`. */
+const apiOrigin = API_BASE_URL.replace(/\/api\/v\d+\/?$/, "");
 
 /** Backend's display date format, e.g. "July 26, 2026". */
 function displayDate(d: Date): string {
@@ -85,6 +88,28 @@ describe("mapUserToTherapist", () => {
     expect(t.specialization).toBe("");
     expect(t.rating).toBe(0);
     expect(t.isVerified).toBe(true); // still known from /user
+  });
+
+  /**
+   * A photo set from the web console is stored as the server-relative path multer returns.
+   * React Native's <Image> silently renders nothing for a relative uri, so the account showed
+   * its picture on the website and initials in the app.
+   */
+  it("absolutises a server-relative avatar path", () => {
+    const t = mapUserToTherapist({ ...realUser, image: "/uploads/1786-avatar.jpg" }, null);
+    expect(t.avatarUrl).toBe(`${apiOrigin}/uploads/1786-avatar.jpg`);
+  });
+
+  it("leaves an already-absolute avatar url alone", () => {
+    const t = mapUserToTherapist({ ...realUser, image: "https://cdn.example/a.png" }, null);
+    expect(t.avatarUrl).toBe("https://cdn.example/a.png");
+  });
+
+  it("falls back to the public profile photo, and to undefined when neither has one", () => {
+    expect(
+      mapUserToTherapist(realUser, { ...realPublic, image: "/uploads/pub.jpg" }).avatarUrl,
+    ).toBe(`${apiOrigin}/uploads/pub.jpg`);
+    expect(mapUserToTherapist(realUser, null).avatarUrl).toBeUndefined();
   });
 });
 
@@ -585,19 +610,3 @@ describe("mapBlogPost", () => {
   });
 });
 
-describe("mapPayments", () => {
-  it("normalises status and sorts newest paid first", () => {
-    const out = mapPayments([
-      { id: "old", amount: 999, status: "COMPLETED", purpose: "subscription", paidAt: "2026-01-01T00:00:00.000Z" },
-      { id: "new", amount: 2999, status: "completed", purpose: "subscription", paidAt: "2026-07-12T04:30:00.000Z" },
-    ]);
-    expect(out.map((p) => p.id)).toEqual(["new", "old"]);
-    expect(out[0].status).toBe("completed");
-    expect(out[1].status).toBe("completed");
-  });
-
-  it("keeps invoiceNumber as a display value — it is NOT a key for GET /invoice/:id", () => {
-    const [p] = mapPayments([{ id: "1", invoiceId: "INV-SUB-0001", amount: 2999 }]);
-    expect(p.invoiceNumber).toBe("INV-SUB-0001");
-  });
-});

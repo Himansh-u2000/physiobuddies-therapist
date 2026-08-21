@@ -1,13 +1,10 @@
 import * as Notifications from "expo-notifications";
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useRouter, useRootNavigationState } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { toAppHref } from "@/lib/notifications/links";
-import {
-  registerDeviceToken,
-  type PushRegistrationResult,
-} from "@/lib/notifications/push";
+import { registerDeviceToken, syncRotatedToken } from "@/lib/notifications/push";
 
 /**
  * How an arriving notification behaves while the app is in the foreground. Without a handler
@@ -76,7 +73,6 @@ export function useNotifications() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isHydrated = useAuthStore((s) => s.isHydrated);
   const isLocked = useAuthStore((s) => s.isLocked);
-  const [registration, setRegistration] = useState<PushRegistrationResult | null>(null);
 
   /**
    * Covers the cold-start tap as well as taps while running: the hook replays the most recent
@@ -86,17 +82,26 @@ export function useNotifications() {
   const lastResponse = Notifications.useLastNotificationResponse();
   const handledResponse = useRef<string | null>(null);
 
-  const register = useCallback(async () => {
-    const result = await registerDeviceToken();
-    setRegistration(result);
-    return result;
-  }, []);
+  /**
+   * Deliberately returns the result rather than holding it in state. This hook runs in the ROOT
+   * layout, so a `useState` here re-renders every screen in the app — and the registration
+   * outcome is read only by the notification settings screen, which calls
+   * `registerDeviceToken` directly and keeps its own copy.
+   */
+  const register = useCallback(() => registerDeviceToken(), []);
 
-  // A token can roll while the app is running; the old one stops delivering the moment it does.
+  /**
+   * A token can roll while the app is running; the old one stops delivering the moment it does.
+   *
+   * Uses the token the event carries, via `syncRotatedToken`. Re-fetching it here instead (what
+   * this did) re-enters `getDevicePushTokenAsync`, whose Android implementation emits this very
+   * event on success — an unbounded loop of `POST /notifications/device-token` that starved
+   * every other request in the app. See the header comment in `lib/notifications/push.ts`.
+   */
   useEffect(() => {
-    const sub = Notifications.addPushTokenListener(() => {
+    const sub = Notifications.addPushTokenListener((token) => {
       if (!useAuthStore.getState().isAuthenticated) return;
-      registerDeviceToken(true).then(setRegistration).catch(() => {});
+      void syncRotatedToken(String(token.data)).catch(() => {});
     });
     return () => sub.remove();
   }, []);
@@ -134,5 +139,5 @@ export function useNotifications() {
     router.push(href);
   }, [lastResponse, navState?.key, isHydrated, isAuthenticated, isLocked, router, queryClient]);
 
-  return { registration, registerForPushNotifications: register };
+  return { registerForPushNotifications: register };
 }

@@ -23,6 +23,24 @@ import { COLORS, STORAGE_KEYS } from "@/constants/config";
  * without the Firebase iOS SDK bridging it. Registering one would fill the server's token table
  * with values it can never deliver to, so iOS is skipped explicitly and reports its reason
  * rather than failing silently. See FCM_SETUP.md.
+ *
+ * ## ⚠️ Never call `getDevicePushTokenAsync()` from a push-token listener
+ *
+ * That is not a style preference — it is the shape of an infinite request loop, and this module
+ * shipped one. expo-notifications' Android module emits `onDevicePushToken` from inside
+ * `getDevicePushTokenAsync` itself (`PushTokenModule.kt`):
+ *
+ *     promise.resolve(token)
+ *     onNewToken(token)      // ← fires every JS push-token listener
+ *
+ * so a listener that responds by re-registering re-enters the fetch, which emits again, forever.
+ * Because that listener also passed `force`, every turn of the loop POSTed: the app hammered
+ * `POST /notifications/device-token` continuously, and the resulting flood of requests,
+ * SecureStore writes and root re-renders is what made every *other* screen look like it had no
+ * data — its requests were simply being starved out.
+ *
+ * The rotation path is therefore `syncRotatedToken`, which uses the token the event already
+ * carried and never asks the native module for it again.
  */
 
 /** Why registration did not happen — surfaced in the notification settings screen. */
@@ -80,13 +98,32 @@ export async function getStoredPushToken(): Promise<string | null> {
 }
 
 /**
+ * The attempt currently in flight, so concurrent callers share one instead of stacking.
+ *
+ * Three independent triggers exist — the root layout on sign-in, the settings screen on every
+ * foreground, and the rotation listener — and they overlap routinely. Without this each runs
+ * its own permission check, channel setup, token fetch and POST, and (because the fetch emits a
+ * rotation event) each one wakes the others.
+ */
+let inFlight: Promise<PushRegistrationResult> | null = null;
+
+/**
  * Acquire the device's FCM token and register it with the backend.
  *
  * Idempotent by design: the last registered value is kept in SecureStore and a POST is skipped
  * when it has not changed, so the common case (every authenticated app launch) is local-only.
- * `force` bypasses that for the token-refresh listener, where the value genuinely is new.
+ * `force` bypasses that for the settings screen's explicit "Try again", where the token is
+ * unchanged but the previous POST is known to have failed server-side.
  */
-export async function registerDeviceToken(force = false): Promise<PushRegistrationResult> {
+export function registerDeviceToken(force = false): Promise<PushRegistrationResult> {
+  if (inFlight) return inFlight;
+  inFlight = runRegistration(force).finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+async function runRegistration(force: boolean): Promise<PushRegistrationResult> {
   if (Platform.OS !== "android") {
     return { state: "unsupported-platform", token: null };
   }
@@ -109,12 +146,45 @@ export async function registerDeviceToken(force = false): Promise<PushRegistrati
   const stored = await getStoredPushToken();
   if (stored === token && !force) return { state: "registered", token };
 
+  return persistRegistration(token, stored);
+}
+
+/**
+ * Register a token that arrived on the `onDevicePushToken` event.
+ *
+ * Deliberately does NOT fetch the token itself — see the loop warning at the top of this file —
+ * and deliberately takes no `force` flag: an event carrying the value already registered is the
+ * *normal* echo of our own `getDevicePushTokenAsync` call, and answering that with a POST is
+ * exactly what turned a rotation hook into a request storm. Only a genuinely new value reaches
+ * the network.
+ */
+export async function syncRotatedToken(token: string): Promise<PushRegistrationResult> {
+  if (Platform.OS !== "android") return { state: "unsupported-platform", token: null };
+  if (!token) return { state: "not-configured", token: null };
+  // A registration already running will read the freshest token itself; joining it also keeps
+  // the echo of its own fetch from racing it to SecureStore.
+  if (inFlight) return inFlight;
+
+  const stored = await getStoredPushToken();
+  if (stored === token) return { state: "registered", token };
+
+  inFlight = persistRegistration(token, stored).finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+/** POST the token, retire its predecessor, and remember it locally. */
+async function persistRegistration(
+  token: string,
+  previous: string | null,
+): Promise<PushRegistrationResult> {
   try {
     // A rotated token leaves the old row behind, and the server keys by token, not by device —
     // so retire the previous one explicitly or this user accumulates dead tokens that every
     // send still fans out to.
-    if (stored && stored !== token) {
-      await notificationApi.unregisterPushToken(stored).catch(() => {});
+    if (previous && previous !== token) {
+      await notificationApi.unregisterPushToken(previous).catch(() => {});
     }
     await notificationApi.registerPushToken(token);
     await SecureStore.setItemAsync(STORAGE_KEYS.pushToken, token);
