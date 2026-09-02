@@ -500,16 +500,43 @@ Note the app's `AppNotification.timestamp` is a *display label* ("3h ago"), deri
 
 ## 3. Store-submission blockers
 
-These are not nice-to-haves — **the apps will be rejected without them.**
+**One left, down from two (corrected 2026-09-02).**
 
 | Endpoint | Why it blocks |
 |---|---|
-| `POST /auth/apple` | App Store Guideline 4.8: an app offering third-party sign-in (Google) **must** offer Apple Sign-In on iOS. The app's `appleSignIn.ts` obtains the identity token and is ready to post it. |
 | `DELETE /account` | Both Play and the App Store mandate in-app account deletion. The app's destructive flow is built and calls this. Note Prisma-on-MongoDB needs a replica set for a multi-collection cascade. |
+
+### ~~`POST /auth/apple`~~ — no longer a blocker
+
+Guideline 4.8 only applies to an app that offers **third-party** sign-in, and Google Sign-In was
+removed from the therapist app on 2026-08-17 (product decision). Login is email/password only, so
+the obligation to offer Apple Sign-In went with it. This row previously read "an app offering
+third-party sign-in (Google) must offer Apple Sign-In on iOS" — true when written, not true now.
+
+`appleSignIn.ts` and `authApi.loginWithApple` are kept **inert** in the app for whenever the
+endpoint appears, so if social login ever returns this becomes a blocker again. Nothing is
+expected of the backend today.
 
 Also incomplete: **`POST /auth/logout` revokes via the refresh *cookie* only**
 (`req.cookies.refresh_token`), so it is a no-op from mobile. The app already sends
 `{ refresh }` in the body — reading that makes revocation work with no app change.
+
+---
+
+## 3a. A device-token request storm in your logs was OUR bug (2026-09-02)
+
+If `POST /notifications/device-token` shows an implausible request rate from a single therapist
+around late August, that was a **client** defect, now fixed — no server change is needed and
+nothing is wrong with the endpoint.
+
+Android's `getDevicePushTokenAsync()` emits the `onDevicePushToken` event on *every* call, not
+only on a genuine rotation. The app's rotation listener responded by re-fetching the token, which
+re-entered the emitter and looped, POSTing on every pass until the 10 000-per-15-min limit
+rate-limited every other request in the app. The listener now registers the token the event
+already carried and short-circuits when it matches what is stored.
+
+Worth knowing on your side: the endpoint behaved correctly throughout — it is idempotent per
+token, which is exactly why this was invisible in the data and only showed up as request volume.
 
 ---
 
