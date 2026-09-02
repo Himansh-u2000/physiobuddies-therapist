@@ -17,6 +17,7 @@ import {
   clearNetLog,
   dumpNetLog,
   formatBody,
+  PREVIEW_BODY_CHARS,
   type NetLogEntry,
 } from "@/lib/api/netlog";
 import { useAppStore } from "@/lib/stores/app.store";
@@ -185,21 +186,47 @@ function LogRow({
   );
 }
 
+/**
+ * One labelled body block.
+ *
+ * Long payloads render clipped with an explicit expander rather than being cut off for good.
+ * The clip is presentational only — the full text is always in `value`, so "Show full" is
+ * instant and the Share export is never abridged. Before this, a response over the cap was
+ * unreadable past the first few thousand characters no matter what you did, which is precisely
+ * when you most need to see the rest.
+ */
 function Section({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
+  const [showFull, setShowFull] = useState(false);
   if (!value) return null;
+
+  const clipped = value.length > PREVIEW_BODY_CHARS;
+  const shown = clipped && !showFull ? value.slice(0, PREVIEW_BODY_CHARS) : value;
+
   return (
     <View style={{ gap: 4 }}>
-      <Text className="text-[10.5px] font-bold text-muted uppercase" style={{ letterSpacing: 0.5 }}>
-        {label}
-      </Text>
+      <View className="flex-row items-center justify-between">
+        <Text className="text-[10.5px] font-bold text-muted uppercase" style={{ letterSpacing: 0.5 }}>
+          {label}
+        </Text>
+        {clipped && (
+          <Text className="text-[10.5px] font-bold text-accent" onPress={() => setShowFull((v) => !v)}>
+            {showFull ? "Show less" : `Show full (${value.length.toLocaleString()} chars)`}
+          </Text>
+        )}
+      </View>
       {/* selectable so a value can be copied out without needing a clipboard dependency. */}
       <Text
         selectable
         className={`text-[11.5px] leading-[17px] ${tone === "danger" ? "text-danger" : "text-fg"}`}
         style={{ fontFamily: "monospace" }}
       >
-        {value}
+        {shown}
       </Text>
+      {clipped && !showFull && (
+        <Text className="text-[10.5px] text-muted italic">
+          …{(value.length - PREVIEW_BODY_CHARS).toLocaleString()} more characters
+        </Text>
+      )}
     </View>
   );
 }

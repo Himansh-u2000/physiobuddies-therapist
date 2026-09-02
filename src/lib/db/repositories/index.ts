@@ -36,3 +36,4 @@ export {
 } from "./treatmentsRepo";
 export { getKycDocuments, saveKycDocument, removeKycDocument } from "./kycRepo";
 export type { KycDocumentRecord } from "./kycRepo";
+export { clearLocalCache } from "./cacheResetRepo";

@@ -26,7 +26,6 @@ import type {
   EarningsSummary,
   LoginSession,
   Patient,
-  PaymentRecord,
   Payout,
   ScheduleOverride,
   SessionDocument,
@@ -231,19 +230,6 @@ export interface BackendActivity {
   createdAt?: string;
 }
 
-/** GET /payment/ — one element */
-export interface BackendPayment {
-  id: string;
-  invoiceId?: string;
-  amount?: number;
-  status?: string;
-  purpose?: string;
-  paidAt?: string | null;
-  failedAt?: string | null;
-  refundedAt?: string | null;
-  createdAt?: string;
-  subscriptionId?: string | null;
-}
 
 /** GET /blog/ (+ /:slug) — one element. `content`/`likes`/`reviews` only on the detail fetch. */
 export interface BackendBlogPost {
@@ -392,7 +378,15 @@ export interface BackendAvailabilityDay {
   }[];
 }
 
-/** GET /therapist/:id/articles — one element */
+/**
+ * One article row.
+ *
+ * `id` stays optional because two endpoints return this shape and only one of them includes it:
+ * the public `GET /therapist/:id/articles` omits it, the authenticated `GET /therapist/articles/`
+ * carries it. The app reads the latter (see `contentApi`), so in practice `id` is present — but
+ * a row that somehow arrives without one must not be given a delete button pointing at
+ * `undefined`, which is why `TherapistArticle.id` is optional too and the UI checks it.
+ */
 export interface BackendArticle {
   id?: string;
   title: string;
@@ -400,12 +394,24 @@ export interface BackendArticle {
   createdAt?: string;
 }
 
-/** GET /therapist/:id/faqs — one element */
+/** `GET /therapist/articles/` — paginated envelope around the rows above. */
+export interface BackendArticlePage {
+  articles?: BackendArticle[];
+  pagination?: { total?: number; page?: number; limit?: number; totalPages?: number };
+}
+
+/** One FAQ row. Same two-endpoint `id` caveat as `BackendArticle`. */
 export interface BackendFaq {
   id?: string;
   question: string;
   answer: string;
   createdAt?: string;
+}
+
+/** `GET /therapist/faqs/` — paginated envelope. */
+export interface BackendFaqPage {
+  faqs?: BackendFaq[];
+  pagination?: { total?: number; page?: number; limit?: number; totalPages?: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -1145,24 +1151,6 @@ function summariseActivityData(raw?: string): string {
 // Payments / blog
 // ---------------------------------------------------------------------------
 
-export function mapPayments(list: BackendPayment[]): PaymentRecord[] {
-  return (list ?? [])
-    .map((p) => {
-      const stamp = p.paidAt ?? p.createdAt;
-      const d = stamp ? new Date(stamp) : null;
-      return {
-        id: p.id,
-        invoiceNumber: p.invoiceId ?? undefined,
-        amount: p.amount ?? 0,
-        status: (p.status ?? "pending").toLowerCase(),
-        purpose: p.purpose ?? "payment",
-        paidAt: p.paidAt ?? undefined,
-        refundedAt: p.refundedAt ?? undefined,
-        dateLabel: d && !Number.isNaN(d.getTime()) ? relativeDateLabel(d) : "",
-      };
-    })
-    .sort((a, b) => (b.paidAt ?? "").localeCompare(a.paidAt ?? ""));
-}
 
 export function mapBlogPost(b: BackendBlogPost): BlogPost {
   const d = b.createdAt ? new Date(b.createdAt) : null;

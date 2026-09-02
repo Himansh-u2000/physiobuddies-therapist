@@ -16,7 +16,6 @@ import type {
  ClinicalAssessmentInput,
  ClinicalAssessmentRecord,
  LoginSession,
- PaymentRecord,
  ScheduleOverride,
  Treatment,
  Payout,
@@ -30,7 +29,7 @@ import type {
  WeeklySchedule,
  WeeklyScheduleResult,
 } from "@/types";
-import { API_BASE_URL, SUBSCRIPTION_PAYMENT_ENABLED } from "@/constants/config";
+import { API_BASE_URL, SUBSCRIPTION_PAYMENT_ENABLED, WEEKDAYS } from "@/constants/config";
 import {
  SUBSCRIPTION_PLANS,
  type SubscriptionPlan,
@@ -52,7 +51,6 @@ import {
  mapBlogPosts,
  mapNotifications,
  mapLoginSessions,
- mapPayments,
  mapPayout,
  mapPayouts,
  mapWallet,
@@ -75,13 +73,12 @@ import {
  type BackendCommission,
  type BackendLoginSession,
  type BackendNotificationPage,
- type BackendPayment,
  type BackendWallet,
  type BackendPayout,
  type BackendReview,
  type BackendAvailabilityDay,
- type BackendArticle,
- type BackendFaq,
+ type BackendArticlePage,
+ type BackendFaqPage,
  type BackendScheduleOverride,
  type BackendWeeklySchedule,
 } from "./mappers";
@@ -347,19 +344,6 @@ export const accountApi = {
 };
 
 /**
- * Payments — money *in* (subscriptions), as opposed to payouts, which are money out.
- *
- * Records exist even though paying doesn't currently activate a subscription (see
- * `SUBSCRIPTION_PAYMENT_ENABLED`), so this is read-only history.
- */
-export const billingApi = {
- async listPayments(): Promise<PaymentRecord[]> {
-  const { data } = await client.get<BackendPayment[]>("/payment");
-  return mapPayments(data ?? []);
- },
-};
-
-/**
  * Platform-authored patient-education content (`/blog`). Distinct from `/therapist/articles`,
  * which is the therapist's *own* writing — this is material they can read and share with patients.
  */
@@ -460,6 +444,18 @@ export const payoutApi = {
  },
 };
 
+/**
+ * Body builder for `PUT /therapist/slots/schedule`, exported so the whole-week rule can be
+ * pinned by a test — it is the difference between saving a schedule and deleting six days of it.
+ */
+export function buildWeeklySchedulePayload(
+ schedule: WeeklySchedule
+): Record<string, string[]> {
+ return Object.fromEntries(
+  WEEKDAYS.map(({ id }) => [id, schedule[id]?.shifts ?? []])
+ );
+}
+
 export const availabilityApi = {
  /** The therapist's own bookable slots (GET /therapist/:id/availability). */
  async getAvailability(): Promise<AvailabilityDay[]> {
@@ -522,12 +518,28 @@ export const availabilityApi = {
   * overwritten. `disabledHours` is lost by sending arrays, but it was already unreadable
   * for the same reason, and the app blocks individual hours through
   * `/therapist/slots/block` (the "By day" tab) rather than through the weekly defaults.
+  *
+  * **All seven days are always sent, including empty ones.** The endpoint documents itself as
+  * "days omitted from the payload are left unchanged", but it does not behave that way: a PUT
+  * of `{ sunday: ["morning"] }` comes back — and reads back — as a schedule containing *only*
+  * sunday (probed live 2026-08-25). It is a whole-week replace, so an omitted day is a deleted
+  * day.
+  *
+  * That turned two ordinary situations into silent data loss, because the editor's draft only
+  * ever contained what the GET returned:
+  *   - the schedule was unreadable (the 500 above), so the draft started `{}` and the first
+  *     tap saved a one-day week, wiping the other six;
+  *   - a previous partial save had already shrunk the stored schedule, so each subsequent
+  *     save shrank it again.
+  *
+  * Sending the full week makes the request total and idempotent: what the therapist sees in
+  * the editor is exactly what the server ends up holding, whatever it held before. Filed as
+  * BACKEND_TODO §2.4.
   */
  async updateWeeklySchedule(schedule: WeeklySchedule): Promise<void> {
-  const body = Object.fromEntries(
-   Object.entries(schedule).map(([day, value]) => [day, value.shifts ?? []])
-  );
-  await client.put("/therapist/slots/schedule", { schedule: body });
+  await client.put("/therapist/slots/schedule", {
+   schedule: buildWeeklySchedulePayload(schedule),
+  });
  },
 
  /**
@@ -558,45 +570,69 @@ export const availabilityApi = {
 /**
  * Therapist-authored content: articles and FAQs shown on the public profile.
  *
- * **Create and read only, by product decision.** The backend also exposes
- * `PATCH`/`DELETE` for both resources and they work, but the app deliberately doesn't offer
- * editing or deleting: `GET /therapist/:id/{articles,faqs}` omits `id` from its rows, so
- * anything read back from a list has nothing to address those calls to. Rather than ship
- * controls that work until the first refetch and then stop, the screens create and display.
- * If the list reads start returning `id` (BACKEND_TODO §1.8) that constraint goes away and
- * edit can come back — the wrappers were removed with it, so restoring means re-adding them.
+ * **Reads come from the authenticated own-list, not the public profile list.** There are two
+ * endpoints per resource and only one of them is usable here:
+ *
+ *   `GET /therapist/:id/articles`  → `[{ title, content, createdAt }]`          — no `id`
+ *   `GET /therapist/articles/`     → `{ articles: [{ id, … }], pagination }`    — has `id`
+ *
+ * The app used to read the public one, which is why it could only create and display: with no
+ * `id` on a row there was nothing to address `PATCH`/`DELETE` to, so delete could not be built
+ * at all. The own-list fixes that at the source — same rows, plus the identifier — so deleting
+ * works and keeps working across refetches. Verified live 2026-08-25.
+ *
+ * `limit` is set high deliberately: the list screens are not paginated, and silently showing a
+ * page-one subset of someone's own articles would read as data loss.
  */
+const CONTENT_PAGE_LIMIT = 100;
+
 export const contentApi = {
- /** The therapist's published articles (GET /therapist/:id/articles). */
+ /** The therapist's own articles (GET /therapist/articles/). */
  async listArticles(): Promise<TherapistArticle[]> {
-  const { data: user } = await client.get<BackendUser>("/user");
-  const therapistId = user.therapistProfile?.id;
-  if (!therapistId) return [];
-  const { data } = await client.get<BackendArticle[]>(
-   `/therapist/${therapistId}/articles`
-  );
-  return mapArticles(data);
+  const { data } = await client.get<BackendArticlePage>("/therapist/articles/", {
+   params: { page: 1, limit: CONTENT_PAGE_LIMIT },
+  });
+  return mapArticles(data?.articles ?? []);
  },
 
  async createArticle(title: string, content: string): Promise<void> {
   await client.post("/therapist/articles", { title, content });
  },
 
- /** The therapist's FAQs (GET /therapist/:id/faqs). */
+ /** `PATCH /therapist/articles/:id` — partial, so an unchanged field can be omitted. */
+ async updateArticle(
+  id: string,
+  patch: { title?: string; content?: string }
+ ): Promise<void> {
+  await client.patch(`/therapist/articles/${id}`, patch);
+ },
+
+ async deleteArticle(id: string): Promise<void> {
+  await client.delete(`/therapist/articles/${id}`);
+ },
+
+ /** The therapist's own FAQs (GET /therapist/faqs/). */
  async listFaqs(): Promise<TherapistFaq[]> {
-  const { data: user } = await client.get<BackendUser>("/user");
-  const therapistId = user.therapistProfile?.id;
-  if (!therapistId) return [];
-  const { data } = await client.get<BackendFaq[]>(
-   `/therapist/${therapistId}/faqs`
-  );
-  return mapFaqs(data);
+  const { data } = await client.get<BackendFaqPage>("/therapist/faqs/", {
+   params: { page: 1, limit: CONTENT_PAGE_LIMIT },
+  });
+  return mapFaqs(data?.faqs ?? []);
  },
 
  async createFaq(question: string, answer: string): Promise<void> {
   await client.post("/therapist/faqs", { question, answer });
  },
 
+ async updateFaq(
+  id: string,
+  patch: { question?: string; answer?: string }
+ ): Promise<void> {
+  await client.patch(`/therapist/faqs/${id}`, patch);
+ },
+
+ async deleteFaq(id: string): Promise<void> {
+  await client.delete(`/therapist/faqs/${id}`);
+ },
 };
 
 export const appointmentApi = {

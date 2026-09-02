@@ -181,16 +181,31 @@ GET /therapist/6a830016f85ba191340ff715/articles
 So the practical behaviour would be: **creating always works; editing or deleting works only
 until the list refetches**, at which point every row loses the id its `PATCH`/`DELETE` needs.
 
-**As of 2026-08-20 the app no longer offers edit or delete at all.** Both sections are
-create-and-view: FAQs list as plain cards, and an article opens on a read-only `/article-view`
-screen that renders its Markdown. The `updateFaq`/`deleteFaq`/`updateArticle`/`deleteArticle`
-wrappers were removed from `contentApi` along with the UI, so restoring editing means re-adding
-them — they are four one-line `client.patch`/`client.delete` calls.
+#### ✅ WORKED AROUND (2026-08-25): there is a second list endpoint that *does* return `id`
 
-**Fix: add `id` to the select in both list projections.** It is one field in each query, the
-models already have it, and the write endpoints already return it — the two reads are the only
-place it is missing. That is the only thing standing between here and editable content; the
-routes themselves are live and were verified working.
+The app is no longer blocked on this. There are two list routes per resource, and only the public
+one is missing the key:
+
+```
+GET /therapist/:id/articles   → [{ title, content, createdAt }]                     ← no id
+GET /therapist/articles/      → { articles: [{ id, title, content, createdAt }],
+                                  pagination: { total, page, limit, totalPages } }  ← has id
+```
+
+Same for `/therapist/:id/faqs` vs `/therapist/faqs/`. The app was reading the public projection —
+the one route that could never support editing. It now reads the authenticated own-list, and
+**delete is shipped** for both articles and FAQs (`contentApi.deleteArticle` / `deleteFaq`, with a
+confirm sheet). Verified end to end 2026-08-25: create → the row appears with an `id` → `DELETE`
+→ 202 → the row is gone from the next list read. A bogus id gets a clean `404 NOT_FOUND`, so the
+route is caller-scoped.
+
+`updateArticle`/`updateFaq` are wired in `contentApi` too, against the live `PATCH` routes; no UI
+calls them yet.
+
+**Still worth fixing anyway: add `id` to the two public list projections.** It is one field in
+each query and the models already have it. The public list is what the patient-facing web client
+reads, so anything there needing to address a specific article or FAQ hits the same wall — and
+having two list endpoints that disagree about their own row shape is a trap for the next consumer.
 
 ### 1.9 The session-lifecycle paths the app was calling do not exist
 
@@ -327,6 +342,38 @@ object form on write instead of accepting data that can't be read back.
 
 Meanwhile the app **only ever sends the bare array form** and treats
 `RESPONSE_CONTRACT_ERROR` as "unreadable, re-save to repair" rather than as a retryable 5xx.
+
+Still reproducing on the seed therapist as of **2026-08-25** — `GET /therapist/slots/schedule`
+returned the 500 above until a bare-array `PUT` overwrote it.
+
+### 1.10a `PUT /therapist/slots/schedule` REPLACES the week — its own docs say it merges
+
+Found live 2026-08-25, and this one loses data silently.
+
+The endpoint description states: *"Days omitted from the payload are left unchanged."* It does not
+behave that way. Sending a single day discards the other six:
+
+```
+PUT /therapist/slots/schedule   { "schedule": { "sunday": ["morning"] } }
+→ 200 { "schedule": { "sunday": ["morning"] } }          ← mon–sat are gone, not retained
+
+GET /therapist/slots/schedule
+→ 200 { "schedule": { "sunday": ["morning"] } }
+```
+
+Before that PUT the therapist had all seven days set. There is no error, no warning, and the
+response looks like a success — the loss is only visible by reading the schedule back.
+
+It combines badly with §1.10: when the stored schedule is unreadable, a client's editor has
+nothing to prefill from, so the first thing it saves is naturally a partial week — which then
+deletes the rest. Each subsequent partial save shrinks it again.
+
+**Fix:** either merge as documented (`{ ...stored, ...payload }`), or change the description to
+say it replaces, so clients know they must send all seven days.
+
+Meanwhile the app **always sends all seven days**, an unworked day as `[]`
+(`buildWeeklySchedulePayload` in `services.ts`, pinned by `weeklySchedule.test.ts`), which makes
+the request total and idempotent regardless of which behaviour the server settles on.
 
 ### 1.11 `GET /therapist/:id/availability` renamed its slot fields
 

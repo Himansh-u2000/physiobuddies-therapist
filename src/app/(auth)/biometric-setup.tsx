@@ -42,7 +42,7 @@ export default function BiometricSetupScreen() {
   const showToast = useAppStore((s) => s.showToast);
   const setBiometric = useAuthStore((s) => s.setBiometric);
   const biometricEnabled = useAuthStore((s) => s.biometricEnabled);
-  const { checkAvailability, authenticate, supportedTypes } = useBiometric();
+  const { checkAvailability, authenticate, naming } = useBiometric();
 
   const [busy, setBusy] = useState(false);
   const [justEnabled, setJustEnabled] = useState(false);
@@ -52,10 +52,9 @@ export default function BiometricSetupScreen() {
     checkAvailability().then(setCapability).catch(() => setCapability({ compatible: false, enrolled: false }));
   }, [checkAvailability]);
 
-  const hasFacial = supportedTypes.includes("facial");
-  const hasFingerprint = supportedTypes.includes("fingerprint");
-  const biometricLabel = hasFacial ? "Face ID" : hasFingerprint ? "Fingerprint" : "Biometric";
-  const BiometricIcon = hasFacial ? ScanFace : Fingerprint;
+  // Platform-aware: "Face ID" only ever on iOS — see `biometricNaming`.
+  const biometricLabel = naming.label;
+  const BiometricIcon = naming.icon === "face" ? ScanFace : Fingerprint;
 
   const enable = async () => {
     setBusy(true);
@@ -70,7 +69,8 @@ export default function BiometricSetupScreen() {
         showToast("No fingerprint or face is enrolled. Add one in device settings first.", "error");
         return;
       }
-      const result = await authenticate(`Enable ${biometricLabel.toLowerCase()} login for Physiobuddies`);
+      // Not lower-cased: "Face ID" is a proper noun and "face id" reads like a typo.
+      const result = await authenticate(`Enable ${biometricLabel} login for Physiobuddies`);
       if (!result.success) {
         showToast("Biometric authentication cancelled");
         return;
@@ -211,6 +211,39 @@ export default function BiometricSetupScreen() {
                 security settings, then come back.
               </Text>
             </View>
+          )}
+
+          {/* What this handset actually offers. Worth stating rather than implying through one
+              label: an Android phone commonly advertises both, and the therapist should be able
+              to see which methods will be accepted. */}
+          {naming.methods.length > 0 && (
+            <GlassSurface
+              fallbackClassName="bg-white"
+              glassRadius={12}
+              className="border border-border rounded-md p-3.5"
+              style={{ gap: 8 }}
+            >
+              <Text className="text-[13px] font-bold text-fg">Available on this device</Text>
+              <View className="flex-row flex-wrap" style={{ gap: 6 }}>
+                {naming.methods.map((method) => (
+                  <View
+                    key={method}
+                    className="flex-row items-center px-2.5 py-1.5 rounded-full bg-bg border border-border"
+                    style={{ gap: 5 }}
+                  >
+                    {method === "Face unlock" || method === "Face ID" ? (
+                      <ScanFace size={13} color={COLORS.accent} />
+                    ) : (
+                      <Fingerprint size={13} color={COLORS.accent} />
+                    )}
+                    <Text className="text-[11.5px] font-semibold text-fg">{method}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text className="text-muted text-[11px]">
+                Your phone decides which to ask for. Whichever you have set up will work.
+              </Text>
+            </GlassSurface>
           )}
 
           <GlassSurface

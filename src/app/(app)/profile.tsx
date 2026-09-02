@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView, ActivityIndicator } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import {
@@ -12,6 +12,7 @@ import {
   LogOut,
   ChevronRight,
   Fingerprint,
+  ScanFace,
   Trash2,
   Wallet,
   CalendarRange,
@@ -24,7 +25,6 @@ import {
   Image as ImageIcon,
   Mail,
   GraduationCap,
-  Receipt,
   MonitorSmartphone,
   Radio,
 } from "lucide-react-native";
@@ -35,6 +35,7 @@ import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS, NETWORK_LOG_ENABLED, SUPPORT_EMAIL } from "@/constants/config";
 import { therapistApi } from "@/lib/api/services";
 import { useFileUpload, pickImageFromLibrary, captureImage } from "@/lib/hooks/useFilePicker";
+import { useBiometric } from "@/lib/hooks/useBiometric";
 import { openSupportEmail } from "@/lib/utils/support";
 import { GlassSurface, GlassLayer, GLASS_ENABLED } from "@/components/ui/Glass";
 
@@ -47,6 +48,14 @@ export default function ProfileScreen() {
   const showToast = useAppStore((s) => s.showToast);
   const { busy: uploadingAvatar, upload } = useFileUpload("avatar");
   const [avatarSheetOpen, setAvatarSheetOpen] = useState(false);
+
+  // Probe the device once so the biometric row can name the right method. Until it resolves
+  // this yields the neutral "Biometric", which is correct on every platform — so the row never
+  // renders a wrong name, only a less specific one for a moment.
+  const { checkAvailability, naming: biometricNaming } = useBiometric();
+  useEffect(() => {
+    checkAvailability().catch(() => {});
+  }, [checkAvailability]);
 
   const handleLogout = async () => {
     await logout();
@@ -150,13 +159,6 @@ export default function ProfileScreen() {
           color: COLORS.accent,
           href: "/subscription",
         },
-        {
-          icon: Receipt,
-          label: "Payments",
-          sub: "What you've been charged",
-          color: COLORS.warning,
-          href: "/billing",
-        },
       ],
     },
     {
@@ -177,8 +179,10 @@ export default function ProfileScreen() {
           href: "/notification-settings",
         },
         {
-          icon: Fingerprint,
-          label: "Biometric login",
+          // Named after what this handset actually offers — a fingerprint-only Android must not
+          // be labelled "Face ID". `biometricNaming` is the single source for that wording.
+          icon: biometricNaming.icon === "face" ? ScanFace : Fingerprint,
+          label: `${biometricNaming.label} login`,
           sub: biometricEnabled ? "Enabled" : "Disabled",
           color: COLORS.success,
           // `from=settings` puts the screen in its manage-the-setting layout rather than the

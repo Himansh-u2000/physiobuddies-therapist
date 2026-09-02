@@ -3,6 +3,8 @@ import * as secure from "@/lib/storage/secure";
 import { authApi } from "@/lib/api/services";
 import ToastMessage from "react-native-toast-message";
 import { useAuthStore } from "@/lib/stores/auth.store";
+import { getActiveDatabase } from "@/lib/db/provider";
+import { clearLocalCache } from "@/lib/db/repositories";
 
 /**
  * The session/lock state machine. This is the exact path the on-device Phase 2 check
@@ -31,6 +33,16 @@ jest.mock("@/lib/api/services", () => ({
 
 jest.mock("@/lib/api/netlog", () => ({
   clearNetLog: jest.fn(),
+}));
+
+// The SQLite cache is wiped through these two. Mocked rather than opened for real: the point of
+// the assertions below is that sign-out *reaches* the wipe, not what SQLite then does.
+jest.mock("@/lib/db/provider", () => ({
+  getActiveDatabase: jest.fn(() => ({ __db: true })),
+}));
+
+jest.mock("@/lib/db/repositories", () => ({
+  clearLocalCache: jest.fn(async () => {}),
 }));
 
 // Toasts render through react-native-toast-message now, so "did the user get told?" is
@@ -261,5 +273,58 @@ describe("sessionExpired (refresh token rejected by the server)", () => {
 
     expect(mocked.clearAllSecureData).not.toHaveBeenCalled();
     expect(toastShow).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The local snapshot has to die with the session.
+ *
+ * `clearAllSecureData()` only empties SecureStore, so the encrypted SQLite cache used to outlive
+ * every sign-out — leaving one therapist's patients and session notes readable on the handset,
+ * and making `useSyncedQuery` fall back to the *previous* account's rows after the next sign-in.
+ */
+describe("local cache teardown", () => {
+  const mockClear = clearLocalCache as jest.Mock;
+  const mockGetDb = getActiveDatabase as jest.Mock;
+
+  beforeEach(() => {
+    mockClear.mockClear();
+    mockGetDb.mockReturnValue({ __db: true });
+  });
+
+  it("wipes the cache on a deliberate sign-out", async () => {
+    useAuthStore.setState({ isAuthenticated: true, therapist: THERAPIST, tokens: TOKENS });
+
+    await useAuthStore.getState().logout();
+
+    expect(mockClear).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+  });
+
+  it("wipes the cache when the refresh token is rejected", async () => {
+    useAuthStore.setState({ isAuthenticated: true, therapist: THERAPIST, tokens: TOKENS });
+
+    await useAuthStore.getState().sessionExpired();
+
+    expect(mockClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("still completes sign-out when the wipe throws", async () => {
+    // A database that failed to open must not be able to strand someone in a session they are
+    // trying to leave.
+    mockClear.mockRejectedValueOnce(new Error("db is locked"));
+    useAuthStore.setState({ isAuthenticated: true, therapist: THERAPIST, tokens: TOKENS });
+
+    await expect(useAuthStore.getState().logout()).resolves.toBeUndefined();
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+  });
+
+  it("skips the wipe when the database never opened", async () => {
+    mockGetDb.mockReturnValue(null);
+    useAuthStore.setState({ isAuthenticated: true, therapist: THERAPIST, tokens: TOKENS });
+
+    await useAuthStore.getState().logout();
+
+    expect(mockClear).not.toHaveBeenCalled();
   });
 });

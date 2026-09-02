@@ -493,19 +493,6 @@ export interface ActivityEntry {
   dateLabel: string;
 }
 
-/** A payment record (GET /payment/). Money *in* — subscriptions — as opposed to payouts. */
-export interface PaymentRecord {
-  id: string;
-  /** Human display number like "INV-SUB-0001". NOT a key for GET /invoice/:id, which wants an ObjectId. */
-  invoiceNumber?: string;
-  amount: number;
-  status: string;
-  purpose: string;
-  paidAt?: string;
-  refundedAt?: string;
-  dateLabel: string;
-}
-
 /** Platform-authored patient-education content (GET /blog, /blog/:slug). */
 export interface BlogPost {
   id: string;

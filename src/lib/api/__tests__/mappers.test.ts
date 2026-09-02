@@ -19,7 +19,6 @@ import {
   mapActivity,
   mapBlogPost,
   mapLoginSessions,
-  mapPayments,
   deviceLabelFromAgent,
   type BackendUser,
   type BackendTherapistPublic,
@@ -582,22 +581,5 @@ describe("mapBlogPost", () => {
 
   it("tolerates missing tags without producing an empty-string tag", () => {
     expect(mapBlogPost({ id: "1", slug: "s", title: "T" }).tags).toEqual([]);
-  });
-});
-
-describe("mapPayments", () => {
-  it("normalises status and sorts newest paid first", () => {
-    const out = mapPayments([
-      { id: "old", amount: 999, status: "COMPLETED", purpose: "subscription", paidAt: "2026-01-01T00:00:00.000Z" },
-      { id: "new", amount: 2999, status: "completed", purpose: "subscription", paidAt: "2026-07-12T04:30:00.000Z" },
-    ]);
-    expect(out.map((p) => p.id)).toEqual(["new", "old"]);
-    expect(out[0].status).toBe("completed");
-    expect(out[1].status).toBe("completed");
-  });
-
-  it("keeps invoiceNumber as a display value — it is NOT a key for GET /invoice/:id", () => {
-    const [p] = mapPayments([{ id: "1", invoiceId: "INV-SUB-0001", amount: 2999 }]);
-    expect(p.invoiceNumber).toBe("INV-SUB-0001");
   });
 });

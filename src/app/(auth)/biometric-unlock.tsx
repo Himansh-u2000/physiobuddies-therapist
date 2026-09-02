@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Fingerprint } from "lucide-react-native";
+import { Fingerprint, ScanFace } from "lucide-react-native";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useBiometric } from "@/lib/hooks/useBiometric";
@@ -14,8 +14,11 @@ export default function BiometricUnlockScreen() {
   const unlock = useAuthStore((s) => s.unlock);
   const setBiometric = useAuthStore((s) => s.setBiometric);
   const logout = useAuthStore((s) => s.logout);
-  const { authenticate, checkAvailability } = useBiometric();
+  const { authenticate, checkAvailability, naming } = useBiometric();
   const [scanning, setScanning] = useState(false);
+  // "Touch to unlock" under a fingerprint glyph is wrong on a Face ID iPhone, and the glyph is
+  // wrong on any face-only device — both follow the same naming source as the setup screen.
+  const UnlockIcon = naming.icon === "face" ? ScanFace : Fingerprint;
 
   const handleUnlock = useCallback(async () => {
     if (scanning) return;
@@ -77,10 +80,10 @@ export default function BiometricUnlockScreen() {
             className={`w-36 h-36 rounded-full items-center justify-center ${scanning ? "bg-success/20" : "bg-white/10"}`}
             style={{ borderWidth: 2, borderColor: "rgba(255,255,255,0.25)" }}
           >
-            <Fingerprint size={64} color="#fff" />
+            <UnlockIcon size={64} color="#fff" />
           </Pressable>
           <View className="items-center">
-            <Text className="text-white font-bold text-[15px]">Touch to unlock</Text>
+            <Text className="text-white font-bold text-[15px]">{naming.action}</Text>
             <Text className="text-white/60 text-[12px] mt-1">
               {therapist?.name ?? "Dr. Riya Sharma"} · {therapist?.specialization ?? "MPT Orthopedics"}
             </Text>

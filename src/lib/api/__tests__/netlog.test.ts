@@ -105,3 +105,65 @@ describe("request lifecycle", () => {
     expect(getNetLog()).toHaveLength(0);
   });
 });
+
+/**
+ * The log is only useful if it shows the *whole* payload. Responses were previously clipped to
+ * 4 000 characters at render time, which meant an availability or booking response — routinely
+ * larger than that — ended in `…[truncated]` exactly when someone had opened the screen to read
+ * it. The clip is now the screen's, and reversible.
+ */
+describe("body rendering", () => {
+  /** Roughly the shape of GET /therapist/:id/availability: days × 16 slots. */
+  const bigResponse = {
+    days: Array.from({ length: 14 }, (_, d) => ({
+      date: `${String(d + 1).padStart(2, "0")}-09-2026`,
+      timeSlots: Array.from({ length: 16 }, (_, s) => ({
+        startMinute: 360 + s * 60,
+        durationMinutes: 40,
+        category: "morning",
+        status: "open",
+      })),
+    })),
+  };
+
+  it("renders a large payload in full by default", () => {
+    const rendered = formatBody(bigResponse);
+    expect(rendered.length).toBeGreaterThan(4000);
+    expect(rendered).not.toContain("truncated");
+    // The last day has to survive, not just the first.
+    expect(rendered).toContain("14-09-2026");
+    expect(JSON.parse(rendered)).toEqual(bigResponse);
+  });
+
+  it("clips only when a limit is asked for, and says what the real size was", () => {
+    const full = formatBody(bigResponse);
+    const preview = formatBody(bigResponse, 200);
+    expect(preview.length).toBeLessThan(400);
+    expect(preview).toContain(`of ${full.length} characters`);
+  });
+
+  it("keeps the whole body in the shared dump", () => {
+    const id = logRequest({ url: "/therapist/x/availability", fullUrl: "https://x/a" });
+    logResponse(id, 200, bigResponse);
+    const dump = dumpNetLog();
+    expect(dump).toContain("14-09-2026");
+    expect(dump).not.toContain("truncated");
+  });
+
+  it("still caps a non-JSON body, which can be arbitrarily large", () => {
+    // An HTML error page from a proxy has no structure worth keeping in full.
+    const html = `<html>${"x".repeat(50_000)}</html>`;
+    const id = logRequest({ url: "/x", fullUrl: "https://x/x" });
+    logResponse(id, 502, html);
+    const stored = formatBody(getNetLog()[0].responseBody);
+    expect(stored.length).toBeLessThan(50_000);
+    expect(stored).toContain("[truncated 50013 chars]");
+  });
+
+  it("survives a circular body instead of throwing mid-render", () => {
+    const cyclic: Record<string, unknown> = { name: "loop" };
+    cyclic.self = cyclic;
+    expect(() => formatBody(cyclic)).not.toThrow();
+    expect(formatBody(cyclic)).toContain("loop");
+  });
+});

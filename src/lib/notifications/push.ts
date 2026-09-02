@@ -80,30 +80,29 @@ export async function getStoredPushToken(): Promise<string | null> {
 }
 
 /**
- * Acquire the device's FCM token and register it with the backend.
+ * Register a token we have ALREADY been handed, without asking the OS for it again.
  *
- * Idempotent by design: the last registered value is kept in SecureStore and a POST is skipped
- * when it has not changed, so the common case (every authenticated app launch) is local-only.
- * `force` bypasses that for the token-refresh listener, where the value genuinely is new.
+ * This split exists because of a loop that took the whole app down. On Android
+ * `getDevicePushTokenAsync()` does not merely return the token — `PushTokenModule.kt` calls
+ * `onNewToken(token)` immediately after resolving the promise, so **every fetch emits the
+ * `onDevicePushToken` event**, not just a genuine roll. The push-token listener in
+ * `useNotifications` reacted to that event by calling `registerDeviceToken(true)`, which fetches
+ * again, which emits again — an unbounded loop, and with `force` set it did a real
+ * `POST /notifications/device-token` on every pass.
+ *
+ * That is not a cosmetic leak. The API allows 10 000 requests per 15 minutes, so the loop burns
+ * the whole budget and the server starts 429ing *every other* call in the app; `isRetryable`
+ * classes 429 as transient, so React Query then retries into the same wall. It also floods the
+ * 80-entry netlog, evicting the very requests anyone would need to diagnose it.
+ *
+ * So the listener passes the token the event already carried, and this function compares it to
+ * the stored one and does nothing when it is unchanged. The cycle terminates after one pass even
+ * when something re-fetches deliberately.
  */
-export async function registerDeviceToken(force = false): Promise<PushRegistrationResult> {
-  if (Platform.OS !== "android") {
-    return { state: "unsupported-platform", token: null };
-  }
-
-  if (!(await ensurePermission())) return { state: "denied", token: null };
-  await configureChannels();
-
-  let token: string;
-  try {
-    const devicePushToken = await Notifications.getDevicePushTokenAsync();
-    token = String(devicePushToken.data);
-  } catch {
-    // Thrown when the native Firebase app is missing — i.e. no `google-services.json` was
-    // bundled at build time. That is a build-configuration gap, not a runtime error worth
-    // retrying, so it gets its own state instead of "failed".
-    return { state: "not-configured", token: null };
-  }
+export async function syncKnownDeviceToken(
+  token: string,
+  force = false,
+): Promise<PushRegistrationResult> {
   if (!token) return { state: "not-configured", token: null };
 
   const stored = await getStoredPushToken();
@@ -121,6 +120,56 @@ export async function registerDeviceToken(force = false): Promise<PushRegistrati
     return { state: "registered", token };
   } catch {
     return { state: "failed", token };
+  }
+}
+
+/**
+ * In-flight de-duplication.
+ *
+ * Belt-and-braces against the loop above: the token event is emitted from native and can arrive
+ * while a registration is still awaiting its POST, so identity of the *caller* is not enough to
+ * serialise this. Concurrent callers share one attempt instead of stacking requests.
+ */
+let inFlight: Promise<PushRegistrationResult> | null = null;
+
+/**
+ * Acquire the device's FCM token and register it with the backend.
+ *
+ * Idempotent by design: the last registered value is kept in SecureStore and a POST is skipped
+ * when it has not changed, so the common case (every authenticated app launch) is local-only.
+ * `force` bypasses that for the manual retry on the notification settings screen, where the
+ * point is to try the network again after a failure.
+ *
+ * Prefer `syncKnownDeviceToken` anywhere a token is already in hand — see its note on why
+ * fetching has a side effect.
+ */
+export async function registerDeviceToken(force = false): Promise<PushRegistrationResult> {
+  if (Platform.OS !== "android") {
+    return { state: "unsupported-platform", token: null };
+  }
+  if (inFlight) return inFlight;
+
+  inFlight = (async () => {
+    if (!(await ensurePermission())) return { state: "denied", token: null };
+    await configureChannels();
+
+    let token: string;
+    try {
+      const devicePushToken = await Notifications.getDevicePushTokenAsync();
+      token = String(devicePushToken.data);
+    } catch {
+      // Thrown when the native Firebase app is missing — i.e. no `google-services.json` was
+      // bundled at build time. That is a build-configuration gap, not a runtime error worth
+      // retrying, so it gets its own state instead of "failed".
+      return { state: "not-configured", token: null };
+    }
+    return syncKnownDeviceToken(token, force);
+  })();
+
+  try {
+    return await inFlight;
+  } finally {
+    inFlight = null;
   }
 }
 

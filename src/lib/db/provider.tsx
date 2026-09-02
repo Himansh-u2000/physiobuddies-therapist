@@ -20,6 +20,21 @@ interface DbContextValue {
 
 const DbContext = createContext<DbContextValue>({ db: null, ready: false });
 
+/**
+ * The open connection, also reachable outside React.
+ *
+ * `auth.store` has to wipe the cache on sign-out and a Zustand store cannot call `useDatabase()`
+ * — the same reason `unregisterDeviceToken` lives in a plain module. Kept in sync with the
+ * context rather than replacing it: components still read the context, so they re-render when
+ * the database becomes ready.
+ */
+let activeDb: DrizzleDB | null = null;
+
+/** The open database, or `null` before `DatabaseProvider` has finished opening it. */
+export function getActiveDatabase(): DrizzleDB | null {
+  return activeDb;
+}
+
 export function DatabaseProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState<DrizzleDB | null>(null);
   const [ready, setReady] = useState(false);
@@ -41,7 +56,9 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
         await sqlite.execAsync(alter).catch(() => {});
       }
       if (!mounted) return;
-      setDb(createDrizzle(sqlite));
+      const instance = createDrizzle(sqlite);
+      activeDb = instance;
+      setDb(instance);
       setReady(true);
     })();
     return () => {

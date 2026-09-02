@@ -6,6 +6,7 @@ import { useAuthStore } from "@/lib/stores/auth.store";
 import { toAppHref } from "@/lib/notifications/links";
 import {
   registerDeviceToken,
+  syncKnownDeviceToken,
   type PushRegistrationResult,
 } from "@/lib/notifications/push";
 
@@ -92,11 +93,22 @@ export function useNotifications() {
     return result;
   }, []);
 
-  // A token can roll while the app is running; the old one stops delivering the moment it does.
+  /**
+   * A token can roll while the app is running; the old one stops delivering the moment it does.
+   *
+   * The event's own token is what gets registered — deliberately, and this is load-bearing.
+   * Android emits this event on every `getDevicePushTokenAsync()` call, not only on a real roll
+   * (see `syncKnownDeviceToken`), so re-fetching here fed the emitter that woke us and looped
+   * forever, hammering `POST /notifications/device-token` until the API rate-limited the whole
+   * app. Using the value we were handed, and skipping when it matches what is already stored,
+   * makes a spurious event cost nothing.
+   */
   useEffect(() => {
-    const sub = Notifications.addPushTokenListener(() => {
+    const sub = Notifications.addPushTokenListener((token) => {
       if (!useAuthStore.getState().isAuthenticated) return;
-      registerDeviceToken(true).then(setRegistration).catch(() => {});
+      const value = typeof token?.data === "string" ? token.data : String(token?.data ?? "");
+      if (!value) return;
+      syncKnownDeviceToken(value).then(setRegistration).catch(() => {});
     });
     return () => sub.remove();
   }, []);

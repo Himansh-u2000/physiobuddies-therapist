@@ -41,10 +41,20 @@ export interface NetLogEntry {
 const MAX_ENTRIES = 80;
 
 /**
- * Bodies are stringified for display; a base64 image or a long article would otherwise make
- * the detail view unusable (and, on a low-end device, expensive to render).
+ * Cap for a **non-JSON** body kept verbatim — an HTML error page from a proxy, a base64 blob.
+ * Only these are truncated at capture time, because they have no structure worth preserving and
+ * can run to megabytes.
+ *
+ * Parsed JSON bodies are stored whole. They used to be clipped to 4 000 characters *at render
+ * time*, which quietly defeated the entire point of this screen: an availability response or a
+ * booking list is comfortably past that, so the one payload someone opened the log to read was
+ * the one that ended in `…[truncated]`. Display-side clipping now lives in the screen, where it
+ * can be expanded — see `formatBody`'s `limit`.
  */
-const MAX_BODY_CHARS = 4000;
+const MAX_RAW_STRING_CHARS = 20_000;
+
+/** What the log screen shows before the reader taps "Show full". */
+export const PREVIEW_BODY_CHARS = 1_500;
 
 let entries: NetLogEntry[] = [];
 let seq = 0;
@@ -117,21 +127,50 @@ function redactBody(body: unknown, depth = 0): unknown {
     try {
       return redactBody(JSON.parse(body), depth + 1);
     } catch {
-      return body.length > MAX_BODY_CHARS ? `${body.slice(0, MAX_BODY_CHARS)}…[truncated]` : body;
+      return body.length > MAX_RAW_STRING_CHARS
+        ? `${body.slice(0, MAX_RAW_STRING_CHARS)}…[truncated ${body.length} chars]`
+        : body;
     }
   }
   return body;
 }
 
-/** Render a body for display/sharing. Kept out of the hot path — called by the screen only. */
-export function formatBody(body: unknown): string {
+/**
+ * Render a body for display/sharing. Kept out of the hot path — called by the screen only.
+ *
+ * Complete by default. Pass `limit` for a preview; the returned string then ends with a marker
+ * naming the **full** length, so a reader can tell a clipped payload from a short one — the old
+ * bare `…[truncated]` could not, and made a 4 001-character response look like a server that had
+ * stopped mid-object.
+ */
+export function formatBody(body: unknown, limit?: number): string {
   if (body === undefined) return "";
-  if (typeof body === "string") return body;
+  const text = typeof body === "string" ? body : safeStringify(body);
+  if (limit == null || text.length <= limit) return text;
+  return `${text.slice(0, limit)}\n…[showing ${limit} of ${text.length} characters]`;
+}
+
+/** `JSON.stringify` that survives a cycle rather than throwing inside the log screen's render. */
+function safeStringify(body: unknown): string {
   try {
-    const json = JSON.stringify(body, null, 2);
-    return json.length > MAX_BODY_CHARS ? `${json.slice(0, MAX_BODY_CHARS)}…[truncated]` : json;
+    return JSON.stringify(body, null, 2);
   } catch {
-    return String(body);
+    try {
+      const seen = new WeakSet();
+      return JSON.stringify(
+        body,
+        (_key, value) => {
+          if (typeof value === "object" && value !== null) {
+            if (seen.has(value)) return "[circular]";
+            seen.add(value);
+          }
+          return value;
+        },
+        2,
+      );
+    } catch {
+      return String(body);
+    }
   }
 }
 

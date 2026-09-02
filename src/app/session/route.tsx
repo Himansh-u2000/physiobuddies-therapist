@@ -2,7 +2,7 @@ import { View, Text, Pressable, ScrollView, Linking } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { Phone, MessageSquare, Lock, ChevronLeft, MapPinOff } from "lucide-react-native";
+import { Phone, Lock, ChevronLeft, MapPinOff } from "lucide-react-native";
 import { Avatar, Badge, Button, ErrorState, Skeleton } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
@@ -156,9 +156,6 @@ export default function RouteScreen() {
               <View className="flex-row" style={{ gap: 8 }}>
                 <Pressable onPress={handleCallPatient} className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: "rgba(35,145,73,0.1)" }}>
                   <Phone size={16} color={COLORS.success} />
-                </Pressable>
-                <Pressable onPress={() => showToast("Opening WhatsApp")} className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.primarySoft }}>
-                  <MessageSquare size={16} color={COLORS.accent} />
                 </Pressable>
               </View>
             </View>
