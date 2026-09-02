@@ -53,8 +53,30 @@ function RootLayoutNav() {
   useSyncEngine();
   useSessionSync();
   const notificationRegistrationStarted = useRef(false);
+  const profileRefreshed = useRef(false);
   const { registerForPushNotifications } = useNotifications();
   const { isAuthenticated, isHydrated } = useAuthStore();
+  const refreshTherapist = useAuthStore((s) => s.refreshTherapist);
+
+  // Both once-per-session guards below are keyed to *this* sign-in. Signing out clears the
+  // stored push token and the cached profile, so a sign-in that follows in the same process has
+  // to run both again — without this reset it wouldn't, and the second therapist to use the app
+  // would get no push at all.
+  useEffect(() => {
+    if (isHydrated && !isAuthenticated) {
+      notificationRegistrationStarted.current = false;
+      profileRefreshed.current = false;
+    }
+  }, [isHydrated, isAuthenticated]);
+
+  // The persisted profile is a snapshot from the last sign-in; re-read it once per launch so a
+  // photo (or name, or verification badge) changed on the web shows up here without a sign-out.
+  // Fire-and-forget: `refreshTherapist` swallows its own failures and keeps the cached copy.
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || profileRefreshed.current) return;
+    profileRefreshed.current = true;
+    void refreshTherapist();
+  }, [isHydrated, isAuthenticated, refreshTherapist]);
 
   // Registration is deliberately tied to being signed in: the device token is stored against a
   // user, so registering before there is one has nothing to attach to. `registerDeviceToken`

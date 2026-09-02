@@ -13,7 +13,7 @@ import { Platform } from "react-native";
 import { notificationApi } from "@/lib/api/services";
 import {
   registerDeviceToken,
-  syncKnownDeviceToken,
+  syncRotatedToken,
   unregisterDeviceToken,
 } from "@/lib/notifications/push";
 import { STORAGE_KEYS } from "@/constants/config";
@@ -129,6 +129,56 @@ describe("registerDeviceToken", () => {
   });
 });
 
+describe("syncRotatedToken", () => {
+  /**
+   * The regression this whole function exists for. expo-notifications' Android module emits
+   * `onDevicePushToken` from *inside* `getDevicePushTokenAsync` (`promise.resolve(token);
+   * onNewToken(token)`), so the rotation listener fires every time we fetch a token. The
+   * listener used to answer by calling `registerDeviceToken(true)` — fetching again, emitting
+   * again — which POSTed `/notifications/device-token` without end and starved every other
+   * request in the app of the JS bridge.
+   */
+  it("never fetches the token itself — that is what re-entered the emit loop", async () => {
+    await syncRotatedToken("fcm-token-1");
+
+    expect(mockNotifications.getDevicePushTokenAsync).not.toHaveBeenCalled();
+  });
+
+  it("makes no network call when the event echoes the token already registered", async () => {
+    mockSecureStore.getItemAsync.mockResolvedValue("fcm-token-1");
+
+    expect(await syncRotatedToken("fcm-token-1")).toEqual({
+      state: "registered",
+      token: "fcm-token-1",
+    });
+    expect(mockApi.registerPushToken).not.toHaveBeenCalled();
+  });
+
+  it("registers a genuinely rotated token and retires its predecessor", async () => {
+    mockSecureStore.getItemAsync.mockResolvedValue("fcm-token-old");
+
+    await syncRotatedToken("fcm-token-2");
+
+    expect(mockApi.unregisterPushToken).toHaveBeenCalledWith("fcm-token-old");
+    expect(mockApi.registerPushToken).toHaveBeenCalledWith("fcm-token-2");
+    expect(mockSecureStore.setItemAsync).toHaveBeenCalledWith(
+      STORAGE_KEYS.pushToken,
+      "fcm-token-2",
+    );
+  });
+
+  it("joins a registration already in flight instead of racing it to SecureStore", async () => {
+    // The realistic ordering: the layout starts a registration, its own token fetch emits the
+    // event, and the listener lands here while that POST is still outstanding.
+    const registration = registerDeviceToken();
+    const rotation = syncRotatedToken("fcm-token-1");
+
+    await Promise.all([registration, rotation]);
+
+    expect(mockApi.registerPushToken).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("unregisterDeviceToken", () => {
   it("deletes the stored token server-side and locally", async () => {
     mockSecureStore.getItemAsync.mockResolvedValue("fcm-token-1");
@@ -153,61 +203,5 @@ describe("unregisterDeviceToken", () => {
     await unregisterDeviceToken();
 
     expect(mockApi.unregisterPushToken).not.toHaveBeenCalled();
-  });
-});
-
-/**
- * The loop that took the app down.
- *
- * Android's `PushTokenModule.kt` calls `onNewToken(token)` right after resolving
- * `getDevicePushTokenAsync()`, so every fetch emits the `onDevicePushToken` event — Expo's own
- * typings warn that fetching inside the listener "may lead to an infinite loop". It did: the
- * listener re-fetched with `force`, which re-emitted, which re-fetched, POSTing every pass until
- * the API rate-limited every other request in the app.
- *
- * The contract that prevents it is that a token already in hand is registered WITHOUT touching
- * the OS. If `syncKnownDeviceToken` ever starts fetching again, these fail.
- */
-describe("syncKnownDeviceToken (push-token-listener path)", () => {
-  it("never asks the OS for the token — that is what closed the loop", async () => {
-    await syncKnownDeviceToken("fcm-token-2");
-
-    expect(mockNotifications.getDevicePushTokenAsync).not.toHaveBeenCalled();
-  });
-
-  it("makes no network call when the event repeats a token already stored", async () => {
-    // A spurious event — the common case, since every fetch anywhere emits one.
-    mockSecureStore.getItemAsync.mockResolvedValue("fcm-token-1");
-
-    const result = await syncKnownDeviceToken("fcm-token-1");
-
-    expect(result).toEqual({ state: "registered", token: "fcm-token-1" });
-    expect(mockApi.registerPushToken).not.toHaveBeenCalled();
-    expect(mockApi.unregisterPushToken).not.toHaveBeenCalled();
-  });
-
-  it("registers a genuinely rolled token and retires its predecessor", async () => {
-    mockSecureStore.getItemAsync.mockResolvedValue("fcm-token-1");
-
-    const result = await syncKnownDeviceToken("fcm-token-2");
-
-    expect(result).toEqual({ state: "registered", token: "fcm-token-2" });
-    expect(mockApi.unregisterPushToken).toHaveBeenCalledWith("fcm-token-1");
-    expect(mockApi.registerPushToken).toHaveBeenCalledWith("fcm-token-2");
-  });
-});
-
-describe("registerDeviceToken concurrency", () => {
-  it("collapses overlapping attempts into one registration", async () => {
-    // The token event arrives from native and can land while a POST is still in flight.
-    const [a, b, c] = await Promise.all([
-      registerDeviceToken(),
-      registerDeviceToken(),
-      registerDeviceToken(),
-    ]);
-
-    expect(mockApi.registerPushToken).toHaveBeenCalledTimes(1);
-    expect(a).toEqual(b);
-    expect(b).toEqual(c);
   });
 });

@@ -1,5 +1,8 @@
 import { client, toAuthTokens } from "./client";
 import { isResponseContractError } from "@/lib/api/errors";
+// Re-exported below so every existing `from "@/lib/api/services"` import keeps working; they
+// live in their own module so `mappers.ts` can use them without closing an import cycle.
+import { absoluteFileUrl, privateFileUrl } from "@/lib/api/urls";
 import type {
  Therapist,
  DashboardStats,
@@ -29,7 +32,7 @@ import type {
  WeeklySchedule,
  WeeklyScheduleResult,
 } from "@/types";
-import { API_BASE_URL, SUBSCRIPTION_PAYMENT_ENABLED, WEEKDAYS } from "@/constants/config";
+import { SUBSCRIPTION_PAYMENT_ENABLED, WEEKDAYS } from "@/constants/config";
 import {
  SUBSCRIPTION_PLANS,
  type SubscriptionPlan,
@@ -82,6 +85,8 @@ import {
  type BackendScheduleOverride,
  type BackendWeeklySchedule,
 } from "./mappers";
+
+export { absoluteFileUrl, privateFileUrl };
 
 /**
  * Enrich the identity record with the therapist's public profile (GET /therapist/:id) —
@@ -342,6 +347,10 @@ export const accountApi = {
   return mapActivity(data ?? []);
  },
 };
+
+// REMOVED: `billingApi.listPayments` and the "Payments — what you've been charged" screen it
+// fed (2026-08-21, product decision). `GET /payment/` still exists server-side; the app simply
+// no longer surfaces charge history. Payouts (money *out*) are unaffected — see `payoutApi`.
 
 /**
  * Platform-authored patient-education content (`/blog`). Distinct from `/therapist/articles`,
@@ -1194,36 +1203,6 @@ interface BackendUpload {
  filename?: string;
  key?: string;
  id?: string;
-}
-
-/**
- * The upload endpoint returns a SERVER-RELATIVE path (`/uploads/1786…-name.jpg`) — multer
- * writes to local disk and the controller hands back `/uploads/${filename}` verbatim. That is
- * unusable as-is in two places: `<Image source={{uri}}>` can't fetch it, and
- * `PATCH /user/avatar` validates its body with `z.string().url()`, so a relative path is
- * rejected outright. Absolutise it against the API origin (base URL minus the `/api/v1`
- * suffix, since `/uploads` is served from the root) so callers always get something fetchable.
- */
-export function absoluteFileUrl(url: string): string {
- if (!url || /^https?:\/\//i.test(url)) return url;
- const origin = API_BASE_URL.replace(/\/api\/v\d+\/?$/, "");
- return `${origin}${url.startsWith("/") ? "" : "/"}${url}`;
-}
-
-/**
- * Resolve a PRIVATE document url (`/file/<id>`) returned by `add-docs`.
- *
- * Deliberately NOT `absoluteFileUrl`, and the difference is the whole point: `/uploads/...` is
- * served from the site root, so that helper *strips* the `/api/v1` suffix. `/file/:id` is a
- * versioned API route, so this one *keeps* it. Passing a private url through `absoluteFileUrl`
- * yields a 404 at a public path — which would look like a missing file rather than a wrong URL.
- *
- * The result still needs an `Authorization` header to fetch; see `lib/utils/privateFile.ts`.
- */
-export function privateFileUrl(url: string): string {
- if (!url || /^https?:\/\//i.test(url)) return url;
- const base = API_BASE_URL.replace(/\/$/, "");
- return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
 function normalizeUpload(data: BackendUpload | string | null | undefined): {
