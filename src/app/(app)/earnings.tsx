@@ -2,10 +2,19 @@ import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { FlashList } from "@shopify/flash-list";
 import { LinearGradient } from "expo-linear-gradient";
-import { TrendingUp, Clock, ArrowDownCircle, AlertCircle, Wallet, TriangleAlert } from "lucide-react-native";
+import {
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Clock,
+  ArrowDownCircle,
+  AlertCircle,
+  Wallet,
+  TriangleAlert,
+} from "lucide-react-native";
 import { TopBar } from "@/components/shared/TopBar";
-import { WeeklyChart } from "@/components/dashboard/WeeklyChart";
-import { PayoutTrendChart } from "@/components/charts/PayoutTrendChart";
+import { DailyEarningsChart } from "@/components/charts/DailyEarningsChart";
+import { WeeklyTrendChart } from "@/components/charts/WeeklyTrendChart";
 import { Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { earningsApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/stores/auth.store";
@@ -99,10 +108,7 @@ export default function EarningsScreen() {
                 <Text className="text-white text-[36px] font-black tracking-tight">
                   {formatCurrency(earnings.totalThisWeek)}
                 </Text>
-                <View className="flex-row items-center mt-1.5" style={{ gap: 6 }}>
-                  <TrendingUp size={14} color="#349e54" />
-                  <Text className="text-success text-[12px] font-bold">+{earnings.changePercent}% vs last week</Text>
-                </View>
+                <HeroChange percent={earnings.changePercent} />
                 <View className="flex-row mt-3" style={{ gap: 8 }}>
                   <View className="flex-1 bg-white/10 rounded-[10px] p-2.5">
                     <Text className="text-white/70 text-[10px]">This month</Text>
@@ -123,11 +129,15 @@ export default function EarningsScreen() {
                   <Text className="text-white font-bold text-[13px]">Payouts & wallet</Text>
                 </Pressable>
               </LinearGradient>
-              <WeeklyChart data={earnings.weeklyChart} />
-              <PayoutTrendChart
-                data={earnings.weeklyChart}
-                trendLabel={`↑ ${earnings.changePercent}% vs last week`}
-              />
+              <ChartCard title="This week by day" subtitle="Your share of each day's sessions, after the platform fee">
+                <DailyEarningsChart data={earnings.weeklyChart} />
+              </ChartCard>
+              {/* Absent on a summary cached by an older build until the next fetch replaces it. */}
+              {earnings.weeklyTrend && earnings.weeklyTrend.length > 1 && (
+                <ChartCard title="Weekly earnings" subtitle="Last 8 weeks — tap a week for its total">
+                  <WeeklyTrendChart data={earnings.weeklyTrend} />
+                </ChartCard>
+              )}
               <Text className="text-[15px] font-bold text-fg mt-1">Transactions</Text>
             </View>
           )
@@ -152,6 +162,44 @@ export default function EarningsScreen() {
           )
         }
       />
+    </View>
+  );
+}
+
+/** A titled white card around one chart. The charts are bare, so the card lives in one place. */
+function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+  return (
+    <View
+      className="bg-white border border-border rounded-md p-4"
+      style={{ shadowColor: COLORS.nav, shadowOpacity: 0.06, shadowRadius: 12, elevation: 2 }}
+    >
+      <Text className="text-[14px] font-extrabold text-fg">{title}</Text>
+      <Text className="text-muted text-[11.5px] mt-0.5 mb-3.5">{subtitle}</Text>
+      {children}
+    </View>
+  );
+}
+
+/**
+ * Week-over-week change on the dark hero gradient.
+ *
+ * Previously a hardcoded `TrendingUp` icon and `+{n}%` in green, so a losing week read "+-12% vs
+ * last week" with a rising arrow. The sign now drives both the icon and the text, and nothing
+ * renders when there is no previous week to compare with. Status green/amber are dropped here on
+ * purpose: at 12px on this navy gradient they fall below readable contrast, so direction is carried
+ * by the icon and an explicit sign in white instead.
+ */
+function HeroChange({ percent }: { percent: number | null }) {
+  if (percent === null) {
+    return <Text className="text-white/70 text-[12px] font-semibold mt-1.5">First week with earnings</Text>;
+  }
+  const Icon = percent > 0 ? TrendingUp : percent < 0 ? TrendingDown : Minus;
+  const text =
+    percent === 0 ? "Same as last week" : `${percent > 0 ? "+" : "−"}${Math.abs(percent)}% vs last week`;
+  return (
+    <View className="flex-row items-center mt-1.5" style={{ gap: 6 }}>
+      <Icon size={14} color="#fff" />
+      <Text className="text-white text-[12px] font-bold">{text}</Text>
     </View>
   );
 }

@@ -3,6 +3,7 @@ import { isResponseContractError } from "@/lib/api/errors";
 // Re-exported below so every existing `from "@/lib/api/services"` import keeps working; they
 // live in their own module so `mappers.ts` can use them without closing an import cycle.
 import { absoluteFileUrl, privateFileUrl } from "@/lib/api/urls";
+import { affectedSlotCount } from "@/lib/utils/slotState";
 import type {
  Therapist,
  DashboardStats,
@@ -64,6 +65,7 @@ import {
  mapFaqs,
  mapScheduleOverrides,
  mapWeeklySchedule,
+ normalizeGender,
  type BackendUser,
  type BackendTherapistPublic,
  type BackendActivity,
@@ -491,8 +493,23 @@ export const availabilityApi = {
    date: new Date(`${isoDate}T00:00:00.000Z`).toISOString(),
    startHours,
   };
-  if (blocked) await client.post("/therapist/slots/block", body);
-  else await client.delete("/therapist/slots/block", { data: body });
+  if (blocked) {
+   await client.post("/therapist/slots/block", body);
+   return;
+  }
+  const { data } = await client.delete<{ message?: string }>("/therapist/slots/block", {
+   data: body,
+  });
+  // The unblock endpoint answers 200 even when it matched nothing — `"Unblocked 0 slot(s)."` —
+  // which is exactly what reopening a lead-time "blocked" slot produces (there is no row to
+  // delete; see `lib/utils/slotState.ts`). Reporting that as success is how "reopen doesn't
+  // save" reached a user. The screen now only offers reopen on real blocks, so a zero here means
+  // the data changed under us; say so rather than toasting a change that did not happen.
+  if (affectedSlotCount(data?.message) === 0) {
+   throw new Error(
+    "Those slots weren't blocked any more — they may be too soon to book. Pull to refresh."
+   );
+  }
  },
 
  /**
@@ -1034,12 +1051,7 @@ export const patientApi = {
    id,
    name: appointment.patientName,
    age: appointment.patientAge ?? 0,
-   gender:
-    appointment.patientGender === "female"
-     ? "female"
-     : appointment.patientGender === "other"
-       ? "other"
-       : "male",
+   gender: normalizeGender(appointment.patientGender),
    phone: appointment.patientPhone ?? "",
    condition: appointment.condition,
    address: appointment.address,

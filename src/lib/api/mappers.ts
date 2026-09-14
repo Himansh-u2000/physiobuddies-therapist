@@ -26,6 +26,7 @@ import type {
  EarningsSummary,
  LoginSession,
  Patient,
+ PaymentStatus,
  Payout,
  ScheduleOverride,
  SessionDocument,
@@ -40,6 +41,7 @@ import type {
  WalletInfo,
  WeekdaySchedule,
  WeeklySchedule,
+ WeeklyTotal,
 } from "@/types";
 import { toIsoDate } from "@/lib/utils/format";
 import { absoluteFileUrl } from "@/lib/api/urls";
@@ -607,6 +609,29 @@ export function mapUserToTherapist(
  };
 }
 
+/**
+ * Whether a booking has been paid, read from the backend's own session lifecycle.
+ *
+ * Patients pay when they book, so almost every booking a therapist sees is paid. This used to be
+ * `status === "completed" ? "paid" : "pending"` — i.e. "paid" meant *the visit happened* — which
+ * labelled every upcoming and in-progress booking "Unpaid". None of the booking payloads carry a
+ * payment field, so that was an invention, and a wrong one.
+ *
+ * The backend documents exactly two pre-payment states on `SessionStatus`
+ * (`prisma/treatment.prisma`): `pending` ("slot locked, payment pending") and `expired`
+ * ("payment not completed"). Only those read as unpaid; everything from `confirmed` onward is
+ * post-payment by construction.
+ *
+ * Deliberately keyed on the RAW string, not on `mapBookingStatus`: that mapper's `default` branch
+ * folds unrecognised statuses into `"pending"`, so deriving from it would call any status we have
+ * not seen before "Unpaid" again. `CREATED` is deliberately not unpaid either — it is the *plan*
+ * status set at reservation and it can outlive the payment.
+ */
+export function paymentStatusFor(rawStatus?: string): PaymentStatus {
+ const s = (rawStatus ?? "").toUpperCase();
+ return s === "PENDING" || s === "EXPIRED" ? "pending" : "paid";
+}
+
 // ---------------------------------------------------------------------------
 // Appointments
 // ---------------------------------------------------------------------------
@@ -630,7 +655,7 @@ export function mapBookingToAppointment(b: BackendBooking): Appointment | null {
   dateLabel: date ? scheduleDateLabel(date) : b.lastSessionDate,
   type: parseSessionType(b.treatmentMode),
   status,
-  paymentStatus: status === "completed" ? "paid" : "pending",
+  paymentStatus: paymentStatusFor(b.status),
   amount: 0, // backend list carries no per-booking price (documented gap)
   condition: "Therapy session",
   workflowStep: workflowStepFor(status),
@@ -761,7 +786,9 @@ export function mapBookingDetailToAppointment(
   dateLabel: shown?.dateLabel,
   type: parseSessionType(d.mode),
   status,
-  paymentStatus: status === "completed" ? "paid" : "pending",
+  // The session the therapist is looking at, not the plan: a plan's status is set at reservation
+  // and says nothing about whether this visit was paid for.
+  paymentStatus: paymentStatusFor(shown?.rawStatus ?? d.overallStatus),
   amount: 0,
   condition: d.condition?.title ?? "Therapy session",
   address,
@@ -962,6 +989,44 @@ function sumInRange(
  }, 0);
 }
 
+/**
+ * Week-over-week change, as a whole percentage.
+ *
+ * `null`, not `0`, when last week earned nothing. A rise from zero has no percentage, and `0`
+ * rendered as "↑ 0% vs last week" — a flat week — on exactly the week a therapist first earned
+ * something. Callers hide the badge on `null`.
+ */
+export function weekOverWeekPercent(thisWeek: number, lastWeek: number): number | null {
+ if (!(lastWeek > 0)) return null;
+ return Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
+}
+
+/**
+ * Totals for the last `weeks` weeks (Mon–Sun), oldest first, the current week last.
+ *
+ * This is what makes the Earnings trend chart a distinct view. It used to plot `weeklyChart` —
+ * the same seven daily numbers as the bar chart directly above it — under the title "Payout
+ * trend", so the screen showed one dataset twice under two names, neither of them payouts.
+ */
+export function weeklyTrend(commissions: BackendCommission[], weeks = 8, now = new Date()): WeeklyTotal[] {
+ const currentStart = startOfWeekMon(now);
+ const starts = Array.from({ length: weeks }, (_, i) => {
+  const d = new Date(currentStart);
+  d.setDate(d.getDate() - (weeks - 1 - i) * 7);
+  return d;
+ });
+ return starts.map((start, i) => {
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  return {
+   weekStart: toIsoDate(start),
+   label: start.toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+   amount: sumInRange(commissions, start, end),
+   isCurrent: i === weeks - 1,
+  };
+ });
+}
+
 /** Next Monday, formatted "Mon, 27 Jul 2026" — the app pays out weekly. */
 function nextPayoutLabel(): string {
  const d = new Date();
@@ -987,8 +1052,7 @@ export function buildEarningsSummary(
 
  const thisWeek = sumInRange(commissions, weekStart, nextWeek);
  const lastWeek = sumInRange(commissions, lastWeekStart, weekStart);
- const changePercent =
-  lastWeek > 0 ? Math.round(((thisWeek - lastWeek) / lastWeek) * 100) : 0;
+ const changePercent = weekOverWeekPercent(thisWeek, lastWeek);
 
  const now = new Date();
  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1002,6 +1066,7 @@ export function buildEarningsSummary(
   pendingPayout: wallet?.balance ?? 0,
   nextPayoutDate: nextPayoutLabel(),
   weeklyChart: weeklyChart(commissions),
+  weeklyTrend: weeklyTrend(commissions),
  };
 }
 
@@ -1457,6 +1522,17 @@ export function mapScheduleOverrides(
  * `patientID` across different people, and collapsing two patients into one row is a much worse
  * failure than showing one person twice.
  */
+/**
+ * Map a backend gender string onto the app's union.
+ *
+ * Unrecognised or missing becomes `""` (not recorded) — never a guess. This used to default to
+ * `"male"`, so every patient whose booking omitted gender was shown as male.
+ */
+export function normalizeGender(raw?: string | null): Patient["gender"] {
+ const g = (raw ?? "").trim().toLowerCase();
+ return g === "male" || g === "female" || g === "other" ? g : "";
+}
+
 export function buildPatientsFromBookings(list: BackendBooking[]): Patient[] {
  const byKey = new Map<string, Patient & { _lastDate: number }>();
 
@@ -1476,13 +1552,11 @@ export function buildPatientsFromBookings(list: BackendBooking[]): Patient[] {
    continue;
   }
 
-  const gender = (b.patientGender ?? "").toLowerCase();
   byKey.set(key, {
    id: b.id, // the treatment-plan id — what the patient detail screen can actually fetch
    name: b.patientName || "Patient",
    age: b.patientAge ?? 0,
-   gender:
-    gender === "female" ? "female" : gender === "other" ? "other" : "male",
+   gender: normalizeGender(b.patientGender),
    phone: "",
    condition: "Therapy",
    totalSessions: 1,
@@ -1528,8 +1602,7 @@ export function buildDashboardStats(
  const lastWeekStart = new Date(weekStart);
  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
  const lastWeek = sumInRange(commissions, lastWeekStart, weekStart);
- const weeklyChangePercent =
-  lastWeek > 0 ? Math.round(((weeklyEarnings - lastWeek) / lastWeek) * 100) : 0;
+ const weeklyChangePercent = weekOverWeekPercent(weeklyEarnings, lastWeek);
 
  return {
   todaySessions,

@@ -15,6 +15,26 @@ export function getGreeting(): string {
   return "Good evening";
 }
 
+/**
+ * Whether a condition string says anything.
+ *
+ * The booking-derived records carry a stand-in instead of a real condition — `"Therapy"` on the
+ * patient roster and `"Therapy session"` on appointment rows — identical for every record. Printed
+ * as a subtitle it reads as a column of the same two words, pushing out the fields that do vary.
+ */
+const PLACEHOLDER_CONDITIONS = new Set(["therapy", "therapy session", "session"]);
+
+export function isMeaningfulCondition(condition?: string): boolean {
+  const c = (condition ?? "").trim().toLowerCase();
+  return c.length > 0 && !PLACEHOLDER_CONDITIONS.has(c);
+}
+
+/** "female" -> "Female"; empty for an unrecorded gender, so callers can simply filter it out. */
+export function genderLabel(gender?: string): string {
+  const g = (gender ?? "").trim().toLowerCase();
+  return g ? g[0].toUpperCase() + g.slice(1) : "";
+}
+
 export function getInitials(name: string): string {
   return name
     .split(" ")

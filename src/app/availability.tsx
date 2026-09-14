@@ -20,6 +20,12 @@ import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS, SLOT_CONFIG, WEEKDAYS, type SlotShiftId } from "@/constants/config";
 import type { AvailabilityDay, AvailabilitySlot, SlotShift, WeeklySchedule } from "@/types";
 import { GlassSurface } from "@/components/ui/Glass";
+import {
+  isSelectableKind,
+  slotKind,
+  unavailableReason,
+  type SlotKind,
+} from "@/lib/utils/slotState";
 
 /** "14" → "2 PM". The grid is hourly, so minutes never need showing. */
 function hourLabel(hour: number): string {
@@ -75,8 +81,29 @@ export default function AvailabilityScreen() {
     queryFn: availabilityApi.getAvailability,
   });
 
+  // Real therapist blocks, from the one endpoint that returns ONLY reservation rows. The
+  // availability response also says "blocked" for slots that are merely too soon to book, and
+  // only the real ones can be reopened — see `lib/utils/slotState.ts`. Shares its cache key with
+  // the Time off screen, which reads the same list.
+  const { data: overrides } = useQuery({
+    queryKey: ["schedule-overrides"],
+    queryFn: availabilityApi.getOverrides,
+  });
+  const blockedByDate = useMemo(() => {
+    if (!overrides) return undefined;
+    return new Map(overrides.map((o) => [o.date, new Set(o.blockedHours)]));
+  }, [overrides]);
+  /** Real blocks for one ISO date; `undefined` only while the list itself is unknown. */
+  const realBlocksFor = (isoDate: string): ReadonlySet<number> | undefined =>
+    blockedByDate ? (blockedByDate.get(isoDate) ?? EMPTY_HOURS) : undefined;
+
   const days = data ?? [];
   const day: AvailabilityDay | undefined = days[dayIndex];
+  const dayBlocks = useMemo<ReadonlySet<number> | undefined>(
+    () => (day && blockedByDate ? (blockedByDate.get(day.date) ?? EMPTY_HOURS) : undefined),
+    [day, blockedByDate],
+  );
+  const kindOf = (slot: AvailabilitySlot): SlotKind => slotKind(slot, dayBlocks);
 
   // Selecting hours only makes sense within one day; switching days must not carry them over.
   const selectDay = (index: number) => {
@@ -102,23 +129,27 @@ export default function AvailabilityScreen() {
   }, [day]);
 
   const counts = useMemo(() => {
-    const slots = day?.slots ?? [];
+    const kinds = (day?.slots ?? []).map((s) => slotKind(s, dayBlocks));
     return {
-      open: slots.filter((s) => s.status === "open").length,
-      booked: slots.filter((s) => s.status === "booked").length,
-      blocked: slots.filter((s) => s.status === "blocked").length,
+      open: kinds.filter((k) => k === "open").length,
+      booked: kinds.filter((k) => k === "booked").length,
+      // Only blocks the therapist placed. Counting lead-time slots here made the tile climb all
+      // day without anyone touching the schedule.
+      blocked: kinds.filter((k) => k === "blocked").length,
     };
-  }, [day]);
+  }, [day, dayBlocks]);
 
   const selectionState = useMemo(() => {
     if (!day || selected.length === 0) return { allBlocked: false };
     const picked = day.slots.filter((s) => selected.includes(s.startHour));
-    return { allBlocked: picked.length > 0 && picked.every((s) => s.status === "blocked") };
-  }, [day, selected]);
+    return {
+      allBlocked: picked.length > 0 && picked.every((s) => slotKind(s, dayBlocks) === "blocked"),
+    };
+  }, [day, selected, dayBlocks]);
 
-  /** Select or clear every changeable slot in a shift — booked hours are never included. */
+  /** Select or clear every changeable slot in a shift — only open and self-blocked hours. */
   const toggleShift = (slots: AvailabilitySlot[]) => {
-    const selectable = slots.filter((s) => s.status !== "booked").map((s) => s.startHour);
+    const selectable = slots.filter((s) => isSelectableKind(kindOf(s))).map((s) => s.startHour);
     const allPicked = selectable.length > 0 && selectable.every((h) => selected.includes(h));
     setSelected((prev) =>
       allPicked
@@ -139,7 +170,11 @@ export default function AvailabilityScreen() {
         "success",
       );
       setSelected([]);
-      await queryClient.invalidateQueries({ queryKey: ["availability"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["availability"] }),
+        // Blocking a whole day turns it into a day off on the Time off screen, which reads this.
+        queryClient.invalidateQueries({ queryKey: ["schedule-overrides"] }),
+      ]);
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Couldn't update those slots. Try again.", "error");
     } finally {
@@ -214,8 +249,12 @@ export default function AvailabilityScreen() {
           >
             {days.map((d, i) => {
               const active = i === dayIndex;
-              const blocked = d.slots.filter((s) => s.status === "blocked").length;
-              const booked = d.slots.filter((s) => s.status === "booked").length;
+              const kinds = d.slots.map((s) => slotKind(s, realBlocksFor(d.date)));
+              const blocked = kinds.filter((k) => k === "blocked").length;
+              const booked = kinds.filter((k) => k === "booked").length;
+              const open = kinds.filter((k) => k === "open").length;
+              // "Off" means the therapist blocked the whole day — not that it is late in the day
+              // and every remaining slot is inside the booking lead time.
               const fullyOff = d.slots.length > 0 && blocked === d.slots.length;
               // Day pills now carry their own state — the previous strip was 14 identical
               // labels, so finding the day you'd already blocked meant opening each one.
@@ -251,7 +290,7 @@ export default function AvailabilityScreen() {
                           />
                         )}
                         <Text className={`text-[9.5px] font-bold ${active ? "text-white/75" : "text-muted"}`}>
-                          {d.slots.length - blocked - booked} open
+                          {open} open
                         </Text>
                       </>
                     )}
@@ -276,12 +315,13 @@ export default function AvailabilityScreen() {
               <LegendDot color={COLORS.border} label="Open" outline />
               <LegendDot color={COLORS.success} label="Booked" />
               <LegendDot color={COLORS.danger} label="Blocked" />
+              <LegendDot color={COLORS.muted} label="Unavailable" />
               <LegendDot color={COLORS.accent} label="Selected" />
             </View>
 
             {shiftGroups.map((group) => {
               const Icon = SHIFT_ICON[group.id];
-              const selectable = group.slots.filter((s) => s.status !== "booked");
+              const selectable = group.slots.filter((s) => isSelectableKind(kindOf(s)));
               const allPicked =
                 selectable.length > 0 && selectable.every((s) => selected.includes(s.startHour));
               return (
@@ -307,6 +347,8 @@ export default function AvailabilityScreen() {
                       <SlotButton
                         key={slot.startHour}
                         slot={slot}
+                        kind={kindOf(slot)}
+                        isoDate={day?.date ?? ""}
                         picked={selected.includes(slot.startHour)}
                         onPress={() => toggleHour(slot.startHour)}
                       />
@@ -415,19 +457,35 @@ function LegendDot({ color, label, outline }: { color: string; label: string; ou
   );
 }
 
+const EMPTY_HOURS: ReadonlySet<number> = new Set();
+
 function SlotButton({
   slot,
+  kind,
+  isoDate,
   picked,
   onPress,
 }: {
   slot: AvailabilitySlot;
+  kind: SlotKind;
+  isoDate: string;
   picked: boolean;
   onPress: () => void;
 }) {
-  const booked = slot.status === "booked";
-  const blocked = slot.status === "blocked";
+  const booked = kind === "booked";
+  const blocked = kind === "blocked";
+  const muted = kind === "held" || kind === "unavailable";
+  const disabled = !isSelectableKind(kind);
 
-  const background = picked ? COLORS.accent : booked ? "rgba(35,145,73,0.1)" : blocked ? "rgba(207,66,56,0.08)" : "#fff";
+  const background = picked
+    ? COLORS.accent
+    : booked
+      ? "rgba(35,145,73,0.1)"
+      : blocked
+        ? "rgba(207,66,56,0.08)"
+        : muted
+          ? "rgba(94,107,119,0.06)"
+          : "#fff";
   const borderColor = picked
     ? COLORS.accent
     : booked
@@ -435,26 +493,41 @@ function SlotButton({
       : blocked
         ? "rgba(207,66,56,0.3)"
         : COLORS.border;
-  const textColor = picked ? "#fff" : booked ? COLORS.success : blocked ? COLORS.danger : COLORS.fg;
+  const textColor = picked ? "#fff" : booked ? COLORS.success : blocked ? COLORS.danger : muted ? COLORS.muted : COLORS.fg;
+
+  // An unavailable slot says WHY, so nobody tries to reopen it — that attempt is the bug this
+  // screen used to have.
+  const caption = booked
+    ? "Booked"
+    : blocked
+      ? "Blocked"
+      : kind === "held"
+        ? "On hold"
+        : kind === "unavailable"
+          ? unavailableReason(isoDate, slot.startHour)
+          : "Open";
 
   return (
     <Pressable
-      disabled={booked}
+      disabled={disabled}
       onPress={onPress}
       accessibilityRole="checkbox"
-      accessibilityState={{ checked: picked, disabled: booked }}
-      accessibilityLabel={`${slotRangeLabel(slot.startHour)}, ${slot.status}`}
+      accessibilityState={{ checked: picked, disabled }}
+      accessibilityLabel={`${slotRangeLabel(slot.startHour)}, ${caption}`}
       className="rounded-[12px] border px-2.5 py-2 items-start active:opacity-80"
-      style={{ minWidth: 100, backgroundColor: background, borderColor }}
+      style={{ minWidth: 100, backgroundColor: background, borderColor, opacity: muted ? 0.75 : 1 }}
     >
       <View className="flex-row items-center" style={{ gap: 4 }}>
         {picked && <Check size={11} color="#fff" strokeWidth={3.5} />}
-        <Text className="text-[12.5px] font-extrabold" style={{ color: textColor }}>
+        <Text
+          className="text-[12.5px] font-extrabold"
+          style={{ color: textColor, textDecorationLine: kind === "unavailable" ? "line-through" : "none" }}
+        >
           {slotRangeLabel(slot.startHour)}
         </Text>
       </View>
       <Text className="text-[10px] font-bold mt-0.5" style={{ color: picked ? "rgba(255,255,255,0.75)" : COLORS.muted }}>
-        {booked ? "Booked" : blocked ? "Blocked" : "Open"}
+        {caption}
       </Text>
     </Pressable>
   );

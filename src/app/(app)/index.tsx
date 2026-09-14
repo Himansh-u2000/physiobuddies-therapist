@@ -7,11 +7,11 @@ import { HeroCard } from "@/components/dashboard/HeroCard";
 import { NextSessionCard } from "@/components/dashboard/NextSessionCard";
 import { ResumeSessionCard } from "@/components/dashboard/ResumeSessionCard";
 import { QuickActions } from "@/components/dashboard/QuickActions";
-import { WeeklyChart } from "@/components/dashboard/WeeklyChart";
+import { DailyEarningsChart } from "@/components/charts/DailyEarningsChart";
+import { ChangeBadge } from "@/components/charts/ChangeBadge";
 import { SyncStatusCard } from "@/components/shared/SyncStatusCard";
-import { Badge, ErrorState, Skeleton } from "@/components/ui";
+import { ErrorState, Skeleton } from "@/components/ui";
 import { useAuthStore } from "@/lib/stores/auth.store";
-import { useAppStore } from "@/lib/stores/app.store";
 import { useSyncedQuery } from "@/lib/hooks/useSyncedQuery";
 import {
   getCachedDashboardStats,
@@ -21,13 +21,11 @@ import {
 } from "@/lib/db/repositories";
 import { therapistApi, appointmentApi } from "@/lib/api/services";
 import { GlassSurface } from "@/components/ui/Glass";
+import { formatCurrency } from "@/lib/utils/format";
 
 export default function DashboardScreen() {
   const router = useRouter();
   const therapist = useAuthStore((s) => s.therapist);
-  const isOnline = useAppStore((s) => s.isOnline);
-  const setOnline = useAppStore((s) => s.setOnline);
-  const showToast = useAppStore((s) => s.showToast);
 
   // SQLite-first, matching the four list screens. The dashboard was the last data screen on
   // a bare `useQuery`: offline it showed its skeleton forever, on the app's landing screen,
@@ -47,11 +45,6 @@ export default function DashboardScreen() {
   });
 
   const nextAppointment = appointments?.[0];
-
-  const handleToggleOnline = (value: boolean) => {
-    setOnline(value);
-    showToast(value ? "You are now available for sessions" : "You are now offline");
-  };
 
   return (
     <View className="flex-1 bg-bg">
@@ -80,12 +73,7 @@ export default function DashboardScreen() {
               </View>
             )}
 
-            <HeroCard
-              therapist={therapist}
-              stats={stats}
-              isOnline={isOnline}
-              onToggleOnline={handleToggleOnline}
-            />
+            <HeroCard therapist={therapist} stats={stats} />
 
             {/* Both render nothing unless there's something unfinished — placed directly under
                 the hero so an interrupted session or a stuck record is the first actionable
@@ -100,19 +88,17 @@ export default function DashboardScreen() {
               end={{ x: 1, y: 1 }}
             >
               <View className="absolute -right-10 -top-10 w-32 h-32 rounded-full bg-white/5" />
-              <View className="flex-row items-end justify-between">
-                <View className="flex-1">
-                  <Text className="text-white/80 text-[11px] font-bold uppercase tracking-wide">
-                    {therapist?.clinicName ?? "Physiobuddies Clinic"}
-                  </Text>
-                  <Text className="text-white text-[16px] font-bold mt-0.5">
-                    Today: {stats.todaySessions} sessions scheduled
-                  </Text>
-                </View>
-                <View className="items-end">
-                  <Text className="text-white text-[13px] font-extrabold">96%</Text>
-                  <Text className="text-white/70 text-[10px]">On-time</Text>
-                </View>
+              {/* The right-hand "96% On-time" that sat here was a hardcoded literal — no data behind
+                  it, shown to every therapist as their own record. Removed rather than kept as
+                  decoration: a fabricated performance figure on the landing screen is worse than
+                  an empty corner. */}
+              <View>
+                <Text className="text-white/80 text-[11px] font-bold uppercase tracking-wide">
+                  {therapist?.clinicName ?? "Physiobuddies Clinic"}
+                </Text>
+                <Text className="text-white text-[16px] font-bold mt-0.5">
+                  Today: {stats.todaySessions} {stats.todaySessions === 1 ? "session" : "sessions"} scheduled
+                </Text>
               </View>
             </LinearGradient>
 
@@ -136,7 +122,8 @@ export default function DashboardScreen() {
             <View className="mt-3">
               <View className="flex-row items-center justify-between mb-2.5">
                 <Text className="text-[17px] font-bold text-fg">This week</Text>
-                <Pressable>
+                {/* Had no `onPress` — a link that did nothing. */}
+                <Pressable onPress={() => router.push("/(app)/earnings")} hitSlop={8}>
                   <Text className="text-accent font-bold text-[12px]">Full report</Text>
                 </Pressable>
               </View>
@@ -144,16 +131,18 @@ export default function DashboardScreen() {
                 fallbackClassName="bg-white"
                 glassRadius={12}
                 className="border border-border rounded-md p-4">
-                <View className="flex-row items-center justify-between mb-3">
-                  <View>
-                    <Text className="text-[22px] font-black text-accent">
-                      Rs {stats.weeklyEarnings.toLocaleString("en-IN")}
+                <View className="flex-row items-start justify-between mb-4" style={{ gap: 8 }}>
+                  <View className="flex-shrink">
+                    <Text className="text-muted text-[12px] font-semibold">Earned this week</Text>
+                    {/* The headline is the number — same sans as everything else, proportional
+                        figures, in text ink rather than a brand colour. */}
+                    <Text className="text-[24px] font-black text-fg mt-0.5">
+                      {formatCurrency(stats.weeklyEarnings)}
                     </Text>
-                    <Text className="text-muted text-[12px]">Weekly earnings</Text>
                   </View>
-                  <Badge variant="success" size="sm">+{stats.weeklyChangePercent}% vs last week</Badge>
+                  <ChangeBadge percent={stats.weeklyChangePercent} />
                 </View>
-                <WeeklyChart data={stats.weeklyChart} />
+                <DailyEarningsChart data={stats.weeklyChart} />
               </GlassSurface>
             </View>
           </>

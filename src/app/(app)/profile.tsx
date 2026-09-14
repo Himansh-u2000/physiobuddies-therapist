@@ -34,7 +34,12 @@ import { useAuthStore } from "@/lib/stores/auth.store";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS, NETWORK_LOG_ENABLED, SUPPORT_EMAIL } from "@/constants/config";
 import { therapistApi } from "@/lib/api/services";
-import { useFileUpload, pickImageFromLibrary, captureImage } from "@/lib/hooks/useFilePicker";
+import {
+  useFileUpload,
+  pickImageFromLibrary,
+  captureImage,
+  IMAGE_MAX_EDGE,
+} from "@/lib/hooks/useFilePicker";
 import { useBiometric } from "@/lib/hooks/useBiometric";
 import { openSupportEmail } from "@/lib/utils/support";
 import { GlassSurface, GlassLayer, GLASS_ENABLED } from "@/components/ui/Glass";
@@ -72,8 +77,8 @@ export default function ProfileScreen() {
     try {
       const picked = await upload(() =>
         source === "camera"
-          ? captureImage({ allowsEditing: true, aspect: [1, 1] })
-          : pickImageFromLibrary({ allowsEditing: true, aspect: [1, 1] }),
+          ? captureImage({ allowsEditing: true, aspect: [1, 1], maxEdge: IMAGE_MAX_EDGE.avatar })
+          : pickImageFromLibrary({ allowsEditing: true, aspect: [1, 1], maxEdge: IMAGE_MAX_EDGE.avatar }),
       );
       if (!picked) return; // cancelled — not a failure, say nothing
       const updated = await therapistApi.updateAvatar(picked.url);

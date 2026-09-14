@@ -1,48 +1,61 @@
 import { View, Text, Pressable } from "react-native";
-import { CalendarClock, ChevronRight, Repeat2 } from "lucide-react-native";
+import { CalendarCheck2, CalendarClock, ChevronRight, ClipboardList } from "lucide-react-native";
 import { Avatar } from "@/components/ui";
 import { COLORS } from "@/constants/config";
-import { formatRelativeDay } from "@/lib/utils/format";
+import { formatRelativeDay, genderLabel, isMeaningfulCondition } from "@/lib/utils/format";
 import type { Patient } from "@/types";
 
 /**
  * A patient in the roster list.
  *
- * Rebuilt against what the data actually contains rather than what the type allows. The roster
- * is derived from `GET /therapist/sessions/my-bookings` (there is no therapist-facing patients
- * endpoint — BACKEND_TODO §4.2), and that derivation can only fill four fields honestly: name,
- * age/gender, a visit count, and a last-visit date. `condition` comes back as the literal
- * string "Therapy" for every patient, `tags` is always `[]`, and `phone` is always `""`.
+ * Built against what the data actually contains rather than what the type allows. The roster is
+ * derived from `GET /therapist/sessions/my-bookings` (there is no therapist-facing patients
+ * endpoint — BACKEND_TODO §4.2), so it can honestly fill: name, age, gender (when recorded), a
+ * booking count, and the date of the latest booking.
  *
- * The previous card gave its largest element — a bordered box captioned "PRIMARY CONDITION" —
- * to that constant "Therapy", rendered an always-empty tag row beneath it, and printed the one
- * genuinely useful field (last visit) as small grey text at the bottom. It also showed the
- * session count twice: once as a badge clipped to the avatar, once as a chip beside the name.
- * So the card was mostly furniture around a placeholder.
+ * ## What changed in this pass, and why
  *
- * Now: identity first, then the two real facts as labelled stats, and the placeholder fields
- * render only when they carry something. Recency also drives a left rail — but it is never the
- * only carrier of that information, the same rule `Badge` follows, since the rail has to survive
- * greyscale and direct sunlight.
+ *   - **"Last seen" was sometimes a future date.** The latest booking can be upcoming, and the card
+ *     printed it under "Last seen". It now reads "Next visit" for a future date.
+ *   - **The count said "sessions" but counted bookings.** The derivation adds one per treatment
+ *     plan, and a plan holds many sessions — a patient on a six-visit course read "1 session".
+ *     Labelled as what it is.
+ *   - **A recency status in words.** The coloured rail was the only place recency lived at a
+ *     glance. "Active" / "Follow up" now sits beside the name, so the rail is reinforcement rather
+ *     than the sole carrier — it has to survive greyscale and direct sunlight — and the therapist
+ *     can triage the list for who needs a follow-up without reading dates.
+ *   - **Unrecorded gender is simply absent,** instead of the derivation's old "male" default.
  */
 
-/** The derivation's stand-in for a condition it doesn't have. Not worth a line of the card. */
-const PLACEHOLDER_CONDITION = "therapy";
+type Recency = { label: string; color: string; soft: string } | null;
 
-function isMeaningfulCondition(condition: string): boolean {
-  const c = condition.trim().toLowerCase();
-  return c.length > 0 && c !== PLACEHOLDER_CONDITION;
+/** Whole days from today to an ISO date — negative is past, positive is upcoming. */
+function daysFromToday(iso?: string): number | null {
+  if (!iso) return null;
+  const date = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  return Math.round((date.getTime() - start) / 86_400_000);
 }
 
-/** Recent enough that the therapist is mid-course with this patient. */
-function railColor(lastVisit?: string): string {
-  if (!lastVisit) return COLORS.border;
-  const date = new Date(`${lastVisit}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return COLORS.border;
-  const days = (Date.now() - date.getTime()) / 86_400_000;
-  if (days <= 14) return COLORS.success;
-  if (days <= 45) return COLORS.warning;
-  return COLORS.border;
+/**
+ * Where this patient sits in their care.
+ *
+ * Upcoming or seen within two weeks is mid-course. Two weeks to ~six is the window where a
+ * therapist would normally check in, which is the one worth flagging. Beyond that the label is
+ * dropped rather than shouting "inactive" at most of a long roster.
+ */
+function recencyOf(days: number | null): Recency {
+  if (days === null) return null;
+  // Upcoming (positive) or within the last fortnight.
+  if (days >= -14) {
+    return { label: "Active", color: COLORS.success, soft: "rgba(35,145,73,0.10)" };
+  }
+  if (days >= -45) {
+    return { label: "Follow up", color: COLORS.warning, soft: "rgba(209,154,18,0.12)" };
+  }
+  return null;
 }
 
 interface PatientCardProps {
@@ -51,34 +64,55 @@ interface PatientCardProps {
 }
 
 export function PatientCard({ patient, onPress }: PatientCardProps) {
-  const showCondition = isMeaningfulCondition(patient.condition);
-  // `age: 0` is the derivation's "unknown", not a newborn — rendering "0y · male" made every
-  // patient whose age the booking payload omits look like bad data.
-  const meta = [patient.age > 0 ? `${patient.age}y` : null, patient.gender]
+  const days = daysFromToday(patient.lastVisit);
+  const recency = recencyOf(days);
+  const upcoming = days !== null && days > 0;
+
+  // `age: 0` is the derivation's "unknown", not a newborn.
+  const meta = [patient.age > 0 ? `${patient.age} yrs` : null, genderLabel(patient.gender) || null]
     .filter(Boolean)
     .join(" · ");
+
+  const bookings = patient.totalSessions;
+  const bookingsLabel = bookings === 1 ? "booking" : "bookings";
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${patient.name}, ${patient.totalSessions} visits`}
-      className="bg-white border border-border rounded-lg mb-3 active:opacity-90 overflow-hidden flex-row"
-      style={{ shadowColor: COLORS.nav, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4 }}
+      accessibilityLabel={[
+        patient.name,
+        meta,
+        recency?.label,
+        `${bookings} ${bookingsLabel}`,
+      ]
+        .filter(Boolean)
+        .join(", ")}
+      className="bg-white border border-border rounded-[18px] mb-3 active:opacity-90 overflow-hidden flex-row"
+      style={{ shadowColor: COLORS.nav, shadowOpacity: 0.08, shadowRadius: 14, elevation: 3 }}
     >
-      <View style={{ width: 4, backgroundColor: railColor(patient.lastVisit) }} />
+      <View style={{ width: 4, backgroundColor: recency?.color ?? COLORS.border }} />
 
-      <View className="flex-1 p-3.5">
+      <View className="flex-1 p-3.5" style={{ gap: 12 }}>
         <View className="flex-row items-center" style={{ gap: 12 }}>
-          <Avatar name={patient.name} url={patient.avatarUrl} size={48} radius={16} />
+          <Avatar name={patient.name} url={patient.avatarUrl} size={48} radius={14} />
 
-          <View className="flex-1">
-            <Text className="text-[15px] font-extrabold text-fg" numberOfLines={1}>
-              {patient.name}
-            </Text>
-            {!!meta && <Text className="text-muted text-[11px] mt-0.5 capitalize">{meta}</Text>}
-            {showCondition && (
-              <Text className="text-accent text-[12px] font-bold mt-1" numberOfLines={1}>
+          <View className="flex-1" style={{ gap: 3 }}>
+            <View className="flex-row items-center" style={{ gap: 8 }}>
+              <Text className="text-[15.5px] font-extrabold text-fg flex-shrink" numberOfLines={1}>
+                {patient.name}
+              </Text>
+              {recency && (
+                <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: recency.soft }}>
+                  <Text className="text-[10px] font-extrabold" style={{ color: recency.color }}>
+                    {recency.label}
+                  </Text>
+                </View>
+              )}
+            </View>
+            {!!meta && <Text className="text-muted text-[12px]">{meta}</Text>}
+            {isMeaningfulCondition(patient.condition) && (
+              <Text className="text-accent text-[12px] font-bold" numberOfLines={1}>
                 {patient.condition}
               </Text>
             )}
@@ -87,24 +121,29 @@ export function PatientCard({ patient, onPress }: PatientCardProps) {
           <ChevronRight size={18} color={COLORS.muted} />
         </View>
 
-        <View className="flex-row mt-3 rounded-[12px] bg-bg border border-border overflow-hidden">
+        <View className="flex-row rounded-[12px] overflow-hidden" style={{ backgroundColor: "rgba(0,64,96,0.04)" }}>
           <Stat
-            icon={<Repeat2 size={13} color={COLORS.accent} />}
-            label="Visits"
-            value={
-              patient.totalSessions === 1 ? "1 session" : `${patient.totalSessions} sessions`
-            }
+            icon={<ClipboardList size={13} color={COLORS.accent} />}
+            label="Bookings"
+            value={String(bookings)}
+            emphasis
           />
-          <View className="w-px bg-border" />
+          <View className="w-px my-2" style={{ backgroundColor: COLORS.border }} />
           <Stat
-            icon={<CalendarClock size={13} color={COLORS.accent} />}
-            label="Last seen"
+            icon={
+              upcoming ? (
+                <CalendarCheck2 size={13} color={COLORS.success} />
+              ) : (
+                <CalendarClock size={13} color={COLORS.accent} />
+              )
+            }
+            label={upcoming ? "Next visit" : "Last seen"}
             value={patient.lastVisit ? formatRelativeDay(patient.lastVisit) : "No visits yet"}
           />
         </View>
 
         {patient.tags.length > 0 && (
-          <View className="flex-row flex-wrap mt-2.5" style={{ gap: 6 }}>
+          <View className="flex-row flex-wrap" style={{ gap: 6 }}>
             {patient.tags.map((tag) => (
               <View
                 key={tag}
@@ -124,20 +163,25 @@ function Stat({
   icon,
   label,
   value,
+  emphasis,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
+  emphasis?: boolean;
 }) {
   return (
-    <View className="flex-1 px-3 py-2">
+    <View className={`${emphasis ? "" : "flex-1"} px-3 py-2`} style={emphasis ? { minWidth: 96 } : undefined}>
       <View className="flex-row items-center" style={{ gap: 5 }}>
         {icon}
         <Text className="text-[10px] font-bold text-muted uppercase" style={{ letterSpacing: 0.4 }}>
           {label}
         </Text>
       </View>
-      <Text className="text-[13px] font-bold text-fg mt-1" numberOfLines={1}>
+      <Text
+        className={`${emphasis ? "text-[17px] font-black" : "text-[13px] font-bold"} text-fg mt-0.5`}
+        numberOfLines={1}
+      >
         {value}
       </Text>
     </View>

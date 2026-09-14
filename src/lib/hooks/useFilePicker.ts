@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { uploadApi } from "@/lib/api/services";
 
 /** A file the therapist chose, normalised across the image and document pickers. */
@@ -49,12 +50,89 @@ function fileNameFrom(uri: string, prefix: string): string {
 }
 
 /**
+ * Longest-edge caps, in pixels.
+ *
+ * `quality: 0.7` on the picker shrinks the FILE, not the image — a 4000×3000 photo comes back
+ * still 4000×3000. File size decides upload time; pixel count decides memory, because anything
+ * that later displays the image decodes every pixel. A 12 MP photo is a ~48 MB bitmap, which is
+ * how avatars became the largest RAM cost in the app. Capping the dimensions here fixes it at the
+ * source, for every future upload and every screen that shows one.
+ *
+ *   - avatar: shown at 36–96 dp. 512 px covers the largest size at 3x density with headroom.
+ *   - document: credential scans a verifier must read. 2000 px on the long edge keeps an A4 page
+ *     legible at roughly 170 DPI — deliberately generous, since an unreadable licence is worse
+ *     than a larger file.
+ */
+export const IMAGE_MAX_EDGE = { avatar: 512, document: 2000 } as const;
+
+/**
+ * Downscale a picked image so its longest edge is at most `maxEdge`, re-encoding as JPEG.
+ *
+ * A no-op when the image is already small enough, or when the picker did not report dimensions
+ * (nothing reliable to compare against — uploading the original beats guessing). Never throws: a
+ * manipulation failure falls back to the original file, because failing the whole upload over an
+ * optimisation would be the wrong trade.
+ *
+ * Uses the SDK 56 contextual API; `manipulateAsync` is deprecated in this version.
+ */
+async function downscale(
+  asset: ImagePicker.ImagePickerAsset,
+  maxEdge: number,
+): Promise<{ uri: string; resized: boolean }> {
+  const { width, height } = asset;
+  if (!width || !height || Math.max(width, height) <= maxEdge) {
+    return { uri: asset.uri, resized: false };
+  }
+  const context = ImageManipulator.manipulate(asset.uri);
+  let rendered: Awaited<ReturnType<typeof context.renderAsync>> | null = null;
+  try {
+    // Only the longer side is given; the library derives the other to preserve the aspect ratio.
+    context.resize(width >= height ? { width: maxEdge } : { height: maxEdge });
+    rendered = await context.renderAsync();
+    const saved = await rendered.saveAsync({ compress: 0.8, format: SaveFormat.JPEG });
+    return { uri: saved.uri, resized: true };
+  } catch {
+    return { uri: asset.uri, resized: false };
+  } finally {
+    // Both are native shared objects holding decoded bitmap memory. Releasing them now rather
+    // than whenever the GC gets round to it is the point — this runs precisely when memory is
+    // tightest, straight after the picker has handed back a full-resolution photo.
+    rendered?.release();
+    context.release();
+  }
+}
+
+/** Normalise a picker asset into a `PickedFile`, downscaled to `maxEdge`. */
+async function toPickedImage(
+  asset: ImagePicker.ImagePickerAsset,
+  prefix: string,
+  maxEdge: number,
+): Promise<PickedFile> {
+  const { uri, resized } = await downscale(asset, maxEdge);
+  if (resized) {
+    // Re-encoded as JPEG, so a HEIC or PNG original must not keep its old extension and MIME
+    // type — multer would store a JPEG labelled `image/heic`, and it would not render back.
+    const base = (asset.fileName ?? `${prefix}-${Date.now()}`).replace(/\.[^.]+$/, "");
+    return { uri, name: `${base}.jpg`, mimeType: "image/jpeg" };
+  }
+  const name = asset.fileName ?? fileNameFrom(asset.uri, prefix);
+  return {
+    uri: asset.uri,
+    name,
+    mimeType: asset.mimeType ?? guessMime(name, "image/jpeg"),
+    size: asset.fileSize,
+  };
+}
+
+/**
  * Pick a photo from the library. Returns `null` when the therapist cancels or declines the
  * permission — cancellation is not an error and must not raise a toast.
  */
 export async function pickImageFromLibrary(options?: {
   allowsEditing?: boolean;
   aspect?: [number, number];
+  /** Longest-edge cap in px. Defaults to the document cap; pass `IMAGE_MAX_EDGE.avatar` for photos of people. */
+  maxEdge?: number;
 }): Promise<PickedFile | null> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) throw new Error("Photo access is needed to choose an image.");
@@ -70,20 +148,15 @@ export async function pickImageFromLibrary(options?: {
   });
 
   if (result.canceled || !result.assets?.length) return null;
-  const asset = result.assets[0];
-  const name = asset.fileName ?? fileNameFrom(asset.uri, "image");
-  return {
-    uri: asset.uri,
-    name,
-    mimeType: asset.mimeType ?? guessMime(name, "image/jpeg"),
-    size: asset.fileSize,
-  };
+  return toPickedImage(result.assets[0], "image", options?.maxEdge ?? IMAGE_MAX_EDGE.document);
 }
 
 /** Take a new photo. Same contract as `pickImageFromLibrary`. */
 export async function captureImage(options?: {
   allowsEditing?: boolean;
   aspect?: [number, number];
+  /** Longest-edge cap in px — see `pickImageFromLibrary`. */
+  maxEdge?: number;
 }): Promise<PickedFile | null> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
   if (!permission.granted) throw new Error("Camera access is needed to take a photo.");
@@ -96,14 +169,7 @@ export async function captureImage(options?: {
   });
 
   if (result.canceled || !result.assets?.length) return null;
-  const asset = result.assets[0];
-  const name = asset.fileName ?? fileNameFrom(asset.uri, "photo");
-  return {
-    uri: asset.uri,
-    name,
-    mimeType: asset.mimeType ?? guessMime(name, "image/jpeg"),
-    size: asset.fileSize,
-  };
+  return toPickedImage(result.assets[0], "photo", options?.maxEdge ?? IMAGE_MAX_EDGE.document);
 }
 
 /** Pick a PDF or image from the device's file browser. */

@@ -1,4 +1,5 @@
 import { View, Text, Pressable, ScrollView, Linking } from "react-native";
+import { useEffect } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
@@ -7,6 +8,7 @@ import { Avatar, Badge, Button, ErrorState, Skeleton } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useLocation } from "@/lib/hooks/useLocation";
+import { RouteMap } from "@/components/session/RouteMap";
 import { callPatient } from "@/lib/services/callService";
 import { COLORS } from "@/constants/config";
 
@@ -15,12 +17,26 @@ export default function RouteScreen() {
   const insets = useSafeAreaInsets();
   const { appointmentId } = useLocalSearchParams<{ appointmentId: string }>();
   const showToast = useAppStore((s) => s.showToast);
-  const { getCurrentLocation, openInMaps, openAddressInMaps, permissionBlocked } = useLocation();
+  const { location, getCurrentLocation, openInMaps, openAddressInMaps, permissionBlocked } =
+    useLocation();
   const { data: appointment, isError, refetch } = useQuery({
     queryKey: ["appointment", appointmentId],
     queryFn: () => appointmentApi.getById(appointmentId),
     enabled: !!appointmentId,
   });
+
+  /**
+   * Ask for position on mount rather than waiting for "Open Maps".
+   *
+   * The map and the distance label both need it, and this screen already tells the therapist to
+   * "Allow location access if prompted" in step 1 — so the prompt is expected here, not a
+   * surprise. Failure is deliberately silent: `getCurrentLocation` resolves `null` on a denial,
+   * the map falls back to showing the patient pin alone, and the existing `permissionBlocked`
+   * banner covers the case where the OS will not ask again.
+   */
+  useEffect(() => {
+    void getCurrentLocation();
+  }, [getCurrentLocation]);
 
   /**
    * Coordinates first, address second.
@@ -69,24 +85,27 @@ export default function RouteScreen() {
   return (
     <View className="flex-1 bg-bg">
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerClassName="pb-6">
-        <View className="h-[240px] relative overflow-hidden" style={{ backgroundColor: "#e8f0f8" }}>
-          <View className="absolute inset-0" style={{ backgroundColor: "rgba(0,64,96,0.04)" }} />
-          <View className="absolute inset-0" style={{ backgroundColor: "rgba(233,246,254,0.5)" }} />
+        <View className="relative">
+          <RouteMap
+            patient={
+              appointment?.latitude != null && appointment?.longitude != null
+                ? { latitude: appointment.latitude, longitude: appointment.longitude }
+                : null
+            }
+            therapist={
+              location
+                ? {
+                    latitude: location.coords.latitude,
+                    longitude: location.coords.longitude,
+                  }
+                : null
+            }
+            patientName={appointment?.patientName ?? "Patient"}
+            address={appointment?.address}
+          />
           <Pressable onPress={() => router.back()} className="absolute left-3.5 w-10 h-10 rounded-md bg-white/90 items-center justify-center z-10" style={{ top: insets.top + 8 }}>
             <ChevronLeft size={18} color={COLORS.accent} />
           </Pressable>
-          <View className="absolute" style={{ bottom: 55, left: "38%" }}>
-            <View className="w-3.5 h-3.5 rounded-full border-[2.5px] border-white" style={{ backgroundColor: COLORS.accent }} />
-            <View className="bg-white rounded-lg px-2 py-1 mt-1">
-              <Text className="text-[10px] font-bold">📍 You</Text>
-            </View>
-          </View>
-          <View className="absolute" style={{ top: 45, right: "28%" }}>
-            <View className="w-3.5 h-3.5 rounded-full border-[2.5px] border-white" style={{ backgroundColor: COLORS.danger }} />
-            <View className="bg-white rounded-lg px-2 py-1 mt-1">
-              <Text className="text-[10px] font-bold">🏠 {appointment?.patientName ?? "Patient"}&apos;s home</Text>
-            </View>
-          </View>
         </View>
 
         {permissionBlocked && (

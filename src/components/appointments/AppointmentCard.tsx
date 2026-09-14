@@ -1,22 +1,46 @@
 import { View, Text, Pressable } from "react-native";
-import { ChevronRight, MapPin, Clock3 } from "lucide-react-native";
+import { Building2, ChevronRight, Clock3, Home, MapPin, Video } from "lucide-react-native";
+import type { LucideIcon } from "lucide-react-native";
 import { Avatar, Badge, StatusBadge } from "@/components/ui";
 import { COLORS } from "@/constants/config";
-import { getSessionTypeLabel, getSessionTypeTheme } from "@/lib/utils/format";
+import {
+  genderLabel,
+  getSessionTypeLabel,
+  getSessionTypeTheme,
+  isMeaningfulCondition,
+} from "@/lib/utils/format";
 import type { Appointment } from "@/types";
 
 /**
- * An appointment row, laid out as a schedule entry rather than a coloured tile.
+ * An appointment row, laid out as a schedule entry.
  *
- * The previous card gave a 76px full-bleed gradient column to the time. It looked bold in
- * isolation but a list of them was a stack of saturated blocks with the patient — the thing the
- * therapist is actually scanning for — pushed into the remaining space. This inverts that: the
- * card is white, the patient leads, and the visit type is carried by a 3px accent rail plus a
- * badge instead of a full colour field. The time stays large because it's the second thing
- * scanned, but it sits on the card's own surface.
+ * Time on the left because it is what a schedule is scanned by; the patient leads the body because
+ * it is what the therapist is looking for; state sits top-right, where the eye checks it.
  *
- * `compact` drops the address footer — used where the card appears inside another card.
+ * ## What changed in this pass, and why
+ *
+ *   - **Every row had the same subtitle.** List rows come from `mapBookingToAppointment`, which
+ *     fills `condition` with the constant `"Therapy session"`, so the list read "Therapy session ·
+ *     31y" down its whole length. `PatientCard` already suppressed its equivalent placeholder; this
+ *     card never had. The subtitle is now age · gender, plus a condition only when one is real.
+ *   - **Gender was on the row and never shown.** It is now, when recorded.
+ *   - **List rows had no tap affordance.** The only chevron lived inside the address footer, and
+ *     list rows never carry an address, so nothing said the card opened anything.
+ *   - **Fewer equal-weight chips.** Status, visit type, progress and distance used to be four badges
+ *     of identical weight wrapping onto a second line. Status stays the one coloured badge; visit
+ *     type becomes an icon and label in its own colour, in a quiet footer with progress beside it.
+ *   - **Visit progress is a bar,** because "2/6" in a badge answers "how far through?" less
+ *     quickly than a bar that is a third full.
+ *
+ * `compact` drops the address footer — used where the card sits inside another card.
  */
+
+const TYPE_ICON: Record<string, LucideIcon> = {
+  home: Home,
+  clinic: Building2,
+  online: Video,
+};
+
 export function AppointmentCard({
   appointment,
   onPress,
@@ -27,99 +51,145 @@ export function AppointmentCard({
   compact?: boolean;
 }) {
   const theme = getSessionTypeTheme(appointment.type);
+  const TypeIcon = TYPE_ICON[appointment.type] ?? Home;
   const isDone = appointment.status === "completed";
   const isOff =
     appointment.status === "cancelled" ||
     appointment.status === "no_show" ||
     appointment.status === "expired";
+  const isToday = appointment.dateLabel === "Today";
+
+  const subtitle = [
+    appointment.patientAge ? `${appointment.patientAge} yrs` : null,
+    genderLabel(appointment.patientGender) || null,
+    isMeaningfulCondition(appointment.condition) ? appointment.condition : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  // Visit N of M — only meaningful once the detail endpoint has been read, so it's absent on list
+  // rows rather than shown as a misleading "1 of 1".
+  const total = appointment.sessionCount ?? 0;
+  const showProgress = total > 1;
+  const current = showProgress
+    ? Math.min((appointment.completedSessionCount ?? 0) + (isDone ? 0 : 1), total)
+    : 0;
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${appointment.patientName}, ${appointment.timeLabel} ${appointment.meridiem}`}
+      accessibilityLabel={[
+        appointment.patientName,
+        `${appointment.timeLabel} ${appointment.meridiem}`,
+        appointment.dateLabel,
+        getSessionTypeLabel(appointment.type),
+      ]
+        .filter(Boolean)
+        .join(", ")}
       className="bg-white rounded-[18px] overflow-hidden active:opacity-95"
       style={{
         shadowColor: COLORS.nav,
-        shadowOpacity: 0.1,
-        shadowRadius: 16,
+        shadowOpacity: 0.08,
+        shadowRadius: 14,
         elevation: 3,
         // A cancelled or no-show visit is history, not something to act on — it recedes rather
         // than competing for attention with the visits that still need doing.
-        opacity: isOff ? 0.72 : 1,
+        opacity: isOff ? 0.7 : 1,
       }}
     >
       <View className="flex-row">
-        {/* Visit-type accent rail. Carries the same information the old gradient column did,
-            in 3px instead of 76. */}
-        <View style={{ width: 3, backgroundColor: isOff ? COLORS.border : theme.solid }} />
+        {/* Visit-type rail. */}
+        <View style={{ width: 4, backgroundColor: isOff ? COLORS.border : theme.solid }} />
 
-        <View className="flex-1 p-3.5" style={{ gap: 10 }}>
-          <View className="flex-row items-start" style={{ gap: 12 }}>
+        <View className="flex-1 p-3.5" style={{ gap: 12 }}>
+          <View className="flex-row" style={{ gap: 12 }}>
             {/* Time block */}
-            <View className="items-center" style={{ minWidth: 52 }}>
+            <View
+              className="items-center justify-center rounded-[14px] py-2"
+              style={{
+                minWidth: 60,
+                backgroundColor: isToday && !isOff ? theme.soft : "rgba(0,64,96,0.04)",
+              }}
+            >
               <Text
-                className="text-[19px] font-black"
-                style={{ color: isOff ? COLORS.muted : COLORS.fg, letterSpacing: -0.5 }}
+                className="text-[18px] font-black"
+                style={{ color: isOff ? COLORS.muted : isToday ? theme.solid : COLORS.fg, letterSpacing: -0.5 }}
               >
                 {appointment.timeLabel}
               </Text>
-              <Text className="text-[10px] font-extrabold" style={{ color: COLORS.muted, letterSpacing: 1 }}>
+              <Text className="text-[9.5px] font-extrabold" style={{ color: COLORS.muted, letterSpacing: 1 }}>
                 {appointment.meridiem}
               </Text>
               {appointment.dateLabel && (
-                <View
-                  className="mt-1.5 rounded-md px-1.5 py-0.5"
-                  style={{ backgroundColor: appointment.dateLabel === "Today" ? theme.soft : "transparent" }}
+                <Text
+                  className="text-[9.5px] font-bold mt-1"
+                  style={{ color: isToday && !isOff ? theme.solid : COLORS.muted }}
+                  numberOfLines={1}
                 >
-                  <Text
-                    className="text-[9.5px] font-bold"
-                    style={{ color: appointment.dateLabel === "Today" ? theme.solid : COLORS.muted }}
-                    numberOfLines={1}
-                  >
-                    {appointment.dateLabel}
-                  </Text>
-                </View>
+                  {appointment.dateLabel}
+                </Text>
               )}
             </View>
 
-            <View className="w-px self-stretch" style={{ backgroundColor: COLORS.border }} />
-
             {/* Patient block */}
-            <View className="flex-1" style={{ gap: 8 }}>
+            <View className="flex-1 justify-center" style={{ gap: 6 }}>
               <View className="flex-row items-start" style={{ gap: 10 }}>
                 <Avatar name={appointment.patientName} url={appointment.patientAvatarUrl} size={40} radius={12} />
-                <View className="flex-1">
-                  <Text className="text-[15px] font-extrabold text-fg" numberOfLines={1}>
-                    {appointment.patientName}
-                  </Text>
-                  <Text className="text-muted text-[11.5px] mt-0.5" numberOfLines={1}>
-                    {[appointment.condition, appointment.patientAge ? `${appointment.patientAge}y` : null]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </Text>
+                <View className="flex-1" style={{ gap: 2 }}>
+                  <View className="flex-row items-center justify-between" style={{ gap: 8 }}>
+                    <Text className="text-[15px] font-extrabold text-fg flex-shrink" numberOfLines={1}>
+                      {appointment.patientName}
+                    </Text>
+                    <StatusBadge status={appointment.status} size="sm" />
+                  </View>
+                  {!!subtitle && (
+                    <Text className="text-muted text-[12px]" numberOfLines={1}>
+                      {subtitle}
+                    </Text>
+                  )}
                 </View>
               </View>
-
-              <View className="flex-row flex-wrap items-center" style={{ gap: 6 }}>
-                <StatusBadge status={appointment.status} size="sm" />
-                <Badge variant="neutral" size="sm" dot={false}>
-                  {getSessionTypeLabel(appointment.type)}
-                </Badge>
-                {/* Visit N of M — only meaningful once the detail endpoint has been read, so
-                    it's absent on list rows rather than shown as a misleading "1 of 1". */}
-                {appointment.sessionCount != null && appointment.sessionCount > 1 && (
-                  <Badge variant="info" size="sm" dot={false}>
-                    {`Visit ${Math.min((appointment.completedSessionCount ?? 0) + (isDone ? 0 : 1), appointment.sessionCount)}/${appointment.sessionCount}`}
-                  </Badge>
-                )}
-                {appointment.distanceKm != null && (
-                  <Badge variant="accent" size="sm" dot={false} icon={MapPin}>
-                    {`${appointment.distanceKm} km`}
-                  </Badge>
-                )}
-              </View>
             </View>
+          </View>
+
+          {/* Footer: visit type, progress, affordance */}
+          <View
+            className="flex-row items-center pt-2.5"
+            style={{ gap: 10, borderTopWidth: 1, borderTopColor: "rgba(207,217,223,0.6)" }}
+          >
+            <View className="flex-row items-center" style={{ gap: 5 }}>
+              <TypeIcon size={13} color={isOff ? COLORS.muted : theme.solid} />
+              <Text
+                className="text-[12px] font-bold"
+                style={{ color: isOff ? COLORS.muted : theme.solid }}
+              >
+                {getSessionTypeLabel(appointment.type)}
+              </Text>
+            </View>
+
+            {showProgress && (
+              <View className="flex-row items-center flex-1" style={{ gap: 6 }}>
+                <View className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(0,64,96,0.08)" }}>
+                  <View
+                    className="h-full rounded-full"
+                    style={{ width: `${(current / total) * 100}%`, backgroundColor: theme.solid }}
+                  />
+                </View>
+                <Text className="text-muted text-[11px] font-bold">
+                  {`Visit ${current}/${total}`}
+                </Text>
+              </View>
+            )}
+
+            {appointment.distanceKm != null && (
+              <Badge variant="accent" size="sm" dot={false} icon={MapPin}>
+                {`${appointment.distanceKm} km`}
+              </Badge>
+            )}
+
+            {!showProgress && <View className="flex-1" />}
+            <ChevronRight size={16} color={COLORS.muted} />
           </View>
 
           {!compact && appointment.address && (
@@ -131,7 +201,6 @@ export function AppointmentCard({
               <Text className="text-muted text-[11.5px] flex-1" numberOfLines={1}>
                 {appointment.address}
               </Text>
-              <ChevronRight size={15} color={COLORS.muted} />
             </View>
           )}
 

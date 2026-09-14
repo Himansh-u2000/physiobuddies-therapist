@@ -9,7 +9,7 @@ import { appointmentApi, patientApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { callPatient as dialPatient } from "@/lib/services/callService";
 import { COLORS } from "@/constants/config";
-import { getSessionTypeLabel } from "@/lib/utils/format";
+import { genderLabel, getSessionTypeLabel } from "@/lib/utils/format";
 import type { Appointment } from "@/types";
 
 export default function PatientProfileScreen() {
@@ -65,7 +65,13 @@ export default function PatientProfileScreen() {
             <Avatar name={patient.name} url={patient.avatarUrl} size={68} radius={22} />
             <View className="flex-1">
               <Text className="text-white text-[22px] font-black" numberOfLines={1}>{patient.name}</Text>
-              <Text className="text-white/75 text-[12px] mt-1">{patient.age} years | {patient.gender} | {patient.phone}</Text>
+              <Text className="text-white/75 text-[12px] mt-1">{[
+                  patient.age > 0 ? `${patient.age} years` : null,
+                  genderLabel(patient.gender) || null,
+                  patient.phone || null,
+                ]
+                  .filter(Boolean)
+                  .join(" | ")}</Text>
               <View className="flex-row flex-wrap mt-3" style={{ gap: 7 }}>
                 {patient.tags.map((tag) => (
                   <View key={tag} className="min-h-[24px] rounded-full bg-white/15 border border-white/20 px-2.5 items-center justify-center">

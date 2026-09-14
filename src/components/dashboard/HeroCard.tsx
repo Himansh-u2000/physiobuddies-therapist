@@ -1,6 +1,5 @@
-import { View, Text, Pressable } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { Avatar, Toggle } from "@/components/ui";
+import { View, Text } from "react-native";
+import { Avatar } from "@/components/ui";
 import { getGreeting, formatCurrency } from "@/lib/utils/format";
 import { COLORS } from "@/constants/config";
 import type { Therapist, DashboardStats } from "@/types";
@@ -8,27 +7,25 @@ import type { Therapist, DashboardStats } from "@/types";
 interface HeroCardProps {
   therapist: Therapist | null;
   stats: DashboardStats;
-  isOnline: boolean;
-  onToggleOnline: (value: boolean) => void;
 }
 
-export function HeroCard({ therapist, stats, isOnline, onToggleOnline }: HeroCardProps) {
+/**
+ * The online/offline toggle that used to sit here is gone, and not only for layout.
+ *
+ * It wrote to `useAppStore.isOnline` — which is not the therapist's availability at all but the
+ * NETWORK connectivity flag `useNetwork` sets from NetInfo. Switching it "Offline" raised the
+ * offline banner and paused the sync engine on a connected phone, and nothing reached the server:
+ * availability is managed through the slot schedule, and there is no availability-status
+ * endpoint for a toggle to call.
+ */
+export function HeroCard({ therapist, stats }: HeroCardProps) {
   return (
     <View className="bg-surface-strong border border-border rounded-md p-4 overflow-hidden relative" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 28, elevation: 6 }}>
-      <View className="flex-row items-start" style={{ gap: 12 }}>
+      <View className="flex-row items-center" style={{ gap: 12 }}>
         <Avatar name={therapist?.name} url={therapist?.avatarUrl} size={96} radius={22} />
-        <View className="flex-1" style={{ gap: 6 }}>
-          <View className="flex-row items-center justify-between">
-            <Text className={`text-[10px] font-bold ${isOnline ? "text-success" : "text-danger"}`}>
-              ● {isOnline ? "Online" : "Offline"}
-            </Text>
-            <Toggle value={isOnline} onValueChange={onToggleOnline} />
-          </View>
+        <View className="flex-1">
           <Text className="text-[20px] font-extrabold text-fg leading-tight">
             {getGreeting()},{"\n"}{therapist?.name ?? "Doctor"} 👋
-          </Text>
-          <Text className="text-muted text-[12px]">
-            {isOnline ? "Available for home visits & clinic" : "Unavailable — not accepting sessions"}
           </Text>
         </View>
       </View>

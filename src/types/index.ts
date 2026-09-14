@@ -37,7 +37,8 @@ export interface DashboardStats {
   earnedToday: number;
   rating: number;
   weeklyEarnings: number;
-  weeklyChangePercent: number;
+  /** `null` when last week earned nothing — a change from zero has no percentage. */
+  weeklyChangePercent: number | null;
   weeklyChart: { day: string; amount: number; isToday: boolean }[];
 }
 
@@ -45,7 +46,11 @@ export interface Patient {
   id: string;
   name: string;
   age: number;
-  gender: "male" | "female" | "other";
+  /**
+   * `""` means NOT RECORDED. The booking payloads omit gender often enough that the old fallback
+   * — anything unrecognised became "male" — misgendered real patients on every card.
+   */
+  gender: "male" | "female" | "other" | "";
   phone: string;
   condition: string;
   avatarUrl?: string;
@@ -376,13 +381,30 @@ export interface Transaction {
   sessionType?: SessionType;
 }
 
+/** One week's total, for the multi-week trend. */
+export interface WeeklyTotal {
+  /** ISO date of the week's Monday. */
+  weekStart: string;
+  /** "8 Sep". */
+  label: string;
+  amount: number;
+  /** The week in progress — a partial total, which the chart must not present as a full week. */
+  isCurrent: boolean;
+}
+
 export interface EarningsSummary {
   totalThisWeek: number;
-  changePercent: number;
+  /** `null` when last week earned nothing — a change from zero has no percentage. */
+  changePercent: number | null;
   totalThisMonth: number;
   pendingPayout: number;
   nextPayoutDate: string;
   weeklyChart: { day: string; amount: number; isToday: boolean }[];
+  /**
+   * Optional: summaries cached in `app_kv` by builds before this field existed deserialise
+   * without it, and must render rather than crash until the next fetch replaces them.
+   */
+  weeklyTrend?: WeeklyTotal[];
 }
 
 /**

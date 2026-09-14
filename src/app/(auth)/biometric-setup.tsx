@@ -240,9 +240,6 @@ export default function BiometricSetupScreen() {
                   </View>
                 ))}
               </View>
-              <Text className="text-muted text-[11px]">
-                Your phone decides which to ask for. Whichever you have set up will work.
-              </Text>
             </GlassSurface>
           )}
 
