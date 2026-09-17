@@ -1,30 +1,49 @@
 import { useState, useCallback } from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, FlaskConical, HelpCircle, Lock, Send, ShieldCheck } from "lucide-react-native";
-import { Avatar, Badge, Button, OTPInput, PaymentBadge, Skeleton } from "@/components/ui";
+import {
+  ArrowRight,
+  Check,
+  Clock3,
+  FlaskConical,
+  HelpCircle,
+  KeyRound,
+  RotateCw,
+  Send,
+  ShieldCheck,
+} from "lucide-react-native";
+import { Avatar, Button, OTPInput, Skeleton } from "@/components/ui";
 import { appointmentApi, sessionApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useSessionStore } from "@/lib/stores/session.store";
+import { SectionLabel, VisitCard, VisitFooter, VisitHeader } from "@/components/session/VisitFlow";
 import { COLORS, OTP_CONFIG, SHOW_TEST_OTP, SLOT_CONFIG, SUPPORT_EMAIL } from "@/constants/config";
 import { getSessionTypeLabel } from "@/lib/utils/format";
 import { openSupportEmail } from "@/lib/utils/support";
-import { GlassSurface } from "@/components/ui/Glass";
 
+/**
+ * Step 2 of the visit — verify the patient's OTP, which is what starts the session.
+ *
+ * Two stages, one primary button. The footer's button is always the next thing to do: "Send OTP"
+ * until a code has gone out, then "Verify & start treatment". A code the patient already has
+ * (sent on an earlier attempt) can be typed straight in — a full code switches the button to
+ * verify regardless, so nobody is forced to re-send just to reach the input.
+ *
+ * On success this *replaces* itself with the treatment screen: going back from there should land
+ * on navigation, not on a code that has already been used.
+ */
 export default function SessionOtpScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { appointmentId } = useLocalSearchParams<{ appointmentId: string }>();
   const showToast = useAppStore((s) => s.showToast);
   const therapist = useAuthStore((s) => s.therapist);
   const startSession = useSessionStore((s) => s.startSession);
   const queryClient = useQueryClient();
   const [code, setCode] = useState("");
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
   const [sending, setSending] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [hintOtp, setHintOtp] = useState<string | null>(null);
@@ -35,19 +54,22 @@ export default function SessionOtpScreen() {
     enabled: !!appointmentId,
   });
 
-  const handleComplete = useCallback((c: string) => setCode(c), []);
+  const handleChangeCode = useCallback((c: string) => {
+    setCode(c);
+    setError(null);
+  }, []);
 
   /**
    * The lifecycle endpoints key off the treatment SESSION, not the treatment plan that the
    * appointment list is keyed by. Passing `appointment.id` here would 404 ("Session not found").
    */
   const sessionTargetId = appointment?.currentSessionId;
+  const codeComplete = code.length >= OTP_CONFIG.sessionOtpLength;
 
   /**
-   * Ask the backend to issue the patient's code. This is a required first step — the OTP does
-   * not exist until it's generated — and it enforces a window server-side: 30 minutes before
-   * the scheduled start to 2 hours after. Outside it the call 400s with a readable explanation,
-   * which is surfaced verbatim rather than replaced with a generic failure.
+   * Ask the backend to issue the patient's code. The OTP does not exist until it's generated, and
+   * the server enforces a window — 30 minutes before the slot to 2 hours after. Outside it the
+   * call 400s with a readable explanation, surfaced verbatim.
    */
   const handleSendOtp = async () => {
     if (!sessionTargetId) return;
@@ -55,10 +77,8 @@ export default function SessionOtpScreen() {
     try {
       const result = await sessionApi.generateOtp(sessionTargetId);
       setOtpSent(true);
-      // The backend currently echoes the patient's code back to the therapist so the flow can
-      // be tested on one handset. Held only when this build is allowed to show it — see
-      // SHOW_TEST_OTP — so a production build can't surface a one-time password even if the
-      // server keeps sending it.
+      // TESTING ONLY — see SHOW_TEST_OTP. A production build never surfaces the code even if the
+      // server keeps echoing it.
       setHintOtp(SHOW_TEST_OTP ? (result.otpCode ?? null) : null);
       showToast(result.message ?? "OTP sent to the patient", "success");
     } catch (e) {
@@ -69,46 +89,31 @@ export default function SessionOtpScreen() {
   };
 
   const handleVerify = async () => {
-    if (code.length < OTP_CONFIG.sessionOtpLength) {
-      setError(true);
-      showToast(`Enter all ${OTP_CONFIG.sessionOtpLength} digits.`);
-      return;
-    }
+    if (!codeComplete) return;
     if (!sessionTargetId) {
       showToast("This appointment has no session left to start.", "error");
       return;
     }
-    setError(false);
-    setLoading(true);
+    setError(null);
+    setVerifying(true);
     try {
       const { sessionId } = await sessionApi.start(sessionTargetId, code);
       if (appointment) {
         startSession(sessionId, appointment.id, appointment.patientName, appointment.condition, appointment.patientId, appointment.type);
-        // The session's server status has just moved to `active`, which is what the detail
-        // screen derives its workflow ticks from. Without this the cached appointment keeps
-        // reporting the pre-OTP step, so going back showed the OTP row as still outstanding
-        // until the cache happened to expire.
+        // The server status just moved to `active`; the detail screen derives its workflow ticks
+        // from it, so a stale cache would keep showing the OTP step as outstanding.
         queryClient.invalidateQueries({ queryKey: ["appointment", appointment.id] });
         queryClient.invalidateQueries({ queryKey: ["appointments"] });
       }
-      showToast("Session started — timer running");
-      setTimeout(() => router.replace("/session/active"), 500);
+      showToast("OTP verified — session started", "success");
+      router.replace("/session/active");
     } catch (e) {
-      setError(true);
-      showToast(
-        e instanceof Error ? e.message : "Incorrect OTP. Ask patient to refresh their app.",
-        "error",
-      );
+      setError(e instanceof Error ? e.message : "That code didn't match. Ask the patient to check it again.");
     } finally {
-      setLoading(false);
+      setVerifying(false);
     }
   };
 
-  /**
-   * Opens the mail composer pre-filled with the therapist's identity and build, and falls back
-   * to showing the address when no mail client answers — a support link that silently does
-   * nothing is worse than no link, and this one is offered at the exact moment a visit is stuck.
-   */
   const handleContactSupport = async () => {
     const opened = await openSupportEmail(
       therapist,
@@ -117,270 +122,273 @@ export default function SessionOtpScreen() {
     if (!opened) showToast(`Email us at ${SUPPORT_EMAIL}`, "info");
   };
 
-  // This screen is opened at the patient's door, often on a bad connection, and the detail
-  // fetch behind it can take several seconds. It used to render a bare background for that
-  // whole time — indistinguishable from a screen that had failed to open — so the therapist
-  // had no way to tell "loading" from "broken" while the patient waited. The skeleton mirrors
-  // the real layout (patient card, then the OTP card) so nothing shifts when the data lands.
   if (!appointment) {
-    return isError ? <StartSessionError onRetry={() => refetch()} onBack={() => router.back()} /> : <StartSessionSkeleton />;
+    return isError ? (
+      <StartSessionError onRetry={() => refetch()} onBack={() => router.back()} />
+    ) : (
+      <StartSessionSkeleton onBack={() => router.back()} />
+    );
   }
 
+  const visitOrdinal =
+    appointment.completedSessionCount != null && appointment.sessionCount
+      ? `Visit ${Math.min((appointment.completedSessionCount ?? 0) + 1, appointment.sessionCount)} of ${appointment.sessionCount}`
+      : `${SLOT_CONFIG.durationMin} min session`;
+
+  // The footer's one primary action, by stage.
+  const showVerify = otpSent || codeComplete;
+
   return (
-    <View className="flex-1 bg-bg">
-      <View className="px-3.5 flex-row items-center justify-between" style={{ paddingTop: insets.top + 12 }}>
-        <Pressable onPress={() => router.back()} className="w-10 h-10 rounded-md border border-border bg-white items-center justify-center" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
-          <ChevronLeft size={18} color={COLORS.accent} />
-        </Pressable>
-        <Text className="text-[18px] font-extrabold text-fg">Start session</Text>
-        <View className="w-10" />
-      </View>
+    <KeyboardAvoidingView className="flex-1 bg-bg" behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <VisitHeader title="Verify patient OTP" step={1} onBack={() => router.back()} />
 
-      <View className="px-3.5 pt-4" style={{ paddingBottom: 40 }}>
-        <GlassSurface
-          fallbackClassName="bg-white"
-          glassRadius={12}
-          className="border border-border rounded-md p-4" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
-          <View className="flex-row items-start" style={{ gap: 14 }}>
-            <Avatar name={appointment.patientName} size={60} radius={16} />
-            <View className="flex-1" style={{ gap: 5 }}>
-              <Text className="text-[17px] font-bold text-fg">{appointment.patientName}</Text>
-              <Text className="text-muted text-[12px]">{appointment.patientAge} years · {appointment.patientGender} · {appointment.condition}</Text>
-              <View className="flex-row" style={{ gap: 6 }}>
-                <Badge variant="info" size="sm">{getSessionTypeLabel(appointment.type)}</Badge>
-                <PaymentBadge status={appointment.paymentStatus} size="sm" />
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 24 }}
+      >
+        <VisitCard>
+          <View className="flex-row items-center" style={{ gap: 12 }}>
+            <Avatar name={appointment.patientName} size={52} radius={16} />
+            <View className="flex-1">
+              <Text className="text-[16px] font-extrabold text-fg">{appointment.patientName}</Text>
+              <Text className="text-muted text-[12px] mt-0.5" numberOfLines={1}>
+                {[appointment.patientAge ? `${appointment.patientAge} yrs` : null, appointment.patientGender, appointment.condition]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Text>
+            </View>
+          </View>
+          <View className="flex-row mt-3 rounded-[12px] overflow-hidden" style={{ backgroundColor: COLORS.bg }}>
+            <MetaCell icon={Clock3} label="Scheduled" value={`${appointment.dateLabel ?? "Today"} · ${appointment.timeLabel} ${appointment.meridiem ?? ""}`.trim()} />
+            <View className="w-px bg-border my-2" />
+            <MetaCell icon={KeyRound} label={getSessionTypeLabel(appointment.type)} value={visitOrdinal} />
+          </View>
+        </VisitCard>
+
+        <SectionLabel>Start the session</SectionLabel>
+        <VisitCard>
+          {/* Stage 1 — send */}
+          <StageRow
+            index={1}
+            done={otpSent}
+            active={!otpSent}
+            title={otpSent ? "Code sent to the patient" : "Send the code to the patient"}
+            sub={
+              otpSent
+                ? "It's in their Physiobuddies app. A new code replaces the old one."
+                : "Available from 30 minutes before the slot until 2 hours after."
+            }
+            action={
+              otpSent ? (
+                <Pressable
+                  onPress={handleSendOtp}
+                  disabled={sending}
+                  hitSlop={8}
+                  className="flex-row items-center rounded-full px-2.5 py-1.5 active:opacity-70"
+                  style={{ gap: 5, backgroundColor: COLORS.primarySoft }}
+                >
+                  {sending ? <ActivityIndicator size="small" color={COLORS.accent} /> : <RotateCw size={12} color={COLORS.accent} />}
+                  <Text className="text-accent text-[11.5px] font-bold">Resend</Text>
+                </Pressable>
+              ) : null
+            }
+          />
+
+          <View className="ml-[13px] w-[2px] h-4" style={{ backgroundColor: otpSent ? COLORS.success : COLORS.border }} />
+
+          {/* Stage 2 — enter */}
+          <StageRow
+            index={2}
+            done={false}
+            active={otpSent || code.length > 0}
+            title={`Enter the ${OTP_CONFIG.sessionOtpLength}-digit code`}
+            sub="Ask the patient to read it out once you're with them."
+          />
+
+          <View className="mt-3.5">
+            {/* onChangeCode, not onComplete — the latter never fires on a deletion, so the code
+                held here would go stale the moment a digit was backspaced. */}
+            <OTPInput length={OTP_CONFIG.sessionOtpLength} onChangeCode={handleChangeCode} />
+            {error ? (
+              <View className="mt-2.5 rounded-[10px] px-3 py-2 bg-danger/5 border border-danger/20">
+                <Text className="text-danger text-[12px] font-bold text-center">{error}</Text>
               </View>
-            </View>
-          </View>
-          <View className="h-px bg-border my-3" />
-          <View className="rounded-[10px] p-2.5 flex-row" style={{ backgroundColor: "rgba(0,64,96,0.03)", gap: 8 }}>
-            <View className="flex-1">
-              <Text className="text-muted text-[11px]">Appointment</Text>
-              <Text className="text-[13px] font-bold text-fg">
-                {appointment.dateLabel ?? "Scheduled"} · {appointment.timeLabel} {appointment.meridiem}
-              </Text>
-            </View>
-            <View className="flex-1">
-              <Text className="text-muted text-[11px]">Visit</Text>
-              <Text className="text-[13px] font-bold text-fg">
-                {appointment.completedSessionCount != null && appointment.sessionCount
-                  ? `${Math.min((appointment.completedSessionCount ?? 0) + 1, appointment.sessionCount)} of ${appointment.sessionCount}`
-                  : `${SLOT_CONFIG.durationMin} min`}
-              </Text>
-            </View>
-          </View>
-        </GlassSurface>
-
-        <GlassSurface
-          fallbackClassName="bg-white"
-          glassRadius={12}
-          className="border border-border rounded-md p-5 items-center mt-3 flex flex-col gap-2">
-          <View className="w-13 h-13 rounded-[14px] bg-primary-soft items-center justify-center mb-3" style={{ width: 52, height: 52 }}>
-            <Lock size={26} color={COLORS.accent} />
-          </View>
-          <Text className="text-[18px] font-bold text-fg">
-            {otpSent ? "Enter patient OTP" : "Send the patient their OTP"}
-          </Text>
-          <Text className="text-muted text-[13px] mt-1.5 text-center">
-            {otpSent
-              ? `Ask the patient for the ${OTP_CONFIG.sessionOtpLength}-digit code that just arrived in their Physiobuddies app`
-              : "The code is generated when you arrive. It can be sent from 30 minutes before the slot until 2 hours after."}
-          </Text>
-
-          {!otpSent && (
-            <Button className="mt-4" onPress={handleSendOtp} disabled={sending || !sessionTargetId}>
-              <Send size={16} color="#fff" />
-              <Text className="text-white font-bold text-[14px]">
-                {sending ? "Sending..." : "Send OTP to patient"}
-              </Text>
-            </Button>
-          )}
-
-          <View className="mt-4.5 w-full">
-            {/* onChangeCode, not onComplete — the latter never fires on a deletion, so the
-                code held here would go stale the moment a digit was backspaced. */}
-            <OTPInput length={OTP_CONFIG.sessionOtpLength} onChangeCode={handleComplete} />
-            {error && (
-              <Text className="text-danger text-[12px] font-bold mt-2.5 text-center">
-                Incorrect OTP. Ask the patient to check the code again.
+            ) : (
+              <Text className="text-muted text-[11.5px] text-center mt-2.5">
+                The session timer starts as soon as the code is verified.
               </Text>
             )}
           </View>
 
-          {/* Gated on a complete code rather than firing and reporting failure afterwards:
-              tapping with 0 digits used to send the therapist an "enter all the digits" toast that
-              read like the OTP had been rejected by the patient. Also gated on there being a
-              session to start at all — without one the call 404s. */}
-          <Button
-            className="mt-2"
-            onPress={handleVerify}
-            disabled={loading || !sessionTargetId || code.length < OTP_CONFIG.sessionOtpLength}
-          >
-            <ShieldCheck size={16} color="#fff" />
-            <Text className="text-white font-bold text-[14px]">{loading ? "Starting..." : "Verify & start session"}</Text>
-          </Button>
-          <Text className="text-muted text-[11px] mt-2.5">Session timer starts after OTP is verified</Text>
-          {otpSent && (
-            <Pressable onPress={handleSendOtp} disabled={sending} hitSlop={6} className="mt-1 active:opacity-70">
-              <Text className="text-accent text-[12px] font-bold">
-                {sending ? "Resending..." : "Resend OTP"}
-              </Text>
-            </Pressable>
-          )}
-          {/* TESTING ONLY. The backend echoes the patient's code back in the send-otp response
-              so the flow can be exercised without a second handset; `SHOW_TEST_OTP` keeps it out
-              of production builds, and it renders only when the server actually sent one —
-              never as a hardcoded "demo OTP", which would be wrong against a real server. Styled
-              as a labelled test affordance rather than a subtle hint, so nobody mistakes it for
-              something the therapist is meant to rely on. */}
+          {/* TESTING ONLY. Rendered only when the server actually echoed a code and this build is
+              allowed to show it — labelled so nobody mistakes it for a real affordance. */}
           {hintOtp && (
             <View
-              className="mt-2.5 w-full flex-row items-center rounded-[10px] border border-warning/30 px-2.5 py-2"
+              className="mt-3 flex-row items-center rounded-[10px] border border-warning/30 px-2.5 py-2"
               style={{ backgroundColor: "rgba(209,154,18,0.08)", gap: 8 }}
             >
               <FlaskConical size={13} color={COLORS.warning} />
               <Text className="text-[11px] text-muted flex-1">
-                Testing build — the patient&apos;s code is{" "}
-                <Text className="font-extrabold text-fg">{hintOtp}</Text>
+                Testing build — the patient&apos;s code is <Text className="font-extrabold text-fg">{hintOtp}</Text>
               </Text>
             </View>
           )}
-        </GlassSurface>
+        </VisitCard>
 
-        {/* The "Start without OTP (flagged)" escape hatch that used to live here is gone
-            (2026-08-17, on request). It was never real: no backend endpoint accepts a flagged
-            start, nothing server-side flipped the session to `active`, and no supervisor was
-            ever notified despite the toast saying so — the therapist was told the visit had
-            begun while the server still considered it pending. What replaces it is the honest
-            version: what to actually do when the patient can't read out a code. */}
-        <View className="bg-info/5 border border-info/15 rounded-md p-3 mt-2.5">
+        {/* What to do when the patient can't read out a code. There is deliberately no
+            "start without OTP" — no backend path accepts an unverified start. */}
+        <View className="mt-3 rounded-lg p-3.5 bg-info/5 border border-info/15">
           <View className="flex-row items-center" style={{ gap: 6 }}>
-            <HelpCircle size={14} color={COLORS.info} />
-            <Text className="text-info text-[12px] font-bold">Patient can&apos;t share the OTP?</Text>
+            <HelpCircle size={15} color={COLORS.info} />
+            <Text className="text-info text-[12.5px] font-bold">Patient can&apos;t find the code?</Text>
           </View>
           <Text className="text-muted text-[12px] mt-1.5 leading-[18px]">
-            The code arrives in the patient&apos;s own Physiobuddies app. If they can&apos;t find
-            it, resend it above — a fresh code replaces the old one. If they still can&apos;t
-            receive it, call the support desk and they can verify the visit for you; the session
-            cannot be started without a verified code.
+            Resend it above. If it still doesn&apos;t arrive, support can verify the visit for you —
+            a session can&apos;t start without a verified code.
           </Text>
-          <Pressable
-            onPress={handleContactSupport}
-            hitSlop={6}
-            className="mt-2.5 self-start active:opacity-70"
-          >
-            <Text className="text-accent text-[12px] font-bold">Contact support</Text>
+          <Pressable onPress={handleContactSupport} hitSlop={6} className="mt-2 self-start active:opacity-70">
+            <Text className="text-accent text-[12.5px] font-bold">Contact support →</Text>
           </Pressable>
         </View>
-      </View>
-    </View>
+      </ScrollView>
+
+      <VisitFooter>
+        {showVerify ? (
+          <Button
+            variant="success"
+            onPress={handleVerify}
+            disabled={verifying || !sessionTargetId || !codeComplete}
+          >
+            {verifying ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <ShieldCheck size={17} color="#fff" />
+                <Text className="text-white font-bold text-[15px]">
+                  {codeComplete ? "Verify & start treatment" : `Enter all ${OTP_CONFIG.sessionOtpLength} digits`}
+                </Text>
+                {codeComplete && <ArrowRight size={16} color="#fff" />}
+              </>
+            )}
+          </Button>
+        ) : (
+          <Button onPress={handleSendOtp} disabled={sending || !sessionTargetId}>
+            {sending ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Send size={16} color="#fff" />
+                <Text className="text-white font-bold text-[15px]">
+                  {sessionTargetId ? "Send OTP to patient" : "No session left to start"}
+                </Text>
+              </>
+            )}
+          </Button>
+        )}
+      </VisitFooter>
+    </KeyboardAvoidingView>
   );
 }
 
-/**
- * Header shared by the skeleton and the error state below, so a therapist who lands on either
- * still has a working way back — the loading screen this replaced had no back button at all.
- */
-function StartSessionHeader() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
+function StageRow({
+  index,
+  done,
+  active,
+  title,
+  sub,
+  action,
+}: {
+  index: number;
+  done: boolean;
+  active: boolean;
+  title: string;
+  sub: string;
+  action?: React.ReactNode;
+}) {
   return (
-    <View
-      className="px-3.5 flex-row items-center justify-between"
-      style={{ paddingTop: insets.top + 12 }}
-    >
-      <Pressable
-        onPress={() => router.back()}
-        className="w-10 h-10 rounded-md border border-border bg-white items-center justify-center"
-        style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
+    <View className="flex-row items-start" style={{ gap: 12 }}>
+      <View
+        className="w-7 h-7 rounded-full items-center justify-center"
+        style={{ backgroundColor: done ? COLORS.success : active ? COLORS.accent : COLORS.bg }}
       >
-        <ChevronLeft size={18} color={COLORS.accent} />
-      </Pressable>
-      <Text className="text-[18px] font-extrabold text-fg">Start session</Text>
-      <View className="w-10" />
+        {done ? (
+          <Check size={14} color="#fff" strokeWidth={3} />
+        ) : (
+          <Text className={`text-[12px] font-extrabold ${active ? "text-white" : "text-muted"}`}>{index}</Text>
+        )}
+      </View>
+      <View className="flex-1">
+        <Text className="text-[14px] font-bold text-fg">{title}</Text>
+        <Text className="text-muted text-[12px] mt-0.5 leading-[17px]">{sub}</Text>
+      </View>
+      {action}
     </View>
   );
 }
 
-/**
- * Placeholder shaped like the loaded screen — patient card, then the OTP card with its icon,
- * headings, send button and digit boxes. Flat rather than animated, matching every other
- * `Skeleton` in the app.
- */
-function StartSessionSkeleton() {
+function MetaCell({ icon: Icon, label, value }: { icon: typeof Clock3; label: string; value: string }) {
+  return (
+    <View className="flex-1 px-3 py-2.5">
+      <View className="flex-row items-center" style={{ gap: 5 }}>
+        <Icon size={11} color={COLORS.muted} />
+        <Text className="text-muted text-[10.5px] font-bold uppercase" style={{ letterSpacing: 0.4 }}>
+          {label}
+        </Text>
+      </View>
+      <Text className="text-[13px] font-bold text-fg mt-0.5" numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+/** Loading placeholder shaped like the loaded screen, with a working back button. */
+function StartSessionSkeleton({ onBack }: { onBack: () => void }) {
   return (
     <View className="flex-1 bg-bg">
-      <StartSessionHeader />
-      <View className="px-3.5 pt-4" style={{ gap: 12 }}>
-        <View
-          className="bg-white border border-border rounded-md p-4"
-          style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
-        >
-          <View className="flex-row items-start" style={{ gap: 14 }}>
-            <Skeleton width={60} height={60} radius={16} />
+      <VisitHeader title="Verify patient OTP" step={1} onBack={onBack} />
+      <View className="px-3.5 pt-3.5" style={{ gap: 12 }}>
+        <VisitCard>
+          <View className="flex-row items-center" style={{ gap: 12 }}>
+            <Skeleton width={52} height={52} radius={16} />
             <View className="flex-1" style={{ gap: 7 }}>
-              <Skeleton width="60%" height={16} />
-              <Skeleton width="85%" height={12} />
-              <View className="flex-row" style={{ gap: 6 }}>
-                <Skeleton width={74} height={18} radius={9} />
-                <Skeleton width={62} height={18} radius={9} />
-              </View>
+              <Skeleton width="55%" height={16} />
+              <Skeleton width="80%" height={12} />
             </View>
           </View>
-          <View className="h-px bg-border" />
-          <View className="rounded-[10px] p-2.5 flex-row" style={{ backgroundColor: "rgba(0,64,96,0.03)", gap: 8 }}>
-            <View className="flex-1" style={{ gap: 6 }}>
-              <Skeleton width={70} height={11} />
-              <Skeleton width="90%" height={13} />
+          <View className="mt-3">
+            <Skeleton height={52} radius={12} />
+          </View>
+        </VisitCard>
+        <VisitCard>
+          <View style={{ gap: 12 }}>
+            <Skeleton width="70%" height={14} />
+            <Skeleton width="85%" height={12} />
+            <View className="flex-row mt-2" style={{ gap: 8 }}>
+              {Array.from({ length: OTP_CONFIG.sessionOtpLength }).map((_, i) => (
+                <View key={i} className="flex-1">
+                  <Skeleton height={52} radius={12} />
+                </View>
+              ))}
             </View>
-            <View className="flex-1" style={{ gap: 6 }}>
-              <Skeleton width={40} height={11} />
-              <Skeleton width="60%" height={13} />
-            </View>
           </View>
-        </View>
-
-        <View className="bg-white border border-border rounded-md p-5 items-center" style={{ gap: 10 }}>
-          <Skeleton width={52} height={52} radius={14} />
-          <Skeleton width="62%" height={18} />
-          <Skeleton width="88%" height={12} />
-          <Skeleton width="70%" height={12} />
-          <View className="w-full mt-2">
-            <Skeleton height={46} radius={12} />
-          </View>
-          <View className="flex-row w-full justify-between mt-2" style={{ gap: 8 }}>
-            {Array.from({ length: OTP_CONFIG.sessionOtpLength }).map((_, i) => (
-              <View key={i} className="flex-1">
-                <Skeleton height={52} radius={12} />
-              </View>
-            ))}
-          </View>
-          <View className="w-full mt-1">
-            <Skeleton height={46} radius={12} />
-          </View>
-          <Skeleton width={200} height={11} />
-        </View>
+        </VisitCard>
       </View>
     </View>
   );
 }
 
-/**
- * Shown when the detail fetch actually failed rather than merely being slow. Kept distinct from
- * the skeleton so a therapist standing at the door isn't left watching a placeholder that will
- * never resolve.
- */
+/** Shown when the detail fetch actually failed rather than merely being slow. */
 function StartSessionError({ onRetry, onBack }: { onRetry: () => void; onBack: () => void }) {
   return (
     <View className="flex-1 bg-bg">
-      <StartSessionHeader />
+      <VisitHeader title="Verify patient OTP" step={1} onBack={onBack} />
       <View className="flex-1 items-center justify-center px-8" style={{ gap: 12 }}>
-        <Text className="text-[15px] font-bold text-fg text-center">
-          Couldn&apos;t load this appointment
-        </Text>
+        <Text className="text-[15px] font-bold text-fg text-center">Couldn&apos;t load this appointment</Text>
         <Text className="text-muted text-[12.5px] text-center leading-5">
-          The session can&apos;t be started until we can reach the server. This is usually
-          temporary.
+          The session can&apos;t be started until we can reach the server. This is usually temporary.
         </Text>
         <View className="flex-row" style={{ gap: 8 }}>
           <Button variant="secondary" fullWidth={false} onPress={onRetry}>

@@ -1,217 +1,237 @@
 import { View, Text, Pressable } from "react-native";
-import { Building2, ChevronRight, Clock3, Home, MapPin, Video } from "lucide-react-native";
+import { Building2, CalendarDays, Check, Clock3, House, Play, Video } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
-import { Avatar, Badge, StatusBadge } from "@/components/ui";
-import { COLORS } from "@/constants/config";
-import {
-  genderLabel,
-  getSessionTypeLabel,
-  getSessionTypeTheme,
-  isMeaningfulCondition,
-} from "@/lib/utils/format";
-import type { Appointment } from "@/types";
+import { Avatar } from "@/components/ui/Avatar";
+import { COLORS, SLOT_CONFIG } from "@/constants/config";
+import { genderLabel } from "@/lib/utils/format";
+import type { Appointment, AppointmentStatus } from "@/types";
 
 /**
- * An appointment row, laid out as a schedule entry.
+ * An appointment in the schedule list.
  *
- * Time on the left because it is what a schedule is scanned by; the patient leads the body because
- * it is what the therapist is looking for; state sits top-right, where the eye checks it.
+ * Three stacked bands, top to bottom — *when* (session date + status), *who* (patient), and
+ * *the slot* (time range + visit mode) — with "Start visit" as a full-width action on visits that
+ * can still be started. Finished and cancelled visits drop the action and go quiet (grey icons,
+ * slightly faded) so the eye lands on work that is still ahead.
  *
- * ## What changed in this pass, and why
- *
- *   - **Every row had the same subtitle.** List rows come from `mapBookingToAppointment`, which
- *     fills `condition` with the constant `"Therapy session"`, so the list read "Therapy session ·
- *     31y" down its whole length. `PatientCard` already suppressed its equivalent placeholder; this
- *     card never had. The subtitle is now age · gender, plus a condition only when one is real.
- *   - **Gender was on the row and never shown.** It is now, when recorded.
- *   - **List rows had no tap affordance.** The only chevron lived inside the address footer, and
- *     list rows never carry an address, so nothing said the card opened anything.
- *   - **Fewer equal-weight chips.** Status, visit type, progress and distance used to be four badges
- *     of identical weight wrapping onto a second line. Status stays the one coloured badge; visit
- *     type becomes an icon and label in its own colour, in a quiet footer with progress beside it.
- *   - **Visit progress is a bar,** because "2/6" in a badge answers "how far through?" less
- *     quickly than a bar that is a third full.
- *
- * `compact` drops the address footer — used where the card sits inside another card.
+ * Tapping anywhere else on the card opens the appointment's details.
  */
 
-const TYPE_ICON: Record<string, LucideIcon> = {
-  home: Home,
-  clinic: Building2,
-  online: Video,
+const MODE: Record<Appointment["type"], { label: string; icon: LucideIcon }> = {
+  home: { label: "Home Visit", icon: House },
+  clinic: { label: "Clinic Visit", icon: Building2 },
+  online: { label: "Online Visit", icon: Video },
 };
+
+type Tone = "success" | "warning" | "info" | "danger" | "neutral";
+
+const TONE: Record<Tone, { bg: string; border: string; fg: string; dot: string }> = {
+  success: { bg: "rgba(35,145,73,0.08)", border: "rgba(35,145,73,0.25)", fg: COLORS.successDark, dot: COLORS.success },
+  warning: { bg: "rgba(209,154,18,0.1)", border: "rgba(209,154,18,0.3)", fg: "#9a7108", dot: COLORS.warning },
+  info: { bg: "rgba(0,134,168,0.08)", border: "rgba(0,134,168,0.25)", fg: COLORS.info, dot: COLORS.info },
+  danger: { bg: "rgba(207,66,56,0.08)", border: "rgba(207,66,56,0.25)", fg: COLORS.danger, dot: COLORS.danger },
+  neutral: { bg: "rgba(94,107,119,0.08)", border: "rgba(94,107,119,0.2)", fg: COLORS.muted, dot: COLORS.muted },
+};
+
+/**
+ * Status labels. "Completed" rather than the design's "Settled": nothing on a list row says the
+ * visit has been *paid out*, and a word that implies money moved should only appear when it did.
+ */
+const STATUS: Record<AppointmentStatus, { label: string; tone: Tone; check?: boolean }> = {
+  confirmed: { label: "Confirmed", tone: "success" },
+  in_progress: { label: "In session", tone: "info" },
+  pending: { label: "Awaiting payment", tone: "warning" },
+  completed: { label: "Completed", tone: "neutral", check: true },
+  cancelled: { label: "Cancelled", tone: "danger" },
+  no_show: { label: "No show", tone: "danger" },
+  expired: { label: "Expired", tone: "neutral" },
+};
+
+/** Visits that can still be started (or resumed) from the list. */
+export function canStartVisit(status: AppointmentStatus): boolean {
+  return status === "confirmed" || status === "in_progress";
+}
+
+/** "2026-09-17" → "September 17, 2026". Parsed as a local date — `new Date(iso)` would be UTC. */
+function fullDate(a: Appointment): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(a.date ?? "");
+  if (!m) return a.dateLabel ?? "Date to be confirmed";
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
+/**
+ * "11:00 AM - 11:40 AM". The end comes from the server's own slot string when it sent one; rows
+ * from the offline cache predate that field, so they fall back to start + the standard slot.
+ */
+export function slotRange(a: Appointment): string {
+  const start = `${a.timeLabel} ${a.meridiem}`;
+  if (a.endTimeLabel) return `${start} - ${a.endTimeLabel}`;
+  const [h, mm] = a.timeLabel.split(":").map((n) => parseInt(n, 10));
+  if (!Number.isFinite(h) || !Number.isFinite(mm)) return start;
+  const startMin = ((h % 12) + (a.meridiem === "PM" ? 12 : 0)) * 60 + mm;
+  const endMin = (startMin + SLOT_CONFIG.durationMin) % (24 * 60);
+  const eh = Math.floor(endMin / 60);
+  const em = endMin % 60;
+  const h12 = eh % 12 === 0 ? 12 : eh % 12;
+  return `${start} - ${String(h12).padStart(2, "0")}:${String(em).padStart(2, "0")} ${eh >= 12 ? "PM" : "AM"}`;
+}
 
 export function AppointmentCard({
   appointment,
   onPress,
-  compact,
+  onStartVisit,
+  resumable,
 }: {
   appointment: Appointment;
+  /** Opens the appointment's details. */
   onPress?: () => void;
-  compact?: boolean;
+  /** The "Start visit" button. Omit to hide it. */
+  onStartVisit?: () => void;
+  /** A session for this visit is already running on this device — label the action "Continue". */
+  resumable?: boolean;
 }) {
-  const theme = getSessionTypeTheme(appointment.type);
-  const TypeIcon = TYPE_ICON[appointment.type] ?? Home;
-  const isDone = appointment.status === "completed";
-  const isOff =
-    appointment.status === "cancelled" ||
-    appointment.status === "no_show" ||
-    appointment.status === "expired";
-  const isToday = appointment.dateLabel === "Today";
+  const status = STATUS[appointment.status] ?? STATUS.pending;
+  const tone = TONE[status.tone];
+  const mode = MODE[appointment.type] ?? MODE.home;
+  const ModeIcon = mode.icon;
+  const settled = !canStartVisit(appointment.status) && appointment.status !== "pending";
+  const iconColor = settled ? COLORS.muted : COLORS.accent;
 
-  const subtitle = [
+  const demographics = [
     appointment.patientAge ? `${appointment.patientAge} yrs` : null,
     genderLabel(appointment.patientGender) || null,
-    isMeaningfulCondition(appointment.condition) ? appointment.condition : null,
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join(" • ");
 
-  // Visit N of M — only meaningful once the detail endpoint has been read, so it's absent on list
-  // rows rather than shown as a misleading "1 of 1".
-  const total = appointment.sessionCount ?? 0;
-  const showProgress = total > 1;
-  const current = showProgress
-    ? Math.min((appointment.completedSessionCount ?? 0) + (isDone ? 0 : 1), total)
-    : 0;
+  const showAction = !!onStartVisit && canStartVisit(appointment.status);
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={[
-        appointment.patientName,
-        `${appointment.timeLabel} ${appointment.meridiem}`,
-        appointment.dateLabel,
-        getSessionTypeLabel(appointment.type),
-      ]
-        .filter(Boolean)
-        .join(", ")}
-      className="bg-white rounded-[18px] overflow-hidden active:opacity-95"
+      accessibilityLabel={`${appointment.patientName}, ${fullDate(appointment)}, ${slotRange(appointment)}, ${mode.label}, ${status.label}`}
+      className="bg-white rounded-[24px] p-4 border active:opacity-95"
       style={{
+        borderColor: "rgba(207,217,223,0.7)",
         shadowColor: COLORS.nav,
-        shadowOpacity: 0.08,
-        shadowRadius: 14,
-        elevation: 3,
-        // A cancelled or no-show visit is history, not something to act on — it recedes rather
-        // than competing for attention with the visits that still need doing.
-        opacity: isOff ? 0.7 : 1,
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 2,
+        opacity: settled ? 0.92 : 1,
       }}
     >
-      <View className="flex-row">
-        {/* Visit-type rail. */}
-        <View style={{ width: 4, backgroundColor: isOff ? COLORS.border : theme.solid }} />
-
-        <View className="flex-1 p-3.5" style={{ gap: 12 }}>
-          <View className="flex-row" style={{ gap: 12 }}>
-            {/* Time block */}
-            <View
-              className="items-center justify-center rounded-[14px] py-2"
-              style={{
-                minWidth: 60,
-                backgroundColor: isToday && !isOff ? theme.soft : "rgba(0,64,96,0.04)",
-              }}
-            >
-              <Text
-                className="text-[18px] font-black"
-                style={{ color: isOff ? COLORS.muted : isToday ? theme.solid : COLORS.fg, letterSpacing: -0.5 }}
-              >
-                {appointment.timeLabel}
-              </Text>
-              <Text className="text-[9.5px] font-extrabold" style={{ color: COLORS.muted, letterSpacing: 1 }}>
-                {appointment.meridiem}
-              </Text>
-              {appointment.dateLabel && (
-                <Text
-                  className="text-[9.5px] font-bold mt-1"
-                  style={{ color: isToday && !isOff ? theme.solid : COLORS.muted }}
-                  numberOfLines={1}
-                >
-                  {appointment.dateLabel}
-                </Text>
-              )}
-            </View>
-
-            {/* Patient block */}
-            <View className="flex-1 justify-center" style={{ gap: 6 }}>
-              <View className="flex-row items-start" style={{ gap: 10 }}>
-                <Avatar name={appointment.patientName} url={appointment.patientAvatarUrl} size={40} radius={12} />
-                <View className="flex-1" style={{ gap: 2 }}>
-                  <View className="flex-row items-center justify-between" style={{ gap: 8 }}>
-                    <Text className="text-[15px] font-extrabold text-fg flex-shrink" numberOfLines={1}>
-                      {appointment.patientName}
-                    </Text>
-                    <StatusBadge status={appointment.status} size="sm" />
-                  </View>
-                  {!!subtitle && (
-                    <Text className="text-muted text-[12px]" numberOfLines={1}>
-                      {subtitle}
-                    </Text>
-                  )}
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* Footer: visit type, progress, affordance */}
+      {/* When + status */}
+      <View
+        className="flex-row items-center justify-between pb-3"
+        style={{ borderBottomWidth: 1, borderBottomColor: "rgba(207,217,223,0.5)" }}
+      >
+        <View className="flex-row items-center flex-1" style={{ gap: 8 }}>
           <View
-            className="flex-row items-center pt-2.5"
-            style={{ gap: 10, borderTopWidth: 1, borderTopColor: "rgba(207,217,223,0.6)" }}
+            className="w-8 h-8 rounded-[12px] items-center justify-center border"
+            style={{
+              backgroundColor: settled ? "rgba(94,107,119,0.07)" : COLORS.primarySoft,
+              borderColor: settled ? "rgba(94,107,119,0.15)" : "rgba(0,64,96,0.1)",
+            }}
           >
-            <View className="flex-row items-center" style={{ gap: 5 }}>
-              <TypeIcon size={13} color={isOff ? COLORS.muted : theme.solid} />
-              <Text
-                className="text-[12px] font-bold"
-                style={{ color: isOff ? COLORS.muted : theme.solid }}
-              >
-                {getSessionTypeLabel(appointment.type)}
-              </Text>
-            </View>
-
-            {showProgress && (
-              <View className="flex-row items-center flex-1" style={{ gap: 6 }}>
-                <View className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(0,64,96,0.08)" }}>
-                  <View
-                    className="h-full rounded-full"
-                    style={{ width: `${(current / total) * 100}%`, backgroundColor: theme.solid }}
-                  />
-                </View>
-                <Text className="text-muted text-[11px] font-bold">
-                  {`Visit ${current}/${total}`}
-                </Text>
-              </View>
-            )}
-
-            {appointment.distanceKm != null && (
-              <Badge variant="accent" size="sm" dot={false} icon={MapPin}>
-                {`${appointment.distanceKm} km`}
-              </Badge>
-            )}
-
-            {!showProgress && <View className="flex-1" />}
-            <ChevronRight size={16} color={COLORS.muted} />
+            <CalendarDays size={15} color={iconColor} />
           </View>
+          <View className="flex-shrink">
+            <Text className="text-[10px] uppercase font-bold text-muted" style={{ letterSpacing: 0.8 }}>
+              Session Date
+            </Text>
+            <Text className="text-[12.5px] font-bold text-fg mt-0.5" numberOfLines={1}>
+              {fullDate(appointment)}
+            </Text>
+          </View>
+        </View>
 
-          {!compact && appointment.address && (
-            <View
-              className="flex-row items-center rounded-[10px] px-2.5 py-2"
-              style={{ gap: 6, backgroundColor: "rgba(0,64,96,0.035)" }}
-            >
-              <MapPin size={12} color={COLORS.muted} />
-              <Text className="text-muted text-[11.5px] flex-1" numberOfLines={1}>
-                {appointment.address}
-              </Text>
-            </View>
+        <View
+          className="flex-row items-center rounded-full px-2.5 py-1 border ml-2"
+          style={{ gap: 5, backgroundColor: tone.bg, borderColor: tone.border }}
+        >
+          {status.check ? (
+            <Check size={12} color={COLORS.accent} strokeWidth={3} />
+          ) : (
+            <View className="w-2 h-2 rounded-full" style={{ backgroundColor: tone.dot }} />
           )}
-
-          {!compact && !appointment.address && appointment.etaMin != null && (
-            <View className="flex-row items-center" style={{ gap: 5 }}>
-              <Clock3 size={12} color={COLORS.muted} />
-              <Text className="text-muted text-[11.5px]">{appointment.etaMin} min away</Text>
-            </View>
-          )}
+          <Text className="text-[10.5px] font-bold uppercase" style={{ color: tone.fg, letterSpacing: 0.3 }}>
+            {status.label}
+          </Text>
         </View>
       </View>
+
+      {/* Who */}
+      <View className="flex-row items-center my-3.5" style={{ gap: 14 }}>
+        <Avatar name={appointment.patientName} url={appointment.patientAvatarUrl} size={48} radius={16} />
+        <View className="flex-1">
+          <Text className="text-[15px] font-bold text-fg" numberOfLines={1}>
+            {appointment.patientName}
+          </Text>
+          {demographics ? (
+            <Text className="text-[12.5px] font-semibold text-muted mt-0.5">{demographics}</Text>
+          ) : null}
+        </View>
+      </View>
+
+      {/* The slot */}
+      <View
+        className="rounded-[16px] p-3 border flex-row items-center justify-between"
+        style={{ backgroundColor: COLORS.bg, borderColor: "rgba(207,217,223,0.5)", gap: 8 }}
+      >
+        <View className="flex-row items-center flex-1" style={{ gap: 10 }}>
+          <View
+            className="w-8 h-8 rounded-[12px] bg-white items-center justify-center border"
+            style={{ borderColor: "rgba(207,217,223,0.7)" }}
+          >
+            <Clock3 size={15} color={iconColor} />
+          </View>
+          <View className="flex-shrink">
+            <Text className="text-[10px] uppercase font-bold text-muted" style={{ letterSpacing: 0.4 }}>
+              Slot Time
+            </Text>
+            <Text
+              className="text-[12.5px] font-extrabold mt-0.5"
+              style={{ color: settled ? COLORS.muted : COLORS.fg }}
+              numberOfLines={1}
+            >
+              {slotRange(appointment)}
+            </Text>
+          </View>
+        </View>
+        <View
+          className="flex-row items-center rounded-[12px] bg-white border px-2.5 py-1.5"
+          style={{ gap: 5, borderColor: "rgba(207,217,223,0.8)" }}
+        >
+          <ModeIcon size={13} color={iconColor} />
+          <Text className="text-[12px] font-bold" style={{ color: settled ? COLORS.muted : COLORS.fg }}>
+            {mode.label}
+          </Text>
+        </View>
+      </View>
+
+      {showAction && (
+        <Pressable
+          onPress={onStartVisit}
+          accessibilityRole="button"
+          accessibilityLabel={`${resumable ? "Continue" : "Start"} visit with ${appointment.patientName}`}
+          className="mt-3.5 h-12 rounded-[16px] flex-row items-center justify-center active:opacity-85"
+          style={{
+            gap: 8,
+            backgroundColor: resumable ? COLORS.success : COLORS.accent,
+            shadowColor: resumable ? COLORS.success : COLORS.accent,
+            shadowOpacity: 0.25,
+            shadowRadius: 10,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 4,
+          }}
+        >
+          <Play size={15} color="#fff" fill="#fff" />
+          <Text className="text-white font-bold text-[13.5px]">{resumable ? "Continue Visit" : "Start Visit"}</Text>
+        </Pressable>
+      )}
     </Pressable>
   );
 }

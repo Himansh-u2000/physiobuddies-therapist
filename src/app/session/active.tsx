@@ -2,28 +2,47 @@ import { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView, TextInput, Modal, ActivityIndicator, Linking } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import { CameraView } from "expo-camera";
 import * as Crypto from "expo-crypto";
 import Svg, { Circle } from "react-native-svg";
-import { Camera, CameraOff, FileText, Pause, CheckCircle2, Circle as CircleIcon, X, ArrowRight } from "lucide-react-native";
+import {
+  ArrowRight,
+  Camera,
+  CameraOff,
+  Check,
+  ClipboardCheck,
+  Image as ImageIcon,
+  NotebookPen,
+  Pause,
+  X,
+} from "lucide-react-native";
 import { Badge, BottomSheet, Button, ErrorState, useBottomSheet } from "@/components/ui";
+import { SectionLabel, VisitCard, VisitFooter, VisitHeader } from "@/components/session/VisitFlow";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useSessionStore } from "@/lib/stores/session.store";
 import { useCamera } from "@/lib/hooks/useCamera";
 import { useDatabase } from "@/lib/db/provider";
 import { enqueuePhotoUpload } from "@/lib/db/repositories";
 import { flushPendingPhotoUploads } from "@/lib/db/sync/syncEngine";
-import { COLORS, GRADIENTS, SESSION_CONFIG } from "@/constants/config";
+import { COLORS, SESSION_CONFIG } from "@/constants/config";
 import { formatTime } from "@/lib/utils/format";
 
+/**
+ * Step 3 of the visit — run the treatment.
+ *
+ * Reached by *replacing* the OTP screen once the code is verified. The timer lives in the header
+ * so it stays visible while the checklist scrolls, and the one forward action — on to the
+ * treatment record — is pinned in the footer. The chips beside the timer are derived from the
+ * checklist and the note; they used to be hardcoded ("Photo · 1 needed", "Note · Draft") and
+ * never changed, whatever the therapist did.
+ */
 export default function ActiveSessionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const showToast = useAppStore((s) => s.showToast);
   // Selectors, not a bare `useSessionStore()` — this screen must not re-subscribe to
-  // `elapsedSeconds`, or the once-a-second `tick()` re-renders the checklist, note input,
-  // and buttons along with the ring. Only <SessionTimerRing> below selects elapsedSeconds.
+  // `elapsedSeconds`, or the once-a-second `tick()` re-renders the checklist, note input, and
+  // buttons along with the ring. Only <SessionTimerRing> below selects elapsedSeconds.
   const patientName = useSessionStore((s) => s.patientName);
   const condition = useSessionStore((s) => s.condition);
   const checklist = useSessionStore((s) => s.checklist);
@@ -32,8 +51,7 @@ export default function ActiveSessionScreen() {
   const setQuickNote = useSessionStore((s) => s.setQuickNote);
   const tick = useSessionStore((s) => s.tick);
   const endSession = useSessionStore((s) => s.endSession);
-  // Only flips twice per session lifecycle (start, complete/pause) — safe to subscribe to
-  // directly, unlike elapsedSeconds.
+  // Only flips twice per session lifecycle — safe to subscribe to directly.
   const isActive = useSessionStore((s) => s.isActive);
   const sheet = useBottomSheet();
   const { db } = useDatabase();
@@ -44,10 +62,9 @@ export default function ActiveSessionScreen() {
   const [cameraPermissionBlocked, setCameraPermissionBlocked] = useState(false);
 
   useEffect(() => {
-    // This screen doesn't unmount when the flow navigates on to /session/treatment or
-    // /session/complete (both live in the same Stack, pushed/replaced on top) — the interval
-    // would otherwise keep firing after the session is done and re-persist a stale "active"
-    // draft over the completed row. Gating on isActive stops it the moment the session ends.
+    // This screen stays mounted underneath /session/treatment and /session/complete. Gating on
+    // isActive stops the interval the moment the session ends, so it can't re-persist a stale
+    // "active" draft over the completed row.
     if (!isActive) return;
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
@@ -56,8 +73,8 @@ export default function ActiveSessionScreen() {
   const handleOpenCamera = async () => {
     const status = await ensurePermission();
     if (!status.granted) {
-      // canAskAgain === false means the OS won't show its prompt anymore — the toast would
-      // leave the user stuck re-tapping a button that can never succeed again.
+      // canAskAgain === false means the OS won't prompt again — a toast would leave the therapist
+      // re-tapping a button that can never succeed.
       if (!status.canAskAgain) {
         setCameraPermissionBlocked(true);
       } else {
@@ -88,11 +105,8 @@ export default function ActiveSessionScreen() {
         return;
       }
       const fileName = `session-${sessionId}-${Date.now()}.jpg`;
-      // Durable the moment this returns — the photo is already compressed and saved
-      // on-device (takePhoto), so queuing it locally can't fail the way a direct upload
-      // attempt used to. Previously this awaited uploadApi.uploadSessionPhoto() directly:
-      // offline, that threw, the toast claimed "will retry later" with nothing that ever
-      // did, and the file sat orphaned on-device with no record anywhere.
+      // Durable the moment this returns: the photo is already compressed and on-device, and the
+      // queue row means the sync engine will upload it even if we're offline right now.
       await enqueuePhotoUpload(db, {
         id: Crypto.randomUUID(),
         sessionId,
@@ -104,9 +118,7 @@ export default function ActiveSessionScreen() {
         toggleChecklistItem("photo");
       }
       setCameraVisible(false);
-      showToast("Photo saved — uploading");
-      // Best-effort immediate push, same pattern as treatment submission: resolves quickly
-      // if online, silently no-ops if not — useSyncEngine's queue picks it up on reconnect.
+      showToast("Photo saved — uploading", "success");
       flushPendingPhotoUploads(db).catch(() => {});
     } catch (e) {
       console.error("Photo capture failed:", e);
@@ -114,10 +126,6 @@ export default function ActiveSessionScreen() {
     } finally {
       setUploadingPhoto(false);
     }
-  };
-
-  const handlePause = () => {
-    sheet.open();
   };
 
   const confirmPause = () => {
@@ -128,54 +136,97 @@ export default function ActiveSessionScreen() {
   };
 
   const doneCount = checklist.filter((c) => c.done).length;
+  const allDone = doneCount === checklist.length;
+  const photoTaken = !!checklist.find((c) => c.id === "photo")?.done;
+  const hasNote = quickNote.trim().length > 0;
 
   return (
     <View className="flex-1 bg-bg">
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 14, paddingTop: insets.top + 8, paddingBottom: 32 }}>
-        <View className="flex-row items-center justify-between mb-2">
-          <Text className="text-[20px] font-extrabold text-fg">Active session</Text>
-          <Badge variant="success" tone="solid" size="sm">Running</Badge>
-        </View>
-
-        <LinearGradient colors={["#00486b", "#006071"]} className="rounded-md p-5 items-center" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.28, shadowRadius: 32, elevation: 10 }}>
+      <VisitHeader
+        title="Run treatment"
+        step={2}
+        onBack={() => router.back()}
+        right={
+          <View
+            className="flex-row items-center rounded-full bg-white/15 border border-white/20 px-2.5 py-1.5"
+            style={{ gap: 6 }}
+          >
+            <View className="w-2 h-2 rounded-full" style={{ backgroundColor: isActive ? COLORS.successLight : COLORS.warning }} />
+            <Text className="text-white text-[11px] font-extrabold uppercase">{isActive ? "Live" : "Paused"}</Text>
+          </View>
+        }
+      >
+        <View
+          className="mx-3.5 mb-4 rounded-lg bg-white/10 border border-white/15 p-3 flex-row items-center"
+          style={{ gap: 14 }}
+        >
           <SessionTimerRing />
-          <Text className="text-white text-[18px] font-bold">{patientName}</Text>
-          <Text className="text-white/70 text-[12px] mt-1">{condition} · Home visit</Text>
-          <View className="flex-row mt-3.5" style={{ gap: 6 }}>
-            <StatusBadge label="OTP" sub="Verified" active />
-            <StatusBadge label="Care" sub="Active" active />
-            <StatusBadge label="Photo" sub="1 needed" />
-            <StatusBadge label="Note" sub="Draft" />
-          </View>
-        </LinearGradient>
-
-        <View className="mt-2.5">
-          <View className="flex-row items-center justify-between mb-2.5">
-            <Text className="text-[17px] font-bold text-fg">Treatment checklist</Text>
-            <Badge variant={doneCount === checklist.length ? "success" : "warning"} size="sm">{doneCount}/{checklist.length} done</Badge>
-          </View>
-          <View style={{ gap: 8 }}>
-            {checklist.map((item) => (
-              <Pressable
-                key={item.id}
-                onPress={() => toggleChecklistItem(item.id)}
-                className={`flex-row items-center justify-between p-3 rounded-md border ${item.done ? "bg-success/5 border-success/10" : "bg-white border-border"}`}
-                style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
-              >
-                <View className="flex-row items-center flex-1" style={{ gap: 8 }}>
-                  {item.done ? <CheckCircle2 size={16} color={COLORS.success} /> : <CircleIcon size={16} color={COLORS.muted} />}
-                  <Text className={`text-[13px] font-semibold ${item.done ? "text-muted line-through" : "text-fg"}`}>{item.label}</Text>
-                </View>
-                <View className={`w-5 h-5 rounded border-2 ${item.done ? "bg-success border-success" : "border-border"}`}>
-                  {item.done && <Text className="text-white text-[12px] text-center font-bold">✓</Text>}
-                </View>
-              </Pressable>
-            ))}
+          <View className="flex-1">
+            <Text className="text-white text-[16px] font-extrabold" numberOfLines={1}>
+              {patientName ?? "Patient"}
+            </Text>
+            <Text className="text-white/70 text-[12px] mt-0.5" numberOfLines={1}>
+              {condition ?? "Therapy session"}
+            </Text>
+            <View className="flex-row flex-wrap mt-2" style={{ gap: 6 }}>
+              <StatusChip label="OTP verified" done />
+              <StatusChip label={photoTaken ? "Photo added" : "Photo needed"} done={photoTaken} />
+              <StatusChip label={hasNote ? "Note added" : "No note yet"} done={hasNote} />
+            </View>
           </View>
         </View>
+      </VisitHeader>
 
-        <View className="mt-3" style={{ gap: 10 }}>
-          {cameraPermissionBlocked && (
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}
+      >
+        <View className="flex-row items-center justify-between mt-4 mb-2 px-1">
+          <Text className="text-[11.5px] font-extrabold text-muted uppercase" style={{ letterSpacing: 0.8 }}>
+            Treatment checklist
+          </Text>
+          <Badge variant={allDone ? "success" : "warning"} size="sm">
+            {`${doneCount}/${checklist.length} done`}
+          </Badge>
+        </View>
+        {/* The fastest read of "how far through am I". */}
+        <View className="h-1.5 rounded-full overflow-hidden mb-2.5" style={{ backgroundColor: "rgba(0,64,96,0.1)" }}>
+          <View
+            className="h-full rounded-full"
+            style={{ width: `${(doneCount / Math.max(checklist.length, 1)) * 100}%`, backgroundColor: COLORS.success }}
+          />
+        </View>
+        <VisitCard padded={false} className="px-4 py-1">
+          {checklist.map((item, i) => (
+            <Pressable
+              key={item.id}
+              onPress={() => toggleChecklistItem(item.id)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: item.done }}
+              className={`flex-row items-center py-3.5 active:opacity-70 ${i === checklist.length - 1 ? "" : "border-b border-border"}`}
+              style={{ gap: 12 }}
+            >
+              <View
+                className="w-6 h-6 rounded-[7px] items-center justify-center"
+                style={{
+                  backgroundColor: item.done ? COLORS.success : "transparent",
+                  borderWidth: item.done ? 0 : 2,
+                  borderColor: COLORS.border,
+                }}
+              >
+                {item.done && <Check size={14} color="#fff" strokeWidth={3} />}
+              </View>
+              <Text className={`flex-1 text-[14px] font-semibold ${item.done ? "text-muted line-through" : "text-fg"}`}>
+                {item.label}
+              </Text>
+            </Pressable>
+          ))}
+        </VisitCard>
+
+        {cameraPermissionBlocked && (
+          <View className="mt-3">
             <ErrorState
               icon={CameraOff}
               tone="warning"
@@ -184,48 +235,80 @@ export default function ActiveSessionScreen() {
               description="Camera permission is required to upload session photos. Enable it in your device settings to continue."
               action={{ label: "Open app settings", onPress: () => Linking.openSettings() }}
             />
-          )}
-          <View>
-            <Text className="text-[12px] font-bold text-fg mb-1.5">Quick session note</Text>
-            <TextInput
-              className="min-h-[88px] w-full rounded-[13px] border-[1.5px] border-border bg-white px-3.5 py-2.5 text-[14px] text-fg"
-              placeholder="L4-L5 mobilisation done. Pain scale improved 7→4. Patient responded well to traction…"
-              placeholderTextColor={COLORS.muted}
-              value={quickNote}
-              onChangeText={setQuickNote}
-              multiline
-              textAlignVertical="top"
-            />
           </View>
-          <Button variant="secondary" onPress={handleOpenCamera} disabled={uploadingPhoto}>
-            <Camera size={16} color={COLORS.accent} />
-            <Text className="text-accent font-bold text-[14px]">{uploadingPhoto ? "Uploading..." : "Upload session photo"}</Text>
-          </Button>
+        )}
 
-          {/* Primary forward action — takes the therapist to the treatment form (the 6
-              assessment/treatment sections). Full-width and clearly the "next step" so it
-              isn't mistaken for a minor action. */}
-          <Pressable onPress={() => router.push("/session/treatment")} className="active:opacity-90 rounded-md overflow-hidden" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.22, shadowRadius: 14, elevation: 4 }}>
-            <LinearGradient colors={GRADIENTS.success} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} className="flex-row items-center justify-between px-4 py-3.5">
-              <View className="flex-row items-center" style={{ gap: 10 }}>
-                <View className="w-8 h-8 rounded-full bg-white/20 items-center justify-center">
-                  <FileText size={16} color="#fff" />
-                </View>
-                <View>
-                  <Text className="text-white font-extrabold text-[15px]">Continue to treatment form</Text>
-                  <Text className="text-white/75 text-[11px]">Fill assessment, then submit &amp; end session</Text>
-                </View>
-              </View>
-              <ArrowRight size={20} color="#fff" />
-            </LinearGradient>
+        <SectionLabel>Capture</SectionLabel>
+        <View className="flex-row" style={{ gap: 10 }}>
+          <Pressable
+            onPress={handleOpenCamera}
+            disabled={uploadingPhoto}
+            accessibilityRole="button"
+            className="flex-1 rounded-lg border border-border bg-white p-3.5 active:opacity-80"
+            style={{ gap: 8, shadowColor: COLORS.nav, shadowOpacity: 0.08, shadowRadius: 14, elevation: 3 }}
+          >
+            <View
+              className="w-10 h-10 rounded-[12px] items-center justify-center"
+              style={{ backgroundColor: photoTaken ? "rgba(35,145,73,0.1)" : COLORS.primarySoft }}
+            >
+              {uploadingPhoto ? (
+                <ActivityIndicator size="small" color={COLORS.accent} />
+              ) : photoTaken ? (
+                <ImageIcon size={19} color={COLORS.success} />
+              ) : (
+                <Camera size={19} color={COLORS.accent} />
+              )}
+            </View>
+            <View>
+              <Text className="text-[13.5px] font-bold text-fg">{photoTaken ? "Add another photo" : "Session photo"}</Text>
+              <Text className="text-muted text-[11.5px]">{photoTaken ? "Saved to this visit" : "Tap to open the camera"}</Text>
+            </View>
           </Pressable>
-
-          <Button variant="danger" onPress={handlePause}>
-            <Pause size={16} color={COLORS.danger} />
-            <Text className="text-danger font-bold text-[14px]">Pause / Emergency stop</Text>
-          </Button>
+          <Pressable
+            onPress={() => router.push("/session/treatment")}
+            accessibilityRole="button"
+            className="flex-1 rounded-lg border border-border bg-white p-3.5 active:opacity-80"
+            style={{ gap: 8, shadowColor: COLORS.nav, shadowOpacity: 0.08, shadowRadius: 14, elevation: 3 }}
+          >
+            <View className="w-10 h-10 rounded-[12px] items-center justify-center" style={{ backgroundColor: COLORS.primarySoft }}>
+              <ClipboardCheck size={19} color={COLORS.accent} />
+            </View>
+            <View>
+              <Text className="text-[13.5px] font-bold text-fg">Assessment</Text>
+              <Text className="text-muted text-[11.5px]">Filled in the treatment record</Text>
+            </View>
+          </Pressable>
         </View>
+
+        <SectionLabel>Quick note</SectionLabel>
+        <VisitCard padded={false} className="p-3">
+          <View className="flex-row items-center mb-2" style={{ gap: 6 }}>
+            <NotebookPen size={14} color={COLORS.muted} />
+            <Text className="text-muted text-[11.5px]">Anything to remember for the record.</Text>
+          </View>
+          <TextInput
+            className="min-h-[96px] w-full rounded-[12px] px-3.5 py-2.5 text-[14px] text-fg"
+            style={{ backgroundColor: COLORS.bg }}
+            placeholder="e.g. L4-L5 mobilisation done. Pain 7→4. Responded well to traction…"
+            placeholderTextColor={COLORS.muted}
+            value={quickNote}
+            onChangeText={setQuickNote}
+            multiline
+            textAlignVertical="top"
+          />
+        </VisitCard>
       </ScrollView>
+
+      <VisitFooter hint={allDone ? "Checklist done — complete the treatment record to finish." : undefined}>
+        <Button variant="danger" fullWidth={false} style={{ flex: 1 }} onPress={sheet.open}>
+          <Pause size={16} color={COLORS.danger} />
+          <Text className="text-danger font-bold text-[14px]">Pause</Text>
+        </Button>
+        <Button variant="success" fullWidth={false} style={{ flex: 2.2 }} onPress={() => router.push("/session/treatment")}>
+          <Text className="text-white font-bold text-[14px]">Treatment record</Text>
+          <ArrowRight size={16} color="#fff" />
+        </Button>
+      </VisitFooter>
 
       <BottomSheet visible={sheet.visible} onClose={sheet.close}>
         <Text className="text-[18px] font-bold text-fg">Pause this session?</Text>
@@ -235,7 +318,9 @@ export default function ActiveSessionScreen() {
         <Button variant="danger" onPress={confirmPause}>
           <Text className="text-danger font-bold text-[14px]">Pause session</Text>
         </Button>
-        <Button variant="secondary" onPress={sheet.close}>Continue treatment</Button>
+        <Button variant="secondary" onPress={sheet.close}>
+          Continue treatment
+        </Button>
       </BottomSheet>
 
       <Modal visible={cameraVisible} animationType="slide" onRequestClose={() => setCameraVisible(false)} statusBarTranslucent>
@@ -248,9 +333,10 @@ export default function ActiveSessionScreen() {
             onMountError={() => showToast("Camera failed to start")}
             style={{ flex: 1 }}
           />
-          {/* Top bar — padded for the status bar so the close button never sits under the
-              battery/clock. */}
-          <View className="absolute left-0 right-0 top-0 px-4 flex-row justify-between items-center" style={{ paddingTop: insets.top + 8 }}>
+          <View
+            className="absolute left-0 right-0 top-0 px-4 flex-row justify-between items-center"
+            style={{ paddingTop: insets.top + 8 }}
+          >
             <Pressable onPress={() => setCameraVisible(false)} className="w-11 h-11 rounded-full bg-black/50 items-center justify-center">
               <X size={22} color="#fff" />
             </Pressable>
@@ -259,9 +345,10 @@ export default function ActiveSessionScreen() {
               <Text className="text-white text-[12px] font-bold">{cameraReady ? "Ready" : "Starting camera…"}</Text>
             </View>
           </View>
-          {/* Bottom bar with a classic round shutter button — unmistakably the capture
-              control, and padded for the gesture-nav bar so it's never clipped. */}
-          <View className="absolute left-0 right-0 bottom-0 items-center bg-black/50" style={{ paddingBottom: insets.bottom + 24, paddingTop: 20 }}>
+          <View
+            className="absolute left-0 right-0 bottom-0 items-center bg-black/50"
+            style={{ paddingBottom: insets.bottom + 24, paddingTop: 20 }}
+          >
             <Text className="text-white/70 text-[12px] mb-4">Frame the treatment area, then tap to capture</Text>
             <Pressable
               onPress={handleCapturePhoto}
@@ -270,7 +357,11 @@ export default function ActiveSessionScreen() {
               style={{ backgroundColor: "rgba(255,255,255,0.28)", opacity: !cameraReady || uploadingPhoto ? 0.5 : 1 }}
             >
               <View className="w-[62px] h-[62px] rounded-full bg-white items-center justify-center">
-                {uploadingPhoto ? <ActivityIndicator color={COLORS.accent} /> : <View className="w-[52px] h-[52px] rounded-full border-2 border-black/10" style={{ backgroundColor: "#fff" }} />}
+                {uploadingPhoto ? (
+                  <ActivityIndicator color={COLORS.accent} />
+                ) : (
+                  <View className="w-[52px] h-[52px] rounded-full border-2 border-black/10" style={{ backgroundColor: "#fff" }} />
+                )}
               </View>
             </Pressable>
           </View>
@@ -283,39 +374,45 @@ export default function ActiveSessionScreen() {
 /** Isolated so the once-a-second tick only re-renders this ring, not the whole screen. */
 function SessionTimerRing() {
   const elapsedSeconds = useSessionStore((s) => s.elapsedSeconds);
+  const size = 92;
+  const stroke = 7;
+  const r = (size - stroke) / 2;
   const progress = Math.min(elapsedSeconds / SESSION_CONFIG.defaultDurationSec, 1);
-  const circumference = 2 * Math.PI * 60;
+  const circumference = 2 * Math.PI * r;
   const dashOffset = circumference * (1 - progress);
 
   return (
-    <View className="relative items-center justify-center mb-3.5">
-      <Svg width={140} height={140} style={{ transform: [{ rotate: "-90deg" }] }}>
-        <Circle cx={70} cy={70} r={60} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth={8} />
+    <View className="items-center justify-center" style={{ width: size, height: size }}>
+      <Svg width={size} height={size} style={{ position: "absolute", transform: [{ rotate: "-90deg" }] }}>
+        <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth={stroke} />
         <Circle
-          cx={70}
-          cy={70}
-          r={60}
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
           fill="none"
           stroke={COLORS.successLight}
-          strokeWidth={8}
+          strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={dashOffset}
         />
       </Svg>
-      <View className="absolute items-center">
-        <Text className="text-[22px] font-extrabold text-white" style={{ fontFamily: "monospace" }}>{formatTime(elapsedSeconds)}</Text>
-        <Text className="text-white/60 text-[10px] font-bold">elapsed</Text>
-      </View>
+      <Text className="text-[17px] font-extrabold text-white" style={{ fontFamily: "monospace" }}>
+        {formatTime(elapsedSeconds)}
+      </Text>
+      <Text className="text-white/60 text-[9px] font-bold uppercase">elapsed</Text>
     </View>
   );
 }
 
-function StatusBadge({ label, sub, active }: { label: string; sub: string; active?: boolean }) {
+function StatusChip({ label, done }: { label: string; done?: boolean }) {
   return (
-    <View className={`flex-1 rounded-[10px] py-2 items-center ${active ? "bg-white/20 border border-white/25" : "bg-white/10"}`}>
-      <Text className="text-white text-[13px] font-bold">{label}</Text>
-      <Text className="text-white/70 text-[10px]">{sub}</Text>
+    <View
+      className="flex-row items-center rounded-full px-2 py-1"
+      style={{ gap: 4, backgroundColor: done ? "rgba(52,158,84,0.3)" : "rgba(255,255,255,0.12)" }}
+    >
+      {done ? <Check size={10} color="#fff" strokeWidth={3} /> : <View className="w-1.5 h-1.5 rounded-full bg-white/60" />}
+      <Text className="text-white text-[10.5px] font-bold">{label}</Text>
     </View>
   );
 }

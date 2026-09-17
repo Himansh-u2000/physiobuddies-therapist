@@ -2,7 +2,7 @@ import { View, Text, Pressable, ScrollView } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, ChevronRight, Share2, Phone, MessageSquare, Navigation, Play, CheckCircle2 } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Phone, Navigation, CheckCircle2, CalendarClock, MapPinHouse, KeyRound, ArrowRight, Stethoscope } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Avatar, Badge, Button, PaymentBadge, Skeleton, StatusBadge } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
@@ -107,10 +107,10 @@ export default function AppointmentDetailScreen() {
    * soon as the session is past it, the same as the rest of the list.
    */
   const steps = [
-    { num: 1, title: "Navigate to patient", sub: "Route, call if needed" },
-    { num: 2, title: "Enter patient OTP", sub: `Patient provides ${OTP_CONFIG.sessionOtpLength}-digit OTP to start the session timer` },
-    { num: 3, title: "Run treatment", sub: "Checklist, notes, photos, exercises" },
-    { num: 4, title: "Submit treatment record", sub: "Locks note and triggers payout review" },
+    { num: 1, title: "Navigate", sub: "Directions to the patient, call if you're late" },
+    { num: 2, title: "Verify OTP", sub: `The patient's ${OTP_CONFIG.sessionOtpLength}-digit code starts the session` },
+    { num: 3, title: "Treatment", sub: "Checklist, photo and quick notes" },
+    { num: 4, title: "Record", sub: "Clinical assessment — completes the visit" },
   ].map((step) => ({
     ...step,
     done: currentStep > step.num,
@@ -121,12 +121,16 @@ export default function AppointmentDetailScreen() {
     <View className="flex-1 bg-bg">
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         <LinearGradient colors={["#003554", "#004060"]} className="relative overflow-hidden" style={{ height: 180 + insets.top }}>
-          <View className="absolute left-0 right-0 p-3 flex-row items-center justify-between" style={{ top: insets.top }}>
-            <Pressable onPress={() => router.back()} className="w-10 h-10 rounded-md bg-white/90 items-center justify-center">
-              <ChevronLeft size={18} color={COLORS.accent} />
-            </Pressable>
-            <Pressable onPress={() => showToast("Appointment shared")} className="w-10 h-10 rounded-md bg-white/90 items-center justify-center">
-              <Share2 size={18} color={COLORS.accent} />
+          <View className="absolute -right-10 -top-12 w-40 h-40 rounded-full bg-white/5" />
+          {/* The Share button that sat here only showed an "Appointment shared" toast — nothing
+              was ever shared — so it is gone rather than kept as a decoy. */}
+          <View className="absolute left-0 right-0 p-3 flex-row items-center" style={{ top: insets.top }}>
+            <Pressable
+              onPress={() => router.back()}
+              accessibilityLabel="Go back"
+              className="w-10 h-10 rounded-[12px] bg-white/15 border border-white/20 items-center justify-center active:opacity-70"
+            >
+              <ChevronLeft size={20} color="#fff" />
             </Pressable>
           </View>
           {/* `bottom-8`, not `bottom-3`: the content below pulls itself up with `-mt-4`, so the
@@ -142,7 +146,7 @@ export default function AppointmentDetailScreen() {
           </View>
         </LinearGradient>
 
-        <View className="px-3.5 -mt-4" style={{ paddingBottom: 100 }}>
+        <View className="px-3.5 -mt-4" style={{ paddingBottom: 120 + insets.bottom }}>
           <GlassSurface
             fallbackClassName="bg-white"
             glassRadius={12}
@@ -155,7 +159,12 @@ export default function AppointmentDetailScreen() {
                   <StatusBadge status={appointment.status} size="sm" />
                 </View>
                 <Text className="text-muted text-[12px]">{appointment.patientAge} years · {appointment.patientGender} · {appointment.condition}</Text>
-                <Text className="text-muted text-[12px]">📅 {appointment.dateLabel ?? "Scheduled"}, {appointment.timeLabel} {appointment.meridiem} · {getSessionTypeLabel(appointment.type)}</Text>
+                <View className="flex-row items-center" style={{ gap: 5 }}>
+                  <CalendarClock size={12} color={COLORS.muted} />
+                  <Text className="text-muted text-[12px]">
+                    {appointment.dateLabel ?? "Scheduled"}, {appointment.timeLabel} {appointment.meridiem} · {getSessionTypeLabel(appointment.type)}
+                  </Text>
+                </View>
               </View>
             </View>
             <View className="h-px bg-border my-3" />
@@ -164,9 +173,15 @@ export default function AppointmentDetailScreen() {
                 <Phone size={15} color={COLORS.accent} />
                 <Text className="text-accent font-bold text-[12px]">Call</Text>
               </Button>
-              <Button variant="secondary" size="small" fullWidth={false} style={{ flex: 1 }} onPress={() => showToast("Message service will be connected later")}>
-                <MessageSquare size={15} color={COLORS.accent} />
-                <Text className="text-accent font-bold text-[12px]">Message</Text>
+              <Button
+                variant="secondary"
+                size="small"
+                fullWidth={false}
+                style={{ flex: 1 }}
+                onPress={() => router.push(`/session/route?appointmentId=${appointment.id}`)}
+              >
+                <Navigation size={15} color={COLORS.accent} />
+                <Text className="text-accent font-bold text-[12px]">Directions</Text>
               </Button>
             </View>
           </GlassSurface>
@@ -176,7 +191,10 @@ export default function AppointmentDetailScreen() {
               <View className="h-[160px] relative" style={{ backgroundColor: COLORS.primarySoft }}>
                 <View className="absolute inset-0" style={{ backgroundColor: "rgba(0,64,96,0.06)" }} />
                 <View className="absolute top-2.5 left-2.5 bg-white rounded-lg px-2.5 py-1">
-                  <Text className="text-[12px] font-bold text-fg">📍 {appointment.address?.split(",")[0]}</Text>
+                  <View className="flex-row items-center" style={{ gap: 4 }}>
+                    <MapPinHouse size={12} color={COLORS.accent} />
+                    <Text className="text-[12px] font-bold text-fg">{appointment.address?.split(",")[0]}</Text>
+                  </View>
                 </View>
                 <View className="absolute bottom-2.5 right-2.5">
                   <Badge variant="info" tone="solid" size="sm" dot={false}>{appointment.distanceKm} km · {appointment.etaMin} min</Badge>
@@ -246,16 +264,44 @@ export default function AppointmentDetailScreen() {
         </View>
       </ScrollView>
 
-      <View className="absolute bottom-0 left-0 right-0 px-3.5 pb-4 pt-3 flex-row" style={{ gap: 10, backgroundColor: "rgba(233,246,254,0.95)" }}>
-        <Button variant="secondary" onPress={() => router.push(`/session/route?appointmentId=${appointment.id}`)}>
-          <Navigation size={16} color={COLORS.accent} />
-          <Text className="text-accent font-bold text-[14px]">Navigate</Text>
-        </Button>
-        <Button onPress={() => router.push(`/session/otp?appointmentId=${appointment.id}`)}>
-          <Play size={16} color="#fff" />
-          <Text className="text-white font-bold text-[14px]">Start session</Text>
-        </Button>
-      </View>
+      {/* The primary action follows the visit: start it, continue a running one, or nothing
+          left to do. Two buttons that always said "Navigate" and "Start session" meant a
+          therapist mid-treatment was offered a second OTP for a session already running. */}
+      {currentStep <= 4 && (
+        <View
+          className="absolute bottom-0 left-0 right-0 px-3.5 pt-3 flex-row bg-white border-t border-border"
+          style={{ gap: 10, paddingBottom: insets.bottom + 12, elevation: 12, shadowColor: COLORS.nav, shadowOpacity: 0.1, shadowRadius: 16 }}
+        >
+          {sessionActiveHere ? (
+            <Button variant="success" onPress={() => router.push("/session/active")}>
+              <Stethoscope size={16} color="#fff" />
+              <Text className="text-white font-bold text-[14px]">Continue treatment</Text>
+              <ArrowRight size={16} color="#fff" />
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="secondary"
+                fullWidth={false}
+                style={{ flex: 1 }}
+                onPress={() => router.push(`/session/otp?appointmentId=${appointment.id}`)}
+              >
+                <KeyRound size={16} color={COLORS.accent} />
+                <Text className="text-accent font-bold text-[14px]">Verify OTP</Text>
+              </Button>
+              <Button
+                fullWidth={false}
+                style={{ flex: 1.5 }}
+                onPress={() => router.push(`/session/route?appointmentId=${appointment.id}`)}
+              >
+                <Navigation size={16} color="#fff" />
+                <Text className="text-white font-bold text-[14px]">Start visit</Text>
+                <ArrowRight size={16} color="#fff" />
+              </Button>
+            </>
+          )}
+        </View>
+      )}
     </View>
   );
 }

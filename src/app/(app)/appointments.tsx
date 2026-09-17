@@ -1,15 +1,18 @@
-import { useMemo, useState } from "react";
-import { View, Text, ScrollView } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { View, Text, Pressable, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
-import { Calendar, TriangleAlert } from "lucide-react-native";
-import { TopBar } from "@/components/shared/TopBar";
+import { Bell, Calendar, TriangleAlert } from "lucide-react-native";
 import { AppointmentCard } from "@/components/appointments/AppointmentCard";
-import { Chip, Skeleton, EmptyState, ErrorState } from "@/components/ui";
+import { Skeleton, EmptyState, ErrorState, FLOATING_TAB_BAR_INSET } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
-import { useAuthStore } from "@/lib/stores/auth.store";
+import { useAppStore } from "@/lib/stores/app.store";
+import { useSessionStore } from "@/lib/stores/session.store";
 import { useSyncedQuery } from "@/lib/hooks/useSyncedQuery";
+import { useUnreadNotifications } from "@/lib/hooks/useUnreadNotifications";
 import { getCachedAppointments, cacheAppointments } from "@/lib/db/repositories";
+import { COLORS } from "@/constants/config";
 import type { Appointment, AppointmentStatus } from "@/types";
 
 type FilterId = "upcoming" | "completed" | "all";
@@ -24,61 +27,45 @@ const FILTERS: { id: FilterId; label: string; match: (s: AppointmentStatus) => b
   { id: "all", label: "All", match: () => true },
 ];
 
-/** A date heading, or one appointment. FlashList renders both from one flat array. */
-type Row = { kind: "header"; id: string; label: string; count: number } | { kind: "item"; id: string; appointment: Appointment };
-
-/**
- * Group appointments under date headings, newest-relevant first.
- *
- * The list was previously flat and undated, which was survivable only while every row was
- * assumed to be "today" — now that the backend returns a real course of treatment spanning
- * weeks, an ungrouped list gives no sense of when anything is. Within a day, rows are ordered
- * by clock time.
- */
-function buildRows(appointments: Appointment[]): Row[] {
-  const groups = new Map<string, { label: string; items: Appointment[] }>();
-
-  for (const a of appointments) {
-    const key = a.date ?? "undated";
-    const group = groups.get(key) ?? { label: a.dateLabel ?? "Scheduled", items: [] };
-    group.items.push(a);
-    groups.set(key, group);
-  }
-
-  const sortedKeys = [...groups.keys()].sort((a, b) => {
-    // Undated rows (a booking whose date the backend couldn't format) sink to the bottom
-    // rather than sorting unpredictably among real dates.
-    if (a === "undated") return 1;
-    if (b === "undated") return -1;
-    return a.localeCompare(b);
-  });
-
-  const rows: Row[] = [];
-  for (const key of sortedKeys) {
-    const group = groups.get(key);
-    if (!group) continue;
-    group.items.sort((x, y) => minutesOfDay(x) - minutesOfDay(y));
-    rows.push({ kind: "header", id: `h-${key}`, label: group.label, count: group.items.length });
-    for (const appointment of group.items) {
-      rows.push({ kind: "item", id: appointment.id, appointment });
-    }
-  }
-  return rows;
-}
-
 /** "06:00" + "PM" → minutes past midnight, so 12-hour times sort correctly. */
 function minutesOfDay(a: Appointment): number {
   const [h, m] = (a.timeLabel ?? "00:00").split(":").map((n) => parseInt(n, 10) || 0);
-  const hour12 = h % 12;
-  return (a.meridiem === "PM" ? hour12 + 12 : hour12) * 60 + m;
+  return ((h % 12) + (a.meridiem === "PM" ? 12 : 0)) * 60 + m;
+}
+
+/**
+ * Chronological key. Undated rows (a booking whose date the backend couldn't format) sort last
+ * either way rather than landing unpredictably among real dates.
+ */
+function sortKey(a: Appointment): string {
+  return a.date ? `${a.date}-${String(minutesOfDay(a)).padStart(4, "0")}` : "";
+}
+
+/**
+ * Upcoming reads soonest-first — the next visit is the one that matters. Completed reads
+ * newest-first, because the visit you just finished is the one you're looking for.
+ */
+function sortFor(filter: FilterId, list: Appointment[]): Appointment[] {
+  const newestFirst = filter === "completed";
+  return [...list].sort((x, y) => {
+    const a = sortKey(x);
+    const b = sortKey(y);
+    if (!a) return 1;
+    if (!b) return -1;
+    return newestFirst ? b.localeCompare(a) : a.localeCompare(b);
+  });
 }
 
 export default function AppointmentsScreen() {
   const router = useRouter();
-  const therapist = useAuthStore((s) => s.therapist);
+  const insets = useSafeAreaInsets();
+  // OfflineBanner already pads for the status bar when it's showing — same rule as TopBar.
+  const isOnline = useAppStore((s) => s.isOnline);
+  const unread = useUnreadNotifications();
+  const activeSessionAppointmentId = useSessionStore((s) => (s.isActive ? s.appointmentId : null));
   const [filter, setFilter] = useState<FilterId | null>(null);
 
-  const { data: appointments, isLoading, isError, refetch } = useSyncedQuery({
+  const { data: appointments, isLoading, isError, isFetching, refetch } = useSyncedQuery({
     queryKey: ["appointments"],
     queryFn: appointmentApi.list,
     readCache: getCachedAppointments,
@@ -97,71 +84,142 @@ export default function AppointmentsScreen() {
   }, [appointments]);
 
   /**
-   * "Upcoming" by default, but fall back to "All" when there is nothing upcoming and there IS
-   * history. The screen previously hard-defaulted to Upcoming, so a therapist whose bookings
-   * were all in the past — which is exactly the state of the dev/seed data — opened it to
-   * "No upcoming appointments" and reasonably concluded the screen was broken, while twelve
-   * real visits sat one unnoticed chip away. `filter` stays `null` until they choose, so this
-   * is a default rather than an override that would fight their selection.
+   * "Upcoming" by default, but "All" when nothing is upcoming and there IS history — otherwise a
+   * therapist whose bookings are all in the past opens the screen to an empty state and assumes
+   * it is broken. `filter` stays `null` until they choose, so this never fights their selection.
    */
   const activeFilter: FilterId =
     filter ?? (counts.upcoming === 0 && counts.all > 0 ? "all" : "upcoming");
 
   const rows = useMemo(() => {
     const active = FILTERS.find((f) => f.id === activeFilter) ?? FILTERS[0];
-    return buildRows((appointments ?? []).filter((a) => active.match(a.status)));
+    return sortFor(activeFilter, (appointments ?? []).filter((a) => active.match(a.status)));
   }, [appointments, activeFilter]);
+
+  /**
+   * "Start visit" jumps straight into the flow. A home visit starts at navigation; a clinic or
+   * online visit has nowhere to drive to, so it goes directly to OTP verification. A session
+   * already running for this booking resumes rather than asking for a second code.
+   */
+  const startVisit = useCallback(
+    (a: Appointment) => {
+      if (activeSessionAppointmentId === a.id) {
+        router.push("/session/active");
+      } else if (a.type === "home") {
+        router.push(`/session/route?appointmentId=${a.id}`);
+      } else {
+        router.push(`/session/otp?appointmentId=${a.id}`);
+      }
+    },
+    [router, activeSessionAppointmentId],
+  );
 
   return (
     <View className="flex-1 bg-bg">
-      <TopBar therapist={therapist} title="Appointments" subtitle="Your schedule" showNotification={false} />
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        className="flex-grow-0"
-        contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 10, gap: 8 }}
+      <View
+        className="bg-white px-5 pb-3 border-b"
+        style={{
+          paddingTop: (isOnline ? insets.top : 0) + 14,
+          borderBottomColor: "rgba(207,217,223,0.6)",
+          zIndex: 10,
+        }}
       >
-        {FILTERS.map((f) => (
-          <Chip key={f.id} selectable selected={activeFilter === f.id} onPress={() => setFilter(f.id)}>
-            {`${f.label}${counts[f.id] ? ` · ${counts[f.id]}` : ""}`}
-          </Chip>
-        ))}
-      </ScrollView>
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center" style={{ gap: 12 }}>
+            <View
+              className="w-10 h-10 rounded-[16px] items-center justify-center"
+              style={{ backgroundColor: COLORS.accent, shadowColor: COLORS.accent, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 }}
+            >
+              <Text className="text-white font-extrabold text-[16px]">P</Text>
+            </View>
+            <View>
+              <Text className="text-[18px] font-extrabold text-fg" style={{ letterSpacing: -0.3 }}>
+                Appointments
+              </Text>
+              <Text className="text-[11px] font-semibold text-muted mt-0.5">Your schedule</Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => router.push("/(app)/notifications")}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+            className="w-10 h-10 rounded-[16px] border items-center justify-center active:opacity-70"
+            style={{ backgroundColor: COLORS.bg, borderColor: "rgba(207,217,223,0.9)" }}
+          >
+            <Bell size={19} color={COLORS.fg} />
+            {unread > 0 && (
+              <View className="absolute -top-1 -right-1 h-[17px] min-w-[17px] px-[4px] rounded-full bg-danger border-2 border-white items-center justify-center">
+                <Text className="text-white text-[9px] font-bold">{unread > 99 ? "99+" : unread}</Text>
+              </View>
+            )}
+          </Pressable>
+        </View>
+
+        {/* Segmented tabs */}
+        <View
+          className="flex-row mt-4 p-1 rounded-[16px]"
+          style={{ gap: 6, backgroundColor: "rgba(0,64,96,0.06)" }}
+          accessibilityRole="tablist"
+        >
+          {FILTERS.map((f) => {
+            const selected = activeFilter === f.id;
+            return (
+              <Pressable
+                key={f.id}
+                onPress={() => setFilter(f.id)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                className="flex-1 py-2 px-2 rounded-[12px] flex-row items-center justify-center active:opacity-80"
+                style={{
+                  gap: 6,
+                  backgroundColor: selected ? COLORS.nav : "transparent",
+                  shadowColor: COLORS.nav,
+                  shadowOpacity: selected ? 0.2 : 0,
+                  shadowRadius: 4,
+                  elevation: selected ? 2 : 0,
+                }}
+              >
+                <Text className={`text-[12px] ${selected ? "text-white font-bold" : "text-muted font-semibold"}`}>
+                  {f.label}
+                </Text>
+                <View
+                  className="rounded-full px-1.5"
+                  style={{ backgroundColor: selected ? "rgba(255,255,255,0.2)" : "rgba(0,64,96,0.1)" }}
+                >
+                  <Text className={`text-[10px] font-bold ${selected ? "text-white" : "text-muted"}`}>
+                    {counts[f.id]}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
 
       <FlashList
         data={rows}
-        renderItem={({ item }) =>
-          item.kind === "header" ? (
-            <View className="flex-row items-center pt-2 pb-2.5" style={{ gap: 8 }}>
-              <Text className="text-[12px] font-extrabold text-fg uppercase" style={{ letterSpacing: 0.8 }}>
-                {item.label}
-              </Text>
-              <View className="h-px flex-1 bg-border" />
-              <Text className="text-muted text-[11px] font-bold">
-                {item.count} {item.count === 1 ? "visit" : "visits"}
-              </Text>
-            </View>
-          ) : (
-            <View className="mb-3">
-              <AppointmentCard
-                appointment={item.appointment}
-                onPress={() => router.push(`/session/appointment/${item.appointment.id}`)}
-              />
-            </View>
-          )
-        }
         keyExtractor={(item) => item.id}
-        // Date headings and appointment cards have very different heights; without this
-        // FlashList recycles one as the other and mis-measures the list.
-        getItemType={(item) => item.kind}
-        contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 96 }}
+        renderItem={({ item }) => (
+          <View className="mb-4">
+            <AppointmentCard
+              appointment={item}
+              onPress={() => router.push(`/session/appointment/${item.id}`)}
+              onStartVisit={() => startVisit(item)}
+              resumable={activeSessionAppointmentId === item.id}
+            />
+          </View>
+        )}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32 + FLOATING_TAB_BAR_INSET }}
+        refreshControl={
+          <RefreshControl refreshing={isFetching && !isLoading} onRefresh={refetch} tintColor={COLORS.accent} />
+        }
         ListEmptyComponent={
           isLoading ? (
-            <View style={{ gap: 10 }}>
-              <Skeleton height={130} radius={18} />
-              <Skeleton height={130} radius={18} />
-              <Skeleton height={130} radius={18} />
+            <View style={{ gap: 16 }}>
+              <Skeleton height={236} radius={24} />
+              <Skeleton height={236} radius={24} />
+              <Skeleton height={236} radius={24} />
             </View>
           ) : isError ? (
             <ErrorState
@@ -172,17 +230,14 @@ export default function AppointmentsScreen() {
               action={{ label: "Try again", onPress: () => refetch() }}
             />
           ) : (
-            // The copy names how many visits exist under the *other* filters, so an empty
-            // view can never be mistaken for a failed fetch — the previous wording said
-            // "you don't have any sessions scheduled" even when the account had a dozen.
+            // The copy names how many visits exist under the other tabs, so an empty view can
+            // never be mistaken for a failed fetch.
             <EmptyState
               icon={Calendar}
-              title={
-                activeFilter === "completed" ? "Nothing completed yet" : "No upcoming appointments"
-              }
+              title={activeFilter === "completed" ? "Nothing completed yet" : "No upcoming appointments"}
               description={
                 counts.all > 0
-                  ? `Nothing matches this filter right now. You have ${counts.all} ${
+                  ? `Nothing matches this tab right now. You have ${counts.all} ${
                       counts.all === 1 ? "visit" : "visits"
                     } in total — tap “All” to see them.`
                   : "You don't have any sessions yet. Add your availability so patients can book a clinic, home, or online slot."

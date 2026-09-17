@@ -117,6 +117,11 @@ export interface Appointment {
   time: string;
   timeLabel: string;
   meridiem: "AM" | "PM";
+  /**
+   * When the slot ends, as the server wrote it ("03:00 PM"). Absent on rows read back from the
+   * offline cache, which predates the field — display code falls back to start + slot length.
+   */
+  endTimeLabel?: string;
   /** ISO date of the session this row is showing, when known. */
   date?: string;
   /** "Today" / "Tomorrow" / "Wed, 12 Aug". */

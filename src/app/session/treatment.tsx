@@ -3,7 +3,6 @@ import { View, Text, Pressable, ScrollView, KeyboardAvoidingView, Platform } fro
 import { useRouter, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import * as Crypto from "expo-crypto";
 import {
   ChevronLeft,
@@ -37,6 +36,7 @@ import {
 } from "@/components/ui";
 import { BodyMap } from "@/components/session/BodyMap";
 import { DatePickerSheet } from "@/components/session/DatePickerSheet";
+import { VisitHeader } from "@/components/session/VisitFlow";
 import {
   Field,
   SegmentedField,
@@ -472,18 +472,29 @@ export default function TreatmentFormScreen() {
       className="flex-1 bg-bg"
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <LinearGradient colors={["#003554", "#004060"]} className="relative overflow-hidden" style={{ paddingTop: insets.top }}>
-        <View className="px-3.5 py-3 flex-row items-center justify-between">
-          <Pressable onPress={() => router.back()} className="w-10 h-10 rounded-md bg-white/90 items-center justify-center">
-            <ChevronLeft size={18} color={COLORS.accent} />
+      <VisitHeader
+        title="Treatment record"
+        step={3}
+        onBack={() => router.back()}
+        right={
+          <Pressable
+            onPress={handleSaveDraft}
+            accessibilityRole="button"
+            accessibilityLabel="Save draft"
+            className="h-10 px-3 rounded-[12px] bg-white/15 border border-white/20 flex-row items-center active:opacity-70"
+            style={{ gap: 6 }}
+          >
+            <Save size={15} color="#fff" />
+            <Text className="text-white text-[12px] font-bold">Save</Text>
           </Pressable>
-          <Text className="text-white text-[16px] font-extrabold">Clinical assessment</Text>
-          <Pressable onPress={handleSaveDraft} className="rounded-md bg-white/15 px-2.5 py-2">
-            <Save size={16} color="#fff" />
-          </Pressable>
+        }
+      >
+        {/* The form's own parts, nested under the visit rail on a slightly darker band so the two
+            progress indicators read as "where in the visit" and "where in this form". */}
+        <View className="pt-3" style={{ backgroundColor: "rgba(0,0,0,0.12)" }}>
+          <PhaseStepper phase={phase} onSelect={setPhase} missing={missingByPhase} />
         </View>
-        <PhaseStepper phase={phase} onSelect={setPhase} missing={missingByPhase} />
-      </LinearGradient>
+      </VisitHeader>
 
       <ScrollView
         className="flex-1"
@@ -1130,7 +1141,7 @@ function PhaseStepper({
         })}
       </View>
       <Text className="text-white text-[13px] font-bold mt-2">
-        Step {phase + 1} of {PHASES.length} · {PHASES[phase].label}
+        Part {phase + 1} of {PHASES.length} · {PHASES[phase].label}
       </Text>
     </View>
   );

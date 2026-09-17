@@ -527,12 +527,16 @@ function parseTimeRange(range?: string): {
  time: string;
  timeLabel: string;
  meridiem: "AM" | "PM";
+ /** The slot's end as sent ("03:00 PM"), or undefined when the range had no second half. */
+ endLabel?: string;
 } {
- const start = (range ?? "").split(" - ")[0]?.trim() ?? "";
+ const [startPart, endPart] = (range ?? "").split(" - ");
+ const start = startPart?.trim() ?? "";
  const [clock, ap] = start.split(/\s+/);
  const meridiem: "AM" | "PM" = ap === "AM" ? "AM" : "PM";
  const time = clock || "00:00";
- return { time, timeLabel: time, meridiem };
+ const end = endPart?.trim();
+ return { time, timeLabel: time, meridiem, endLabel: end && /^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(end) ? end.toUpperCase() : undefined };
 }
 
 /** Parse a display date like "July 26, 2026" → Date, or null when unparseable. */
@@ -639,7 +643,7 @@ export function paymentStatusFor(rawStatus?: string): PaymentStatus {
 /** Map a booking list row. Returns null for non-appointment rows (therapist-blocked slots). */
 export function mapBookingToAppointment(b: BackendBooking): Appointment | null {
  if ((b.status ?? "").toUpperCase() === "BLOCKED") return null;
- const { time, timeLabel, meridiem } = parseTimeRange(b.lastSessionTime);
+ const { time, timeLabel, meridiem, endLabel } = parseTimeRange(b.lastSessionTime);
  const status = mapBookingStatus(b.status);
  const date = parseDisplayDate(b.lastSessionDate);
  return {
@@ -651,6 +655,7 @@ export function mapBookingToAppointment(b: BackendBooking): Appointment | null {
   time,
   timeLabel,
   meridiem,
+  endTimeLabel: endLabel,
   date: date ? toIsoDate(date) : undefined,
   dateLabel: date ? scheduleDateLabel(date) : b.lastSessionDate,
   type: parseSessionType(b.treatmentMode),
@@ -782,6 +787,7 @@ export function mapBookingDetailToAppointment(
   time: shown?.timeLabel ?? "00:00",
   timeLabel: shown?.timeLabel ?? "00:00",
   meridiem: shown?.meridiem ?? "AM",
+  endTimeLabel: parseTimeRange(shown?.scheduledTime).endLabel,
   date: shown?.date,
   dateLabel: shown?.dateLabel,
   type: parseSessionType(d.mode),

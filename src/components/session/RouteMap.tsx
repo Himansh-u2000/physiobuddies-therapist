@@ -3,7 +3,7 @@ import { View, Text } from "react-native";
 import Constants from "expo-constants";
 import { useFocusEffect } from "expo-router";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
-import { MapPin, Home, Navigation } from "lucide-react-native";
+import { House, Navigation } from "lucide-react-native";
 import { COLORS } from "@/constants/config";
 import { formatDistance, haversineKm, regionFor, type LatLng } from "@/lib/utils/geo";
 
@@ -48,6 +48,8 @@ const MAPS_ENABLED = Boolean(
 );
 
 const MAP_HEIGHT = 240;
+/** Shorter than the live map: there is less to see, and the address card sits right below. */
+const FALLBACK_HEIGHT = 210;
 
 export function RouteMap({ patient, therapist, patientName, address }: RouteMapProps) {
   /**
@@ -126,7 +128,7 @@ export function RouteMap({ patient, therapist, patientName, address }: RouteMapP
               className="w-8 h-8 rounded-full items-center justify-center border-[2.5px] border-white"
               style={{ backgroundColor: COLORS.danger }}
             >
-              <Home size={15} color="#fff" />
+              <House size={15} color="#fff" />
             </View>
           </View>
         </Marker>
@@ -170,16 +172,15 @@ export function RouteMap({ patient, therapist, patientName, address }: RouteMapP
 }
 
 /**
- * What shows when a map cannot honestly be drawn.
+ * What shows when a map cannot honestly be drawn — today, always: no Maps SDK key is configured.
  *
- * Deliberately not map-shaped: no fake terrain, no dots. It states the address, which is the
- * information the therapist actually needs, and says plainly that the preview is unavailable so
- * nobody reports a blank map as a bug. "Open Maps" sits below this in the screen either way, and
- * that path works from the address alone.
+ * Deliberately not a fake map: the grid is plainly decorative (no streets, no second dot, no
+ * implied position), and the one pin stands for the destination the text beside it names. It
+ * says outright that the preview is off so nobody reports a blank map as a bug, and points at
+ * the Directions button, which works from the address alone.
  */
 function RouteMapFallback({
   patientName,
-  address,
   hasPoint,
   distanceKm,
 }: {
@@ -189,31 +190,46 @@ function RouteMapFallback({
   distanceKm: number | null;
 }) {
   return (
-    <View
-      style={{ height: MAP_HEIGHT, backgroundColor: "#e8f0f8" }}
-      className="items-center justify-center px-6"
-    >
-      <View
-        className="w-11 h-11 rounded-full items-center justify-center mb-2.5"
-        style={{ backgroundColor: "rgba(0,64,96,0.08)" }}
-      >
-        <MapPin size={20} color={COLORS.accent} />
-      </View>
-      <Text className="text-[13px] font-bold text-fg text-center">
-        {patientName}&apos;s home
-      </Text>
-      {address ? (
-        <Text className="text-muted text-[11.5px] text-center mt-1">{address}</Text>
-      ) : null}
-      {distanceKm !== null && (
-        <View className="flex-row items-center mt-2" style={{ gap: 6 }}>
-          <Navigation size={12} color={COLORS.accent} />
-          <Text className="text-[11px] font-bold text-fg">{formatDistance(distanceKm)}</Text>
+    <View style={{ height: FALLBACK_HEIGHT, backgroundColor: "#dcecf6" }} className="overflow-hidden items-center justify-center">
+      {/* Decorative grid */}
+      {Array.from({ length: 9 }).map((_, i) => (
+        <View
+          key={`v${i}`}
+          className="absolute top-0 bottom-0"
+          style={{ left: `${(i + 1) * 10}%`, width: 1, backgroundColor: "rgba(0,64,96,0.07)" }}
+        />
+      ))}
+      {Array.from({ length: 6 }).map((_, i) => (
+        <View
+          key={`h${i}`}
+          className="absolute left-0 right-0"
+          style={{ top: (i + 1) * 28, height: 1, backgroundColor: "rgba(0,64,96,0.07)" }}
+        />
+      ))}
+      {/* Soft halo + pin */}
+      <View className="absolute w-40 h-40 rounded-full" style={{ backgroundColor: "rgba(0,64,96,0.05)" }} />
+      <View className="absolute w-24 h-24 rounded-full" style={{ backgroundColor: "rgba(0,64,96,0.07)" }} />
+      <View className="items-center" style={{ marginTop: -18 }}>
+        <View
+          className="w-14 h-14 rounded-full items-center justify-center border-[3px] border-white"
+          style={{ backgroundColor: COLORS.accent, shadowColor: COLORS.nav, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 }}
+        >
+          <House size={24} color="#fff" strokeWidth={2.2} />
         </View>
-      )}
-      <Text className="text-muted text-[10.5px] text-center mt-2">
-        {hasPoint ? "Map preview unavailable" : "No location pin on this booking"} — use Open Maps
-        below for directions.
+        <View className="w-2.5 h-2.5 rotate-45 -mt-1.5" style={{ backgroundColor: COLORS.accent }} />
+        <View className="mt-2 bg-white/95 rounded-full px-3 py-1 flex-row items-center" style={{ gap: 6 }}>
+          <Text className="text-[12px] font-bold text-fg">{patientName}&apos;s home</Text>
+          {distanceKm !== null && (
+            <>
+              <View className="w-1 h-1 rounded-full bg-muted/50" />
+              <Navigation size={11} color={COLORS.accent} />
+              <Text className="text-[11.5px] font-bold text-accent">{formatDistance(distanceKm)}</Text>
+            </>
+          )}
+        </View>
+      </View>
+      <Text className="absolute bottom-9 text-muted text-[10.5px] text-center px-6">
+        {hasPoint ? "Map preview unavailable" : "No map pin on this booking"} · tap Directions to navigate
       </Text>
     </View>
   );
