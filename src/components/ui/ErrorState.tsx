@@ -29,7 +29,7 @@ interface ErrorStateProps {
 export function ErrorState({ icon: Icon, tone = "danger", title, badge, description, action, secondaryAction }: ErrorStateProps) {
   const t = TONE[tone];
   return (
-    <View className="bg-surface-strong border-[1.5px] border-border rounded-lg p-4 mt-2">
+    <View className="bg-card border-[1.5px] border-border rounded-lg p-4 mt-2">
       <View className="flex-row items-center mb-2.5" style={{ gap: 12 }}>
         <View className={`w-11 h-11 rounded-[14px] items-center justify-center ${t.bg}`}>
           <Icon size={20} color={t.color} />

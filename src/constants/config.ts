@@ -1,5 +1,8 @@
 export const COLORS = {
-  bg: "#e9f6fe",
+  /** Page background. */
+  bg: "#ffffff",
+  /** Card surface — the brand light blue, formerly the page colour. */
+  card: "#eaf5fd",
   surface: "#f5fffe",
   surfaceStrong: "#ffffff",
   fg: "#021526",

@@ -84,7 +84,7 @@ export default function PatientProfileScreen() {
         </LinearGradient>
 
         <View className="px-3.5 -mt-3" style={{ gap: 12 }}>
-          <View className="bg-white border border-border rounded-lg p-4" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 20, elevation: 5 }}>
+          <View className="bg-card border border-border rounded-lg p-4" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 20, elevation: 5 }}>
             <View className="flex-row" style={{ gap: 10 }}>
               <Button variant="secondary" fullWidth={false} style={{ flex: 1 }} onPress={callPatient}>
                 <Phone size={16} color={COLORS.accent} />
@@ -129,7 +129,7 @@ export default function PatientProfileScreen() {
 
 function InfoCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
-    <View className="bg-white border border-border rounded-lg p-4" style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.08, shadowRadius: 14, elevation: 3 }}>
+    <View className="bg-card border border-border rounded-lg p-4" style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.08, shadowRadius: 14, elevation: 3 }}>
       <View className="flex-row items-center" style={{ gap: 8 }}>
         <View className="w-9 h-9 rounded-[12px] bg-primary-soft items-center justify-center">{icon}</View>
         <Text className="text-[15px] font-extrabold text-fg">{title}</Text>

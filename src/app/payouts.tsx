@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import {
-  ChevronLeft,
   Wallet,
   ArrowDownCircle,
   Clock,
@@ -21,6 +20,7 @@ import { formatCurrency } from "@/lib/utils/format";
 import type { Payout } from "@/types";
 import { GlassSurface } from "@/components/ui/Glass";
 
+import { AppHeader } from "@/components/shared/AppHeader";
 /**
  * Wallet balance + payout history + a request form (GET /therapist/wallet, GET /therapist/payout,
  * POST /therapist/payout/request).
@@ -78,20 +78,7 @@ export default function PayoutsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <GlassSurface
-        fallbackClassName="bg-white"
-        className="px-4 pb-3 flex-row items-center border-b border-border"
-        style={{ paddingTop: insets.top + 10, gap: 8 }}
-      >
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={8}
-          className="w-8 h-8 items-center justify-center"
-        >
-          <ChevronLeft size={22} color={COLORS.fg} />
-        </Pressable>
-        <Text className="text-[16px] font-extrabold text-fg">Payouts</Text>
-      </GlassSurface>
+      <AppHeader title="Payouts" subtitle="Wallet & withdrawals" onBack={() => router.back()} />
 
       <ScrollView
         className="flex-1"
@@ -233,7 +220,7 @@ function PayoutRow({ payout }: { payout: Payout }) {
   const Icon = meta.Icon;
   return (
     <GlassSurface
-      fallbackClassName="bg-white"
+      fallbackClassName="bg-card"
       glassRadius={12}
       className="border border-border rounded-md p-3 flex-row items-center"
       style={{ gap: 10, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}

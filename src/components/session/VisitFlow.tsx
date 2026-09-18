@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Check, ChevronLeft, MapPinned, KeyRound, Stethoscope, ClipboardCheck } from "lucide-react-native";
 import { COLORS } from "@/constants/config";
+import { useLightStatusBar } from "@/components/shared/AppHeader";
 
 /**
  * The home-visit flow, as the therapist moves through it:
@@ -99,6 +100,7 @@ interface VisitHeaderProps {
  */
 export function VisitHeader({ title, step, onBack, right, children }: VisitHeaderProps) {
   const insets = useSafeAreaInsets();
+  useLightStatusBar();
   return (
     <LinearGradient
       colors={["#003554", "#00506f"]}
@@ -171,11 +173,11 @@ export function VisitFooter({ children, hint }: { children: ReactNode; hint?: st
   );
 }
 
-/** A white card on the page background, the unit every visit screen is built from. */
+/** A card on the page background, the unit every visit screen is built from. */
 export function VisitCard({ children, className = "", padded = true }: { children: ReactNode; className?: string; padded?: boolean }) {
   return (
     <View
-      className={`bg-white border border-border rounded-lg ${padded ? "p-4" : ""} ${className}`}
+      className={`bg-card border border-border rounded-lg ${padded ? "p-4" : ""} ${className}`}
       style={{ shadowColor: COLORS.nav, shadowOpacity: 0.08, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 3 }}
     >
       {children}

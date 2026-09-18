@@ -12,7 +12,7 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, MessagesSquare, Plus, TriangleAlert, X, Check, Trash2 } from "lucide-react-native";
+import { MessagesSquare, Plus, TriangleAlert, X, Check, Trash2 } from "lucide-react-native";
 import { Button, BottomSheet, Input, TextArea, Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { contentApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
@@ -20,6 +20,7 @@ import { COLORS } from "@/constants/config";
 import type { TherapistFaq } from "@/types";
 import { GlassSurface } from "@/components/ui/Glass";
 
+import { AppHeader, HeaderAction } from "@/components/shared/AppHeader";
 /** Enough to answer properly; long enough that hitting it is a sign to split the FAQ in two. */
 const QUESTION_MAX = 160;
 const ANSWER_MAX = 600;
@@ -122,31 +123,16 @@ export default function FaqsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <GlassSurface
-        fallbackClassName="bg-white"
-        className="px-4 pb-3 flex-row items-center border-b border-border"
-        style={{ paddingTop: insets.top + 10, gap: 8 }}
-      >
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={8}
-          className="w-8 h-8 items-center justify-center"
-        >
-          <ChevronLeft size={22} color={COLORS.fg} />
-        </Pressable>
-        <Text className="text-[16px] font-extrabold text-fg flex-1">FAQs</Text>
-        {!composerOpen && faqs.length > 0 && (
-          <Pressable
-            onPress={openCreate}
-            hitSlop={8}
-            className="flex-row items-center active:opacity-70"
-            style={{ gap: 4 }}
-          >
-            <Plus size={16} color={COLORS.accent} />
-            <Text className="text-accent text-[12.5px] font-bold">Add</Text>
-          </Pressable>
-        )}
-      </GlassSurface>
+      <AppHeader
+        title="FAQs"
+        subtitle="Answers patients see on your profile"
+        onBack={() => router.back()}
+        right={
+          !composerOpen && faqs.length > 0 ? (
+            <HeaderAction label="Add" icon={<Plus size={15} color="#fff" />} onPress={openCreate} />
+          ) : undefined
+        }
+      />
 
       <KeyboardAvoidingView
         className="flex-1"
@@ -167,7 +153,7 @@ export default function FaqsScreen() {
         >
           {!composerOpen && (
             <GlassSurface
-              fallbackClassName="bg-white"
+              fallbackClassName="bg-card"
               glassRadius={12}
               className="border border-border rounded-md p-4"
               style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
@@ -190,7 +176,7 @@ export default function FaqsScreen() {
 
           {composerOpen && (
             <View
-              className="bg-white border-[1.5px] border-accent/25 rounded-md p-4"
+              className="bg-card border-[1.5px] border-accent/25 rounded-md p-4"
               style={{
                 gap: 14,
                 shadowColor: COLORS.nav,
@@ -383,7 +369,7 @@ function Counter({ value, max }: { value: number; max: number }) {
 function FaqCard({ faq, onDelete }: { faq: TherapistFaq; onDelete?: () => void }) {
   return (
     <GlassSurface
-      fallbackClassName="bg-white"
+      fallbackClassName="bg-card"
       glassRadius={12}
       className="border border-border rounded-md p-3.5"
       style={{ gap: 8, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}

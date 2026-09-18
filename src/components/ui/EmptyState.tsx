@@ -31,7 +31,7 @@ interface EmptyStateProps {
 export function EmptyState({ icon: Icon, tone = "accent", title, description, action, secondaryAction }: EmptyStateProps) {
   const t = TONE[tone];
   return (
-    <View className="bg-surface-strong border-[1.5px] border-border rounded-lg px-5 py-7 items-center mt-2">
+    <View className="bg-card border-[1.5px] border-border rounded-lg px-5 py-7 items-center mt-2">
       <View className={`w-16 h-16 rounded-[20px] items-center justify-center mb-3.5 ${t.bg}`}>
         <Icon size={28} color={t.color} />
       </View>

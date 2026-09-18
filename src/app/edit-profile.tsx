@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   View,
   Text,
-  Pressable,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
@@ -10,14 +9,14 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, Info } from "lucide-react-native";
+import { Info } from "lucide-react-native";
 import { Input, PhoneInput, Button, Avatar } from "@/components/ui";
 import { therapistApi } from "@/lib/api/services";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
-import { GlassSurface } from "@/components/ui/Glass";
 
+import { AppHeader } from "@/components/shared/AppHeader";
 /** Format 10 raw digits the way `PhoneInput` displays them ("98765 43210"). */
 function formatPhone(raw: string): string {
   const d = raw.replace(/\D/g, "").slice(0, 10);
@@ -68,20 +67,7 @@ export default function EditProfileScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <GlassSurface
-        fallbackClassName="bg-white"
-        className="px-4 pb-3 flex-row items-center border-b border-border"
-        style={{ paddingTop: insets.top + 10, gap: 8 }}
-      >
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={8}
-          className="w-8 h-8 items-center justify-center"
-        >
-          <ChevronLeft size={22} color={COLORS.fg} />
-        </Pressable>
-        <Text className="text-[16px] font-extrabold text-fg">Edit profile</Text>
-      </GlassSurface>
+      <AppHeader title="Edit profile" onBack={() => router.back()} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}

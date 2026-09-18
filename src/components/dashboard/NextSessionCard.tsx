@@ -25,7 +25,7 @@ export function NextSessionCard({ appointment }: { appointment: Appointment }) {
   return (
     <Pressable
       onPress={() => router.push(`/session/appointment/${appointment.id}`)}
-      className="bg-white rounded-[20px] overflow-hidden active:opacity-95"
+      className="bg-card rounded-[20px] overflow-hidden active:opacity-95"
       style={{ shadowColor: COLORS.nav, shadowOpacity: 0.14, shadowRadius: 22, elevation: 5 }}
     >
       <LinearGradient

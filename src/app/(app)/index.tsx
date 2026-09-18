@@ -2,7 +2,7 @@ import { View, Text, ScrollView, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { ServerCrash } from "lucide-react-native";
-import { TopBar } from "@/components/shared/TopBar";
+import { AppHeader } from "@/components/shared/AppHeader";
 import { HeroCard } from "@/components/dashboard/HeroCard";
 import { NextSessionCard } from "@/components/dashboard/NextSessionCard";
 import { ResumeSessionCard } from "@/components/dashboard/ResumeSessionCard";
@@ -48,7 +48,7 @@ export default function DashboardScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <TopBar therapist={therapist} />
+      <AppHeader title="Physiobuddies" subtitle="Therapist Partner" />
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerClassName="px-3.5 pt-3 pb-24">
         {statsLoading ? (
           <DashboardSkeleton />
@@ -128,7 +128,7 @@ export default function DashboardScreen() {
                 </Pressable>
               </View>
               <GlassSurface
-                fallbackClassName="bg-white"
+                fallbackClassName="bg-card"
                 glassRadius={12}
                 className="border border-border rounded-md p-4">
                 <View className="flex-row items-start justify-between mb-4" style={{ gap: 8 }}>

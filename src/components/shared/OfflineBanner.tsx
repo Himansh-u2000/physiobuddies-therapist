@@ -6,7 +6,7 @@ import { useAppStore } from "@/lib/stores/app.store";
 /**
  * Global, persistent connectivity banner (prototype's offline `.status-card`, adapted to an
  * ambient top bar since it must sit above every screen, not just one). Renders above the
- * safe area itself — `TopBar` skips its own top inset while this is visible so the two
+ * safe area itself — `AppHeader` skips its own top inset while this is visible so the two
  * don't double-pad the status bar gap.
  */
 export function OfflineBanner() {

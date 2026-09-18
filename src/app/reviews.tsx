@@ -1,14 +1,15 @@
-import { View, Text, Pressable, ScrollView } from "react-native";
+import { View, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, Star, MessageSquareQuote, TriangleAlert } from "lucide-react-native";
+import { Star, MessageSquareQuote, TriangleAlert } from "lucide-react-native";
 import { Avatar, Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { therapistApi } from "@/lib/api/services";
 import { COLORS } from "@/constants/config";
 import type { TherapistReview } from "@/types";
 import { GlassSurface } from "@/components/ui/Glass";
 
+import { AppHeader } from "@/components/shared/AppHeader";
 /** Patient reviews for the signed-in therapist (GET /therapist/:id/reviews). */
 export default function ReviewsScreen() {
   const router = useRouter();
@@ -27,20 +28,7 @@ export default function ReviewsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <GlassSurface
-        fallbackClassName="bg-white"
-        className="px-4 pb-3 flex-row items-center border-b border-border"
-        style={{ paddingTop: insets.top + 10, gap: 8 }}
-      >
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={8}
-          className="w-8 h-8 items-center justify-center"
-        >
-          <ChevronLeft size={22} color={COLORS.fg} />
-        </Pressable>
-        <Text className="text-[16px] font-extrabold text-fg">Reviews</Text>
-      </GlassSurface>
+      <AppHeader title="Reviews" subtitle="What your patients say" onBack={() => router.back()} />
 
       <ScrollView
         className="flex-1"
@@ -71,7 +59,7 @@ export default function ReviewsScreen() {
         ) : (
           <>
             <GlassSurface
-              fallbackClassName="bg-white"
+              fallbackClassName="bg-card"
               glassRadius={12}
               className="border border-border rounded-md p-4 flex-row items-center"
               style={{
@@ -120,7 +108,7 @@ export default function ReviewsScreen() {
 function ReviewCard({ review }: { review: TherapistReview }) {
   return (
     <GlassSurface
-      fallbackClassName="bg-white"
+      fallbackClassName="bg-card"
       glassRadius={12}
       className="border border-border rounded-md p-3.5"
       style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}

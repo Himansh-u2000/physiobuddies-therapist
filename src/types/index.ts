@@ -594,22 +594,6 @@ export interface AppNotification {
   actionUrl?: string;
 }
 
-/**
- * The six opt-in flags behind `GET`/`PATCH /notifications/preferences`.
- *
- * Only *promotional* and *reminder* traffic is gated. Transactional notifications (a booking
- * landing, a cancellation, a payout) are always delivered and deliberately have no switch —
- * so the settings screen must not imply otherwise.
- */
-export interface NotificationPreferences {
-  promotionalEmail: boolean;
-  promotionalInApp: boolean;
-  promotionalPush: boolean;
-  reminderEmail: boolean;
-  reminderInApp: boolean;
-  reminderPush: boolean;
-}
-
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;

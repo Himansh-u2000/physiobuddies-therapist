@@ -9,7 +9,7 @@ interface CardProps extends ViewProps {
 
 export function Card({ children, variant = "default", pressable, onPress, className, style, ...props }: CardProps) {
   const variantClass =
-    variant === "flat" ? "bg-surface-strong" : variant === "tint" ? "bg-tint" : "bg-surface-strong";
+    variant === "flat" ? "bg-card" : variant === "tint" ? "bg-tint" : "bg-card";
 
   const baseClass = `${variantClass} border border-border rounded-md p-3.5 ${variant === "default" ? "shadow-sm" : ""}`;
 

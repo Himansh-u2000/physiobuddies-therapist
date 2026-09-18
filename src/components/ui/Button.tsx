@@ -132,7 +132,7 @@ export function Button({
     <Pressable
       disabled={disabled}
       className={`${s.height} ${s.radius} ${s.px} ${fullWidth ? "w-full" : ""} ${
-        outlineDisabled ? "bg-bg border-border" : `${v.bg} ${v.border}`
+        outlineDisabled ? "bg-muted/10 border-border" : `${v.bg} ${v.border}`
       } border shadow-btn items-center justify-center flex-row gap-2${extra}`}
       style={pressStyle}
       {...props}

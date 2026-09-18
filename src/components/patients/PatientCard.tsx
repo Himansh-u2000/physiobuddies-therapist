@@ -88,7 +88,7 @@ export function PatientCard({ patient, onPress }: PatientCardProps) {
       ]
         .filter(Boolean)
         .join(", ")}
-      className="bg-white border border-border rounded-[18px] mb-3 active:opacity-90 overflow-hidden flex-row"
+      className="bg-card border border-border rounded-[18px] mb-3 active:opacity-90 overflow-hidden flex-row"
       style={{ shadowColor: COLORS.nav, shadowOpacity: 0.08, shadowRadius: 14, elevation: 3 }}
     >
       <View style={{ width: 4, backgroundColor: recency?.color ?? COLORS.border }} />

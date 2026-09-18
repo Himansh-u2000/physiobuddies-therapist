@@ -8,10 +8,10 @@ import { useAuthStore } from "@/lib/stores/auth.store";
  * The unread badge number, from `GET /notifications/unread-count`.
  *
  * Deliberately its own endpoint rather than a `filter(n => !n.read).length` over the list: the
- * bell sits in `TopBar` on nearly every screen, and counting locally would mean every one of
+ * bell sits in `AppHeader` on nearly every screen, and counting locally would mean every one of
  * them pulling 50 notification rows to render a dot.
  *
- * Every `TopBar` instance shares the one query key, so the mounted copies dedupe into a single
+ * Every `AppHeader` instance shares the one query key, so the mounted copies dedupe into a single
  * request. Polling is the only freshness signal available while the app is open — the count has
  * no push of its own — but an arriving notification also invalidates `["notifications"]`, which
  * matches this key by prefix and refreshes it immediately.

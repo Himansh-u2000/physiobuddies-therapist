@@ -6,7 +6,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarOff,
   CalendarX2,
-  ChevronLeft,
   Info,
   TriangleAlert,
 } from "lucide-react-native";
@@ -15,8 +14,8 @@ import { availabilityApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
 import { formatDateLabel, toIsoDate } from "@/lib/utils/format";
-import { GlassSurface } from "@/components/ui/Glass";
 
+import { AppHeader } from "@/components/shared/AppHeader";
 /**
  * Time off.
  *
@@ -136,25 +135,7 @@ export default function LeaveScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <GlassSurface
-        fallbackClassName="bg-white"
-        className="px-4 pb-2.5 border-b border-border"
-        style={{ paddingTop: insets.top + 10 }}
-      >
-        <View className="flex-row items-center" style={{ gap: 8 }}>
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={8}
-            className="w-8 h-8 items-center justify-center active:opacity-70"
-          >
-            <ChevronLeft size={22} color={COLORS.fg} />
-          </Pressable>
-          <View className="flex-1">
-            <Text className="text-[16px] font-extrabold text-fg">Time off</Text>
-            <Text className="text-muted text-[11px]">Block a range of days you can&apos;t work</Text>
-          </View>
-        </View>
-      </GlassSurface>
+      <AppHeader title="Time off" subtitle="Block a range of days you can't work" onBack={() => router.back()} />
 
       <ScrollView
         className="flex-1"
@@ -163,7 +144,7 @@ export default function LeaveScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View
-          className="bg-white border border-border rounded-lg p-3.5"
+          className="bg-card border border-border rounded-lg p-3.5"
           style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 10, elevation: 2 }}
         >
           <Text className="text-[14px] font-extrabold text-fg">When are you away?</Text>
@@ -272,7 +253,7 @@ export default function LeaveScreen() {
         </View>
 
         <View
-          className="bg-white border border-border rounded-lg p-3.5"
+          className="bg-card border border-border rounded-lg p-3.5"
           style={{ gap: 10, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 10, elevation: 2 }}
         >
           <Text className="text-[14px] font-extrabold text-fg">Upcoming days off</Text>

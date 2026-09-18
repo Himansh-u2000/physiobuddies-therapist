@@ -82,7 +82,7 @@ function RootLayoutNav() {
   // user, so registering before there is one has nothing to attach to. `registerDeviceToken`
   // resolves with a state rather than throwing, so a transient failure clears the guard and the
   // next auth change retries; a settled outcome (registered, denied, or no Firebase config in
-  // this build) does not, and the notification settings screen is where it can be retried.
+  // this build) does not — the next sign-in or app launch tries again.
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || notificationRegistrationStarted.current) return;
     notificationRegistrationStarted.current = true;
@@ -108,7 +108,6 @@ function RootLayoutNav() {
         <Stack.Screen name="leave" />
         <Stack.Screen name="reviews" />
         <Stack.Screen name="change-password" />
-        <Stack.Screen name="notification-settings" />
         <Stack.Screen name="network-log" />
         <Stack.Screen name="delete-account" options={{ presentation: "modal" }} />
         <Stack.Screen name="+not-found" />

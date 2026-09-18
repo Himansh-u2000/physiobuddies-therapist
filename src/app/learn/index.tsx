@@ -3,13 +3,13 @@ import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, BookOpen, TriangleAlert, Eye, Clock3 } from "lucide-react-native";
+import { BookOpen, TriangleAlert, Eye, Clock3 } from "lucide-react-native";
 import { Badge, Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { blogApi } from "@/lib/api/services";
 import { COLORS } from "@/constants/config";
 import type { BlogPost } from "@/types";
-import { GlassSurface } from "@/components/ui/Glass";
 
+import { AppHeader } from "@/components/shared/AppHeader";
 /**
  * Patient-education library — platform-authored articles from `GET /blog`.
  *
@@ -30,16 +30,7 @@ export default function LearnScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <GlassSurface
-        fallbackClassName="bg-white"
-        className="px-4 pb-3 flex-row items-center border-b border-border"
-        style={{ paddingTop: insets.top + 10, gap: 8 }}
-      >
-        <Pressable onPress={() => router.back()} hitSlop={8} className="w-8 h-8 items-center justify-center">
-          <ChevronLeft size={22} color={COLORS.fg} />
-        </Pressable>
-        <Text className="text-[16px] font-extrabold text-fg flex-1">Learn</Text>
-      </GlassSurface>
+      <AppHeader title="Learn" subtitle="Articles to read & share" onBack={() => router.back()} />
 
       <ScrollView
         className="flex-1"
@@ -89,7 +80,7 @@ function PostCard({ post, onPress }: { post: BlogPost; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
-      className="bg-white rounded-[16px] overflow-hidden active:opacity-95"
+      className="bg-card rounded-[16px] overflow-hidden active:opacity-95"
       style={{ shadowColor: COLORS.nav, shadowOpacity: 0.1, shadowRadius: 14, elevation: 3 }}
     >
       {post.thumbnail && (

@@ -503,7 +503,7 @@ export default function TreatmentFormScreen() {
         contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 28 }}
       >
         <GlassSurface
-          fallbackClassName="bg-white"
+          fallbackClassName="bg-card"
           glassRadius={12}
           className="border border-border rounded-md p-3 flex-row items-center mb-2"
           style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
@@ -1189,7 +1189,7 @@ function AttachmentThumb({ file, token }: { file: SessionPhotoRow; token: string
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <GlassSurface
-      fallbackClassName="bg-white"
+      fallbackClassName="bg-card"
       glassRadius={12}
       className="border border-border rounded-md p-3.5 mt-2" style={{ gap: 16 }}>
       <Text className="text-[14px] font-bold text-accent">{title}</Text>

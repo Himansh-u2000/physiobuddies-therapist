@@ -10,13 +10,14 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, Eye, EyeOff, ShieldCheck } from "lucide-react-native";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react-native";
 import { Button, Input } from "@/components/ui";
 import { therapistApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
 import { GlassSurface } from "@/components/ui/Glass";
 
+import { AppHeader } from "@/components/shared/AppHeader";
 /** Change the account password (PATCH /user/password). */
 export default function ChangePasswordScreen() {
   const router = useRouter();
@@ -52,20 +53,7 @@ export default function ChangePasswordScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <GlassSurface
-        fallbackClassName="bg-white"
-        className="px-4 pb-3 flex-row items-center border-b border-border"
-        style={{ paddingTop: insets.top + 10, gap: 8 }}
-      >
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={8}
-          className="w-8 h-8 items-center justify-center"
-        >
-          <ChevronLeft size={22} color={COLORS.fg} />
-        </Pressable>
-        <Text className="text-[16px] font-extrabold text-fg">Change password</Text>
-      </GlassSurface>
+      <AppHeader title="Change password" onBack={() => router.back()} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -79,7 +67,7 @@ export default function ChangePasswordScreen() {
           contentContainerStyle={{ paddingBottom: insets.bottom + 32, gap: 14 }}
         >
           <GlassSurface
-            fallbackClassName="bg-white"
+            fallbackClassName="bg-card"
             glassRadius={12}
             className="border border-border rounded-md p-3.5 flex-row items-center"
             style={{ gap: 12 }}

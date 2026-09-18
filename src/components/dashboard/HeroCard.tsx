@@ -20,7 +20,7 @@ interface HeroCardProps {
  */
 export function HeroCard({ therapist, stats }: HeroCardProps) {
   return (
-    <View className="bg-surface-strong border border-border rounded-md p-4 overflow-hidden relative" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 28, elevation: 6 }}>
+    <View className="bg-card border border-border rounded-md p-4 overflow-hidden relative" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 28, elevation: 6 }}>
       <View className="flex-row items-center" style={{ gap: 12 }}>
         <Avatar name={therapist?.name} url={therapist?.avatarUrl} size={96} radius={22} />
         <View className="flex-1">

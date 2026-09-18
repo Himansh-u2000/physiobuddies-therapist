@@ -5,8 +5,6 @@ import {
   Star,
   Shield,
   FileText,
-  Bell,
-  BellRing,
   Lock,
   HelpCircle,
   LogOut,
@@ -28,7 +26,7 @@ import {
   MonitorSmartphone,
   Radio,
 } from "lucide-react-native";
-import { TopBar } from "@/components/shared/TopBar";
+import { AppHeader } from "@/components/shared/AppHeader";
 import { Avatar, BottomSheet, Button } from "@/components/ui";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useAppStore } from "@/lib/stores/app.store";
@@ -169,20 +167,9 @@ export default function ProfileScreen() {
     {
       title: "Account",
       items: [
-        {
-          icon: Bell,
-          label: "Notifications",
-          sub: "Your alerts and updates",
-          color: COLORS.info,
-          href: "/(app)/notifications",
-        },
-        {
-          icon: BellRing,
-          label: "Notification settings",
-          sub: "Push, email and reminder preferences",
-          color: COLORS.accent,
-          href: "/notification-settings",
-        },
+        // No notification rows (removed 2026-08-21, and again 2026-09-18 after a merge restored
+        // them): the bell in every screen's header is the way in to notifications, and the
+        // preference toggles screen was removed along with its API calls.
         {
           // Named after what this handset actually offers — a fingerprint-only Android must not
           // be labelled "Face ID". `biometricNaming` is the single source for that wording.
@@ -214,10 +201,10 @@ export default function ProfileScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <TopBar therapist={therapist} title="Profile" subtitle="Account & settings" showNotification={false} />
+      <AppHeader title="Profile" subtitle="Account & settings" />
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerClassName="px-3.5 pt-3 pb-24">
         <GlassSurface
-          fallbackClassName="bg-white"
+          fallbackClassName="bg-card"
           glassRadius={12}
           className="border border-border rounded-md p-4 items-center relative" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
           <Pressable
@@ -283,7 +270,7 @@ export default function ProfileScreen() {
                 <Pressable
                   key={s.label}
                   onPress={() => router.push(s.href)}
-                  className={`border border-border rounded-md p-3.5 flex-row items-center active:opacity-80 ${GLASS_ENABLED ? "" : "bg-white"}`}
+                  className={`border border-border rounded-md p-3.5 flex-row items-center active:opacity-80 ${GLASS_ENABLED ? "" : "bg-card"}`}
                   style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
                 >
                   <GlassLayer radius={12} />
@@ -311,7 +298,7 @@ export default function ProfileScreen() {
 
           <Pressable
             onPress={handleSupport}
-            className={`border border-border rounded-md p-3.5 flex-row items-center active:opacity-80 ${GLASS_ENABLED ? "" : "bg-white"}`}
+            className={`border border-border rounded-md p-3.5 flex-row items-center active:opacity-80 ${GLASS_ENABLED ? "" : "bg-card"}`}
             style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
           >
             <GlassLayer radius={12} />
@@ -330,7 +317,7 @@ export default function ProfileScreen() {
           {NETWORK_LOG_ENABLED && (
             <Pressable
               onPress={() => router.push("/network-log")}
-              className={`border border-border rounded-md p-3.5 flex-row items-center active:opacity-80 ${GLASS_ENABLED ? "" : "bg-white"}`}
+              className={`border border-border rounded-md p-3.5 flex-row items-center active:opacity-80 ${GLASS_ENABLED ? "" : "bg-card"}`}
               style={{ gap: 12, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
             >
               <GlassLayer radius={12} />

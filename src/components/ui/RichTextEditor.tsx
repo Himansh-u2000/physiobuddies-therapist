@@ -224,7 +224,7 @@ export function RichTextEditor({
                 onPress={() => apply(key)}
                 accessibilityRole="button"
                 accessibilityLabel={a11y}
-                className="w-8 h-8 rounded-[8px] items-center justify-center active:bg-bg"
+                className="w-8 h-8 rounded-[8px] items-center justify-center active:bg-card"
                 hitSlop={2}
               >
                 <Icon size={17} color={COLORS.fg} />
@@ -235,7 +235,7 @@ export function RichTextEditor({
             onPress={() => apply("undo")}
             accessibilityRole="button"
             accessibilityLabel="Undo"
-            className="w-8 h-8 rounded-[8px] items-center justify-center active:bg-bg"
+            className="w-8 h-8 rounded-[8px] items-center justify-center active:bg-card"
             hitSlop={2}
           >
             <Undo2 size={16} color={COLORS.muted} />
@@ -244,7 +244,7 @@ export function RichTextEditor({
             onPress={() => apply("redo")}
             accessibilityRole="button"
             accessibilityLabel="Redo"
-            className="w-8 h-8 rounded-[8px] items-center justify-center active:bg-bg"
+            className="w-8 h-8 rounded-[8px] items-center justify-center active:bg-card"
             hitSlop={2}
           >
             <Redo2 size={16} color={COLORS.muted} />

@@ -13,7 +13,6 @@ import type {
  Transaction,
  EarningsSummary,
  AppNotification,
- NotificationPreferences,
  ActivityEntry,
  AuthTokens,
  BlogPost,
@@ -1186,47 +1185,7 @@ export const notificationApi = {
  async unregisterPushToken(token: string): Promise<void> {
   await client.delete(`/notifications/device-token/${encodeURIComponent(token)}`);
  },
-
- /**
-  * Opt-in flags for promotional and reminder traffic. Transactional notifications are always
-  * sent and are not represented here — see `NotificationPreferences`.
-  */
- async getPreferences(): Promise<NotificationPreferences> {
-  const { data } = await client.get<Partial<NotificationPreferences>>(
-   "/notifications/preferences"
-  );
-  return normalizePreferences(data);
- },
-
- /** PATCH is partial: send only the flags that changed. Echoes the full updated set back. */
- async updatePreferences(
-  patch: Partial<NotificationPreferences>
- ): Promise<NotificationPreferences> {
-  const { data } = await client.patch<Partial<NotificationPreferences>>(
-   "/notifications/preferences",
-   patch
-  );
-  return normalizePreferences(data);
- },
 };
-
-/**
- * Default every flag to `true` when absent. The server always sends all six, but a missing key
- * must not render as "opted out" — that would show a therapist their reminders are off and,
- * worse, let a toggle write that false back on the next PATCH.
- */
-function normalizePreferences(
- data: Partial<NotificationPreferences> | undefined
-): NotificationPreferences {
- return {
-  promotionalEmail: data?.promotionalEmail ?? true,
-  promotionalInApp: data?.promotionalInApp ?? true,
-  promotionalPush: data?.promotionalPush ?? true,
-  reminderEmail: data?.reminderEmail ?? true,
-  reminderInApp: data?.reminderInApp ?? true,
-  reminderPush: data?.reminderPush ?? true,
- };
-}
 
 /**
  * `POST /treatment-session/:id/add-docs`, verified live 2026-08-18. The server also echoes

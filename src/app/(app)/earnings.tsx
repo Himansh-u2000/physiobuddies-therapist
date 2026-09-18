@@ -12,12 +12,11 @@ import {
   Wallet,
   TriangleAlert,
 } from "lucide-react-native";
-import { TopBar } from "@/components/shared/TopBar";
+import { AppHeader } from "@/components/shared/AppHeader";
 import { DailyEarningsChart } from "@/components/charts/DailyEarningsChart";
 import { WeeklyTrendChart } from "@/components/charts/WeeklyTrendChart";
 import { Skeleton, EmptyState, ErrorState } from "@/components/ui";
 import { earningsApi } from "@/lib/api/services";
-import { useAuthStore } from "@/lib/stores/auth.store";
 import { useSyncedQuery } from "@/lib/hooks/useSyncedQuery";
 import { getCachedEarningsSummary, cacheEarningsSummary, getCachedTransactions, cacheTransactions } from "@/lib/db/repositories";
 import { COLORS } from "@/constants/config";
@@ -27,7 +26,6 @@ import { GlassSurface } from "@/components/ui/Glass";
 
 export default function EarningsScreen() {
   const router = useRouter();
-  const therapist = useAuthStore((s) => s.therapist);
   const {
     data: earnings,
     isLoading: earningsLoading,
@@ -59,7 +57,7 @@ export default function EarningsScreen() {
 
   const renderItem = ({ item }: { item: Transaction }) => (
     <GlassSurface
-      fallbackClassName="bg-white"
+      fallbackClassName="bg-card"
       glassRadius={12}
       className="border border-border rounded-md p-3 mb-2.5 flex-row items-center" style={{ gap: 10, shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
       <View className="w-10 h-10 rounded-[12px] items-center justify-center" style={{ backgroundColor: item.status === "paid" ? "rgba(35,145,73,0.1)" : item.status === "pending" ? "rgba(209,154,18,0.1)" : "rgba(207,66,56,0.1)" }}>
@@ -77,7 +75,7 @@ export default function EarningsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <TopBar therapist={therapist} title="Earnings" subtitle="Payouts & transactions" showNotification={false} />
+      <AppHeader title="Earnings" subtitle="Payouts & transactions" />
       <FlashList
         data={transactions ?? []}
         renderItem={renderItem}
@@ -170,7 +168,7 @@ export default function EarningsScreen() {
 function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
     <View
-      className="bg-white border border-border rounded-md p-4"
+      className="bg-card border border-border rounded-md p-4"
       style={{ shadowColor: COLORS.nav, shadowOpacity: 0.06, shadowRadius: 12, elevation: 2 }}
     >
       <Text className="text-[14px] font-extrabold text-fg">{title}</Text>

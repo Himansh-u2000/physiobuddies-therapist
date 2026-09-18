@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Pressable, ActivityIndicator } from "react-nati
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpenText, ChevronRight, PencilLine, Plus, TriangleAlert, Trash2 } from "lucide-react-native";
-import { TopBar } from "@/components/shared/TopBar";
+import { AppHeader } from "@/components/shared/AppHeader";
 import {
   Button,
   BottomSheet,
@@ -13,7 +13,6 @@ import {
   FLOATING_TAB_BAR_INSET,
 } from "@/components/ui";
 import { contentApi } from "@/lib/api/services";
-import { useAuthStore } from "@/lib/stores/auth.store";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
 import type { TherapistArticle } from "@/types";
@@ -45,7 +44,6 @@ function stripMarkdown(md: string): string {
 
 export default function ArticlesScreen() {
   const router = useRouter();
-  const therapist = useAuthStore((s) => s.therapist);
   const showToast = useAppStore((s) => s.showToast);
   const queryClient = useQueryClient();
 
@@ -89,12 +87,7 @@ export default function ArticlesScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <TopBar
-        therapist={therapist}
-        title="Articles"
-        subtitle="Health content"
-        showNotification={false}
-      />
+      <AppHeader title="Articles" subtitle="Health content" />
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
@@ -102,7 +95,7 @@ export default function ArticlesScreen() {
         contentContainerStyle={{ gap: 12, paddingBottom: 32 + FLOATING_TAB_BAR_INSET }}
       >
         <GlassSurface
-          fallbackClassName="bg-white"
+          fallbackClassName="bg-card"
           glassRadius={12}
           className="border border-border rounded-md p-4"
           style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
@@ -221,7 +214,7 @@ function ArticleCard({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`Read ${article.title}`}
-      className={`border border-border rounded-md p-3.5 active:opacity-90 ${GLASS_ENABLED ? "" : "bg-white"}`}
+      className={`border border-border rounded-md p-3.5 active:opacity-90 ${GLASS_ENABLED ? "" : "bg-card"}`}
       style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}
     >
       <GlassLayer radius={12} />

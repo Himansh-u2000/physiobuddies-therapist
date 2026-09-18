@@ -244,7 +244,7 @@ export default function ActiveSessionScreen() {
             onPress={handleOpenCamera}
             disabled={uploadingPhoto}
             accessibilityRole="button"
-            className="flex-1 rounded-lg border border-border bg-white p-3.5 active:opacity-80"
+            className="flex-1 rounded-lg border border-border bg-card p-3.5 active:opacity-80"
             style={{ gap: 8, shadowColor: COLORS.nav, shadowOpacity: 0.08, shadowRadius: 14, elevation: 3 }}
           >
             <View
@@ -267,7 +267,7 @@ export default function ActiveSessionScreen() {
           <Pressable
             onPress={() => router.push("/session/treatment")}
             accessibilityRole="button"
-            className="flex-1 rounded-lg border border-border bg-white p-3.5 active:opacity-80"
+            className="flex-1 rounded-lg border border-border bg-card p-3.5 active:opacity-80"
             style={{ gap: 8, shadowColor: COLORS.nav, shadowOpacity: 0.08, shadowRadius: 14, elevation: 3 }}
           >
             <View className="w-10 h-10 rounded-[12px] items-center justify-center" style={{ backgroundColor: COLORS.primarySoft }}>

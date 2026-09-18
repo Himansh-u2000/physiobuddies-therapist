@@ -3,11 +3,10 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { FlashList } from "@shopify/flash-list";
 import { Users, TriangleAlert, SearchX } from "lucide-react-native";
-import { TopBar } from "@/components/shared/TopBar";
+import { AppHeader } from "@/components/shared/AppHeader";
 import { PatientCard } from "@/components/patients/PatientCard";
 import { EmptyState, ErrorState, Input, Skeleton } from "@/components/ui";
 import { patientApi } from "@/lib/api/services";
-import { useAuthStore } from "@/lib/stores/auth.store";
 import { useSyncedQuery } from "@/lib/hooks/useSyncedQuery";
 import { getCachedPatients, cachePatients } from "@/lib/db/repositories";
 import { debounce } from "@/lib/utils/format";
@@ -15,7 +14,6 @@ import type { Patient } from "@/types";
 
 export default function PatientsScreen() {
   const router = useRouter();
-  const therapist = useAuthStore((s) => s.therapist);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -43,7 +41,7 @@ export default function PatientsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <TopBar therapist={therapist} title="Patients" subtitle="Your patient records" showNotification={false} />
+      <AppHeader title="Patients" subtitle="Your patient records" />
       <View className="px-3.5 pt-3">
         <Input
           placeholder="Search patients..."

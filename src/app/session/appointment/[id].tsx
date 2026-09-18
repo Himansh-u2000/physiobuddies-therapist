@@ -156,7 +156,7 @@ export default function AppointmentDetailScreen() {
 
         <View className="px-3.5 -mt-4" style={{ paddingBottom: 120 + insets.bottom }}>
           <GlassSurface
-            fallbackClassName="bg-white"
+            fallbackClassName="bg-card"
             glassRadius={12}
             className="border border-border rounded-md p-4" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 28, elevation: 6 }}>
             <View className="flex-row items-start" style={{ gap: 14 }}>
@@ -208,7 +208,7 @@ export default function AppointmentDetailScreen() {
           </GlassSurface>
 
           {appointment.distanceKm && (
-            <View className="mt-3 bg-white border border-border rounded-lg overflow-hidden" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
+            <View className="mt-3 bg-card border border-border rounded-lg overflow-hidden" style={{ shadowColor: COLORS.nav, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 }}>
               <View className="h-[160px] relative" style={{ backgroundColor: COLORS.primarySoft }}>
                 <View className="absolute inset-0" style={{ backgroundColor: "rgba(0,64,96,0.06)" }} />
                 <View className="absolute top-2.5 left-2.5 bg-white rounded-lg px-2.5 py-1">
@@ -236,7 +236,7 @@ export default function AppointmentDetailScreen() {
           )}
 
           <GlassSurface
-            fallbackClassName="bg-white"
+            fallbackClassName="bg-card"
             glassRadius={12}
             className="mt-3 border border-border rounded-md p-3.5">
             <View className="flex-row items-center justify-between mb-2.5">
@@ -263,7 +263,7 @@ export default function AppointmentDetailScreen() {
 
           {appointment.notes && (
             <GlassSurface
-              fallbackClassName="bg-white"
+              fallbackClassName="bg-card"
               glassRadius={12}
               className="mt-3 border border-border rounded-md p-3.5" style={{ gap: 10 }}>
               <Text className="text-[14px] font-bold text-fg">Patient notes & history</Text>
@@ -362,7 +362,7 @@ function AppointmentDetailSkeleton() {
 
       <View className="px-3.5 -mt-4" style={{ gap: 12 }}>
         <GlassSurface
-          fallbackClassName="bg-white"
+          fallbackClassName="bg-card"
           glassRadius={12}
           className="border border-border rounded-md p-4"
           style={{ gap: 14, shadowColor: COLORS.nav, shadowOpacity: 0.12, shadowRadius: 28, elevation: 6 }}
@@ -387,7 +387,7 @@ function AppointmentDetailSkeleton() {
         </GlassSurface>
 
         <GlassSurface
-          fallbackClassName="bg-white"
+          fallbackClassName="bg-card"
           glassRadius={12}
           className="border border-border rounded-md p-3.5" style={{ gap: 14 }}>
           <View className="flex-row items-center justify-between">

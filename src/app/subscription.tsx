@@ -3,7 +3,7 @@ import { View, Text, Pressable, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { ChevronLeft, Check, Crown, Sparkles, Info } from "lucide-react-native";
+import { Check, Crown, Sparkles, Info } from "lucide-react-native";
 import { Button } from "@/components/ui";
 import { subscriptionApi } from "@/lib/api/services";
 import type { SubscriptionPlan } from "@/lib/subscription/plans";
@@ -12,6 +12,7 @@ import { COLORS } from "@/constants/config";
 import { formatCurrency } from "@/lib/utils/format";
 import { GlassSurface } from "@/components/ui/Glass";
 
+import { AppHeader } from "@/components/shared/AppHeader";
 /**
  * Therapist subscription plans (Quarterly / Half-Yearly / Annual). Plan selection is real; the
  * "Subscribe" action is intentionally disabled while `SUBSCRIPTION_PAYMENT_ENABLED` is false —
@@ -41,20 +42,7 @@ export default function SubscriptionScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <GlassSurface
-        fallbackClassName="bg-white"
-        className="px-4 pb-3 flex-row items-center border-b border-border"
-        style={{ paddingTop: insets.top + 10, gap: 8 }}
-      >
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={8}
-          className="w-8 h-8 items-center justify-center"
-        >
-          <ChevronLeft size={22} color={COLORS.fg} />
-        </Pressable>
-        <Text className="text-[16px] font-extrabold text-fg">Subscription</Text>
-      </GlassSurface>
+      <AppHeader title="Subscription" subtitle="Your plan & membership" onBack={() => router.back()} />
 
       <ScrollView
         className="flex-1"
@@ -95,7 +83,7 @@ export default function SubscriptionScreen() {
               <Pressable
                 key={plan.id}
                 onPress={() => setSelectedId(plan.id)}
-                className={`bg-white rounded-lg p-4 border-2 ${
+                className={`bg-card rounded-lg p-4 border-2 ${
                   isSelected ? "border-accent" : "border-border"
                 } active:opacity-90`}
                 style={{

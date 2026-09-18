@@ -150,7 +150,7 @@ export function RescheduleSheet({ visible, onClose, sessionId, appointmentId, pa
         {current && (
           <View
             className="flex-row items-center rounded-[12px] px-3 py-2.5 mt-3"
-            style={{ gap: 8, backgroundColor: COLORS.bg }}
+            style={{ gap: 8, backgroundColor: COLORS.card }}
           >
             <CalendarClock size={15} color={COLORS.muted} />
             <Text className="text-muted text-[12px]">Currently</Text>

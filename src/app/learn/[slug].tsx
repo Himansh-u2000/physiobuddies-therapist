@@ -14,7 +14,6 @@ import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ChevronLeft,
   TriangleAlert,
   Eye,
   Clock3,
@@ -31,6 +30,7 @@ import { relativeCommentTime } from "@/lib/utils/format";
 import type { BlogPost } from "@/types";
 import { GlassSurface } from "@/components/ui/Glass";
 
+import { AppHeader, HeaderAction } from "@/components/shared/AppHeader";
 const COMMENT_MAX = 500;
 
 /**
@@ -130,23 +130,13 @@ export default function LearnPostScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <GlassSurface
-        fallbackClassName="bg-white"
-        className="px-4 pb-3 flex-row items-center border-b border-border"
-        style={{ paddingTop: insets.top + 10, gap: 8 }}
-      >
-        <Pressable onPress={() => router.back()} hitSlop={8} className="w-8 h-8 items-center justify-center">
-          <ChevronLeft size={22} color={COLORS.fg} />
-        </Pressable>
-        <Text className="text-[16px] font-extrabold text-fg flex-1" numberOfLines={1}>
-          {post?.title ?? "Article"}
-        </Text>
-        {post && (
-          <Pressable onPress={share} hitSlop={8} className="w-8 h-8 items-center justify-center active:opacity-70">
-            <Share2 size={18} color={COLORS.accent} />
-          </Pressable>
-        )}
-      </GlassSurface>
+      <AppHeader
+        title={post?.title ?? "Article"}
+        onBack={() => router.back()}
+        right={
+          post ? <HeaderAction accessibilityLabel="Share article" icon={<Share2 size={17} color="#fff" />} onPress={share} /> : undefined
+        }
+      />
 
       {/* The comment composer sits at the bottom of a long scroll, so the keyboard has to lift
           it rather than cover it. */}
@@ -269,7 +259,7 @@ export default function LearnPostScreen() {
               </Text>
 
               <GlassSurface
-                fallbackClassName="bg-white"
+                fallbackClassName="bg-card"
                 glassRadius={12}
                 className="border border-border rounded-md p-3" style={{ gap: 10 }}>
                 <TextArea
@@ -307,7 +297,7 @@ export default function LearnPostScreen() {
               {post.reviews && post.reviews.length > 0 ? (
                 post.reviews.map((review) => (
                   <GlassSurface
-                    fallbackClassName="bg-white"
+                    fallbackClassName="bg-card"
                     glassRadius={12}
                     key={review.id}
                     className="border border-border rounded-md p-3"

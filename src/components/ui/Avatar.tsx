@@ -18,11 +18,11 @@ interface AvatarProps {
  * This was the largest single RAM cost in the app. React Native's `Image` on Android decodes the
  * source at its FULL pixel size, whatever size it is drawn at. Avatars arrive from uploads, and a
  * gallery photo is typically 4000×3000 — a ~48 MB ARGB bitmap to paint a 36px circle. The avatar
- * sits in the TopBar on nearly every screen and repeats down the patient and appointment lists,
+ * sits in the header on nearly every screen and repeats down the patient and appointment lists,
  * so on a 3–4 GB phone this alone was enough to get the app killed in the background.
  *
  * `expo-image` (Glide on Android) downsamples to the laid-out size before decoding, so the same
- * photo costs a few hundred KB at avatar size. `memory-disk` caching means the TopBar's copy is
+ * photo costs a few hundred KB at avatar size. `memory-disk` caching means the header's copy is
  * decoded once and reused as screens change, instead of re-fetched per mount.
  *
  * Every other image in the app already used `expo-image`; this was the one holdout.

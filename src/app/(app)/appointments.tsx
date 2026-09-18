@@ -1,17 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
 import { View, Text, Pressable, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
-import { LinearGradient } from "expo-linear-gradient";
-import { Bell, Calendar, TriangleAlert } from "lucide-react-native";
+import { Calendar, TriangleAlert } from "lucide-react-native";
 import { AppointmentCard } from "@/components/appointments/AppointmentCard";
+import { AppHeader } from "@/components/shared/AppHeader";
 import { Skeleton, EmptyState, ErrorState, FLOATING_TAB_BAR_INSET } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
-import { useAppStore } from "@/lib/stores/app.store";
 import { useSessionStore } from "@/lib/stores/session.store";
 import { useSyncedQuery } from "@/lib/hooks/useSyncedQuery";
-import { useUnreadNotifications } from "@/lib/hooks/useUnreadNotifications";
 import { getCachedAppointments, cacheAppointments } from "@/lib/db/repositories";
 import { COLORS } from "@/constants/config";
 import type { Appointment, AppointmentStatus } from "@/types";
@@ -59,10 +56,6 @@ function sortFor(filter: FilterId, list: Appointment[]): Appointment[] {
 
 export default function AppointmentsScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  // OfflineBanner already pads for the status bar when it's showing — same rule as TopBar.
-  const isOnline = useAppStore((s) => s.isOnline);
-  const unread = useUnreadNotifications();
   const activeSessionAppointmentId = useSessionStore((s) => (s.isActive ? s.appointmentId : null));
   const [filter, setFilter] = useState<FilterId | null>(null);
 
@@ -118,63 +111,7 @@ export default function AppointmentsScreen() {
   return (
     // White page, light-blue cards — see AppointmentCard's "Surfaces" note.
     <View className="flex-1 bg-white">
-      {/*
-        The brand navy, not white. With a white page and light-blue cards, a white header made the
-        top of the screen read as empty space rather than as a bar — and it is the same gradient the
-        session-detail and dashboard headers already use, so the app stays of a piece. Every control
-        inside is re-toned for a dark ground: white ink, translucent-white surfaces.
-      */}
-      <LinearGradient
-        colors={["#003554", "#004060"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        className="px-5 pb-3 rounded-b-[22px]"
-        style={{
-          paddingTop: (isOnline ? insets.top : 0) + 14,
-          zIndex: 10,
-          shadowColor: COLORS.nav,
-          shadowOpacity: 0.18,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 4 },
-          elevation: 6,
-        }}
-      >
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center" style={{ gap: 12 }}>
-            <View
-              className="w-10 h-10 rounded-[16px] items-center justify-center border"
-              style={{ backgroundColor: "rgba(255,255,255,0.14)", borderColor: "rgba(255,255,255,0.22)" }}
-            >
-              <Text className="text-white font-extrabold text-[16px]">P</Text>
-            </View>
-            <View>
-              <Text className="text-[18px] font-extrabold text-white" style={{ letterSpacing: -0.3 }}>
-                Appointments
-              </Text>
-              <Text className="text-[11px] font-semibold text-white/70 mt-0.5">Your schedule</Text>
-            </View>
-          </View>
-          <Pressable
-            onPress={() => router.push("/(app)/notifications")}
-            hitSlop={6}
-            accessibilityRole="button"
-            accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
-            className="w-10 h-10 rounded-[16px] border items-center justify-center active:opacity-70"
-            style={{ backgroundColor: "rgba(255,255,255,0.14)", borderColor: "rgba(255,255,255,0.22)" }}
-          >
-            <Bell size={19} color="#fff" />
-            {unread > 0 && (
-              // The badge keeps a navy ring, not a white one — it sits on the gradient now.
-              <View
-                className="absolute -top-1 -right-1 h-[17px] min-w-[17px] px-[4px] rounded-full bg-danger border-2 items-center justify-center"
-                style={{ borderColor: COLORS.nav }}
-              >
-                <Text className="text-white text-[9px] font-bold">{unread > 99 ? "99+" : unread}</Text>
-              </View>
-            )}
-          </Pressable>
-        </View>
-
+      <AppHeader title="Appointments" subtitle="Your schedule">
         {/* Segmented tabs */}
         <View
           className="flex-row mt-4 p-1 rounded-[16px]"
@@ -218,7 +155,7 @@ export default function AppointmentsScreen() {
             );
           })}
         </View>
-      </LinearGradient>
+      </AppHeader>
 
       <FlashList
         data={rows}

@@ -5,7 +5,10 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        bg: "#e9f6fe",
+        // Page background. White since 2026-09-18 — cards carry the brand light blue instead.
+        bg: "#ffffff",
+        // Card surface: the brand light blue that used to be the page colour.
+        card: "#eaf5fd",
         surface: "#f5fffe",
         "surface-strong": "#ffffff",
         fg: "#021526",

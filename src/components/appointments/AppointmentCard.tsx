@@ -19,7 +19,7 @@ import type { Appointment, AppointmentStatus } from "@/types";
  *
  * ## Surfaces
  *
- * The list screen is white and the card carries the app's light-blue surface (`COLORS.bg`) — the
+ * The list screen is white and the card carries the app's light-blue surface (`COLORS.card`) — the
  * reverse of the original, so cards read as objects on a page rather than holes in a tinted one.
  * The nesting alternates on purpose: blue card → white slot band → blue chips. Each layer contrasts
  * with the one it sits on; keeping the old white-on-white or blue-on-blue pairings would make the
@@ -134,7 +134,7 @@ export function AppointmentCard({
       style={{
         // A solid fill under the gradient: iOS needs one to draw the shadow efficiently (without it
         // the shadow is traced around every child), and Android needs one for `elevation` at all.
-        backgroundColor: COLORS.bg,
+        backgroundColor: COLORS.card,
         borderWidth: 1,
         borderColor: CARD_BORDER,
         shadowColor: COLORS.nav,
@@ -227,7 +227,7 @@ export function AppointmentCard({
         <View className="flex-row items-center flex-1" style={{ gap: 10 }}>
           <View
             className="w-8 h-8 rounded-[12px] items-center justify-center border"
-            style={{ backgroundColor: COLORS.bg, borderColor: "rgba(0,64,96,0.08)" }}
+            style={{ backgroundColor: COLORS.card, borderColor: "rgba(0,64,96,0.08)" }}
           >
             <Clock3 size={15} color={iconColor} />
           </View>
@@ -246,7 +246,7 @@ export function AppointmentCard({
         </View>
         <View
           className="flex-row items-center rounded-[12px] border px-2.5 py-1.5"
-          style={{ gap: 5, backgroundColor: COLORS.bg, borderColor: "rgba(0,64,96,0.08)" }}
+          style={{ gap: 5, backgroundColor: COLORS.card, borderColor: "rgba(0,64,96,0.08)" }}
         >
           <ModeIcon size={13} color={iconColor} />
           <Text className="text-[12px] font-bold" style={{ color: settled ? COLORS.muted : COLORS.fg }}>

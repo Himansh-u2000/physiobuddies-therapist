@@ -23,7 +23,7 @@ export function QuickActions() {
           <Pressable
             key={action.label}
             onPress={() => router.push(action.route as never)}
-            className="w-[31.5%] min-h-[92px] border border-border rounded-[14px] bg-white items-center justify-center active:opacity-80"
+            className="w-[31.5%] min-h-[92px] border border-border rounded-[14px] bg-card items-center justify-center active:opacity-80"
             style={{ gap: 7, paddingVertical: 12, shadowColor: COLORS.nav, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 }}
           >
             <View className="w-10 h-10 rounded-[12px] items-center justify-center" style={{ backgroundColor: action.bg }}>

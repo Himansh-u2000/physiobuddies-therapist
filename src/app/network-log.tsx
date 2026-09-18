@@ -3,7 +3,6 @@ import { View, Text, Pressable, ScrollView, Share } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  ChevronLeft,
   ChevronDown,
   ChevronRight,
   Radio,
@@ -24,6 +23,7 @@ import { useAppStore } from "@/lib/stores/app.store";
 import { API_BASE_URL, COLORS, NETWORK_LOG_ENABLED } from "@/constants/config";
 import { GlassSurface } from "@/components/ui/Glass";
 
+import { AppHeader, HeaderAction } from "@/components/shared/AppHeader";
 /**
  * Network log — the phone's version of Chrome DevTools' Network tab.
  *
@@ -51,29 +51,23 @@ export default function NetworkLogScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <GlassSurface
-        fallbackClassName="bg-white"
-        className="px-4 pb-3 flex-row items-center border-b border-border"
-        style={{ paddingTop: insets.top + 10, gap: 8 }}
-      >
-        <Pressable onPress={() => router.back()} hitSlop={8} className="w-8 h-8 items-center justify-center">
-          <ChevronLeft size={22} color={COLORS.fg} />
-        </Pressable>
-        <Text className="text-[16px] font-extrabold text-fg flex-1">Network log</Text>
-        <Pressable onPress={share} hitSlop={8} className="w-8 h-8 items-center justify-center active:opacity-70">
-          <Share2 size={18} color={COLORS.accent} />
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            clearNetLog();
-            setExpanded(null);
-          }}
-          hitSlop={8}
-          className="w-8 h-8 items-center justify-center active:opacity-70"
-        >
-          <Trash2 size={18} color={COLORS.danger} />
-        </Pressable>
-      </GlassSurface>
+      <AppHeader
+        title="Network log"
+        onBack={() => router.back()}
+        right={
+          <View className="flex-row" style={{ gap: 8 }}>
+            <HeaderAction accessibilityLabel="Share log" icon={<Share2 size={17} color="#fff" />} onPress={share} />
+            <HeaderAction
+              accessibilityLabel="Clear log"
+              icon={<Trash2 size={17} color="#fff" />}
+              onPress={() => {
+                clearNetLog();
+                setExpanded(null);
+              }}
+            />
+          </View>
+        }
+      />
 
       <ScrollView
         className="flex-1"
@@ -81,7 +75,7 @@ export default function NetworkLogScreen() {
         contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: insets.bottom + 24, gap: 10 }}
       >
         <GlassSurface
-          fallbackClassName="bg-white"
+          fallbackClassName="bg-card"
           glassRadius={12}
           className="border border-border rounded-md p-3">
           <Text className="text-[11px] font-bold text-muted uppercase" style={{ letterSpacing: 0.5 }}>
@@ -141,7 +135,7 @@ function LogRow({
 
   return (
     <GlassSurface
-      fallbackClassName="bg-white"
+      fallbackClassName="bg-card"
       glassRadius={12}
       className="border border-border rounded-md overflow-hidden">
       <Pressable onPress={onToggle} className="px-3.5 py-3 flex-row items-center active:opacity-80" style={{ gap: 10 }}>

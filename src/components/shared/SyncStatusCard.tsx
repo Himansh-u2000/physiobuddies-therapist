@@ -68,7 +68,7 @@ export function SyncStatusCard() {
 
   return (
     <GlassSurface
-      fallbackClassName="bg-white"
+      fallbackClassName="bg-card"
       glassRadius={12}
       className="border border-border rounded-md p-3 mt-3" style={{ gap: 8 }}>
       <View className="flex-row items-center" style={{ gap: 10 }}>

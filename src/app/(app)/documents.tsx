@@ -15,7 +15,7 @@ import {
   ExternalLink,
 } from "lucide-react-native";
 import * as WebBrowser from "expo-web-browser";
-import { TopBar } from "@/components/shared/TopBar";
+import { AppHeader } from "@/components/shared/AppHeader";
 import { Badge, BottomSheet, Button, FLOATING_TAB_BAR_INSET } from "@/components/ui";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useAppStore } from "@/lib/stores/app.store";
@@ -139,7 +139,7 @@ export default function DocumentsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <TopBar therapist={therapist} title="Documents" subtitle="Verification" showNotification={false} />
+      <AppHeader title="Documents" subtitle="Verification" />
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
@@ -189,7 +189,7 @@ export default function DocumentsScreen() {
             const uploaded = documents[doc.id];
             return (
               <GlassSurface
-                fallbackClassName="bg-white"
+                fallbackClassName="bg-card"
                 glassRadius={12}
                 key={doc.id}
                 className="border border-border rounded-md p-3.5"

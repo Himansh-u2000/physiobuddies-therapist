@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View, Text, Pressable, ScrollView, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
-import { AlertTriangle, ChevronLeft, Check } from "lucide-react-native";
+import { AlertTriangle, Check } from "lucide-react-native";
 import { Button, TextArea } from "@/components/ui";
 import { useAppStore } from "@/lib/stores/app.store";
 import { useAuthStore } from "@/lib/stores/auth.store";
@@ -9,6 +9,7 @@ import { authApi } from "@/lib/api/services";
 import { COLORS } from "@/constants/config";
 import { GlassSurface } from "@/components/ui/Glass";
 
+import { AppHeader } from "@/components/shared/AppHeader";
 /**
  * In-app account deletion (mandated by both app stores; DPDP Act deletion path).
  * STUB: the backend has no DELETE /account endpoint yet, so the call 404s until it lands
@@ -46,13 +47,7 @@ export default function DeleteAccountScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <GlassSurface
-        fallbackClassName="bg-white" className="pt-14 px-4 pb-3 flex-row items-center gap-2 border-b border-border">
-        <Pressable onPress={() => router.back()} hitSlop={8} className="w-8 h-8 items-center justify-center">
-          <ChevronLeft size={22} color={COLORS.fg} />
-        </Pressable>
-        <Text className="text-[16px] font-extrabold text-fg">Delete account</Text>
-      </GlassSurface>
+      <AppHeader title="Delete account" onBack={() => router.back()} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -78,7 +73,7 @@ export default function DeleteAccountScreen() {
           </Text>
 
           <GlassSurface
-            fallbackClassName="bg-white"
+            fallbackClassName="bg-card"
             glassRadius={12}
             className="border border-border rounded-md p-3.5 mt-4" style={{ gap: 10 }}>
             {consequences.map((c) => (

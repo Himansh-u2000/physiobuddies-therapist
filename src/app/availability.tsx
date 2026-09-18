@@ -6,7 +6,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarOff,
   CalendarRange,
-  ChevronLeft,
   TriangleAlert,
   Check,
   Ban,
@@ -27,6 +26,7 @@ import {
   type SlotKind,
 } from "@/lib/utils/slotState";
 
+import { AppHeader, HeaderAction } from "@/components/shared/AppHeader";
 /** "14" → "2 PM". The grid is hourly, so minutes never need showing. */
 function hourLabel(hour: number): string {
   const meridiem = hour < 12 ? "AM" : "PM";
@@ -184,34 +184,20 @@ export default function AvailabilityScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <GlassSurface
-        fallbackClassName="bg-white"
-        className="px-4 pb-2 border-b border-border"
-        style={{ paddingTop: insets.top + 10 }}
+      <AppHeader
+        title="Availability"
+        subtitle="Working hours and blocked slots"
+        onBack={() => router.back()}
+        right={
+          // Leave is its own screen: it applies to a date RANGE and lists time off already booked.
+          <HeaderAction label="Time off" icon={<CalendarOff size={15} color="#fff" />} onPress={() => router.push("/leave")} />
+        }
       >
-        <View className="flex-row items-center" style={{ gap: 8 }}>
-          <Pressable onPress={() => router.back()} hitSlop={8} className="w-8 h-8 items-center justify-center">
-            <ChevronLeft size={22} color={COLORS.fg} />
-          </Pressable>
-          <Text className="text-[16px] font-extrabold text-fg flex-1">Availability</Text>
-          {/* Leave is its own screen now, not a sheet hanging off whichever day happened to be
-              selected — it applies to a date RANGE, and it lists the time off already booked. */}
-          <Pressable
-            onPress={() => router.push("/leave")}
-            hitSlop={8}
-            className="flex-row items-center active:opacity-70"
-            style={{ gap: 5 }}
-          >
-            <CalendarOff size={16} color={COLORS.danger} />
-            <Text className="text-danger text-[12px] font-bold">Time off</Text>
-          </Pressable>
-        </View>
-
-        <View className="flex-row mt-2.5 rounded-[12px] p-[3px]" style={{ backgroundColor: "rgba(0,64,96,0.05)" }}>
+        <View className="flex-row mt-3.5 rounded-[12px] p-[3px]" style={{ backgroundColor: "rgba(255,255,255,0.12)" }}>
           <TabButton label="By day" active={tab === "days"} onPress={() => setTab("days")} />
           <TabButton label="Weekly defaults" active={tab === "weekly"} onPress={() => setTab("weekly")} />
         </View>
-      </GlassSurface>
+      </AppHeader>
 
       {tab === "weekly" ? (
         <WeeklyDefaults />
@@ -423,14 +409,14 @@ function TabButton({ label, active, onPress }: { label: string; active: boolean;
       className={`flex-1 h-[32px] rounded-[10px] items-center justify-center ${active ? "bg-white" : ""}`}
       style={active ? { shadowColor: COLORS.nav, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2 } : undefined}
     >
-      <Text className={`text-[12.5px] font-bold ${active ? "text-accent" : "text-muted"}`}>{label}</Text>
+      <Text className={`text-[12.5px] font-bold ${active ? "text-accent" : "text-white/75"}`}>{label}</Text>
     </Pressable>
   );
 }
 
 function SummaryTile({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <View className="flex-1 bg-white border border-border rounded-[12px] py-2.5 items-center">
+    <View className="flex-1 bg-card border border-border rounded-[12px] py-2.5 items-center">
       <Text className="text-[18px] font-black" style={{ color }}>
         {value}
       </Text>
@@ -644,7 +630,7 @@ function WeeklyDefaults() {
           const off = daySchedule.shifts.length === 0;
           return (
             <GlassSurface
-              fallbackClassName="bg-white"
+              fallbackClassName="bg-card"
               glassRadius={12}
               key={weekday.id}
               className="border border-border rounded-md p-3 mb-2.5"
