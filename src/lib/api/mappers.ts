@@ -28,6 +28,7 @@ import type {
  Patient,
  PaymentStatus,
  Payout,
+ RescheduleOptions,
  ScheduleOverride,
  SessionDocument,
  SessionType,
@@ -1163,6 +1164,34 @@ export function parseAvailabilityDate(raw: string): Date | null {
  const [, dd, mm, yyyy] = m;
  const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** GET /treatment-session/:id/reschedule-slots */
+export interface BackendRescheduleOptions {
+ sessionId: string;
+ treatmentPlanId?: string;
+ therapistId?: string;
+ /** ISO — UTC midnight of the session's day. */
+ currentDate: string;
+ /** ISO — the slot start written as IST wall-clock in UTC fields (`08:00Z` = 8 AM IST). */
+ currentStartTime: string | null;
+ currentDurationMinutes: number | null;
+ /** Same shape as `GET /therapist/:id/availability` — built by the same server function. */
+ availableSlots: BackendAvailabilityDay[];
+}
+
+export function mapRescheduleOptions(d: BackendRescheduleOptions): RescheduleOptions {
+ const start = d.currentStartTime ? new Date(d.currentStartTime) : null;
+ const validStart = start && !Number.isNaN(start.getTime());
+ return {
+  sessionId: d.sessionId,
+  currentDate: (d.currentDate ?? "").slice(0, 10),
+  // UTC getters on purpose: the stored instant is IST wall-clock written into UTC fields, so the
+  // UTC hour IS the IST hour. Reading it in the device zone would shift it by the zone offset.
+  currentStartMinute: validStart ? start.getUTCHours() * 60 + start.getUTCMinutes() : null,
+  currentDurationMinutes: d.currentDurationMinutes ?? null,
+  days: mapAvailability(d.availableSlots ?? []),
+ };
 }
 
 export function mapAvailability(

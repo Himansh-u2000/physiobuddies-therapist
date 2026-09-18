@@ -3,6 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { notificationApi } from "@/lib/api/services";
 import { COLORS, STORAGE_KEYS } from "@/constants/config";
+import { getIosFcmToken, isConfigurationError, looksLikeApnsToken } from "./iosFcm";
 
 /**
  * Device-token lifecycle for remote push, kept out of the React hook on purpose: the auth store
@@ -17,12 +18,15 @@ import { COLORS, STORAGE_KEYS } from "@/constants/config";
  * delivery path this backend does not use, and handing one to a firebase-admin sender only
  * produces an unregistered-token error. The previous implementation registered exactly that.
  *
- * ## Android only, for now
+ * ## iOS: FCM token via the Firebase iOS SDK, never the APNs token
  *
- * On iOS `getDevicePushTokenAsync()` returns a raw **APNs** token, which FCM cannot address
- * without the Firebase iOS SDK bridging it. Registering one would fill the server's token table
- * with values it can never deliver to, so iOS is skipped explicitly and reports its reason
- * rather than failing silently. See FCM_SETUP.md.
+ * On iOS `getDevicePushTokenAsync()` returns a raw **APNs** token, which firebase-admin cannot
+ * address. iOS therefore gets its FCM token from `@react-native-firebase/messaging`
+ * (`./iosFcm.ts`), which exchanges the APNs token for one. An APNs-shaped token is refused on
+ * every path (`looksLikeApnsToken`), because registering one would fill the server's token table
+ * with rows it can never deliver to. Needs `GoogleService-Info.plist`, an APNs key uploaded to
+ * Firebase, and a signed device build — simulator builds have no push entitlement. See
+ * FCM_SETUP.md.
  *
  * ## ⚠️ Never call `getDevicePushTokenAsync()` from a push-token listener
  *
@@ -47,8 +51,8 @@ import { COLORS, STORAGE_KEYS } from "@/constants/config";
 export type PushRegistrationState =
   | "registered"
   | "denied" // the OS permission was refused
-  | "unsupported-platform" // iOS: APNs token is not addressable by an FCM sender
-  | "not-configured" // Android without google-services.json — no FCM project to register against
+  | "unsupported-platform" // a platform with no push path at all (web)
+  | "not-configured" // the BUILD can't register: no Firebase config file, or (iOS) no push entitlement
   | "failed";
 
 export interface PushRegistrationResult {
@@ -124,6 +128,7 @@ export function registerDeviceToken(force = false): Promise<PushRegistrationResu
 }
 
 async function runRegistration(force: boolean): Promise<PushRegistrationResult> {
+  if (Platform.OS === "ios") return runIosRegistration(force);
   if (Platform.OS !== "android") {
     return { state: "unsupported-platform", token: null };
   }
@@ -150,6 +155,31 @@ async function runRegistration(force: boolean): Promise<PushRegistrationResult> 
 }
 
 /**
+ * iOS: ask the Firebase SDK for an FCM token and register that.
+ *
+ * No `configureChannels` (Android-only concept). The token fetch never touches
+ * `getDevicePushTokenAsync`, so the Android emit-loop described above cannot occur here.
+ */
+async function runIosRegistration(force: boolean): Promise<PushRegistrationResult> {
+  if (!(await ensurePermission())) return { state: "denied", token: null };
+
+  let token: string | null;
+  try {
+    token = await getIosFcmToken();
+  } catch (error) {
+    // A missing plist or push entitlement is a property of the build — retrying won't help, and
+    // the settings screen says so. Anything else (network, APNs not ready yet) may pass on retry.
+    return { state: isConfigurationError(error) ? "not-configured" : "failed", token: null };
+  }
+  if (!token || looksLikeApnsToken(token)) return { state: "not-configured", token: null };
+
+  const stored = await getStoredPushToken();
+  if (stored === token && !force) return { state: "registered", token };
+
+  return persistRegistration(token, stored);
+}
+
+/**
  * Register a token that arrived on the `onDevicePushToken` event.
  *
  * Deliberately does NOT fetch the token itself — see the loop warning at the top of this file —
@@ -159,8 +189,14 @@ async function runRegistration(force: boolean): Promise<PushRegistrationResult> 
  * the network.
  */
 export async function syncRotatedToken(token: string): Promise<PushRegistrationResult> {
-  if (Platform.OS !== "android") return { state: "unsupported-platform", token: null };
+  if (Platform.OS !== "android" && Platform.OS !== "ios") {
+    return { state: "unsupported-platform", token: null };
+  }
   if (!token) return { state: "not-configured", token: null };
+  // On iOS the only legitimate caller is Firebase's own `onTokenRefresh`, which delivers FCM
+  // tokens. expo-notifications' rotation event carries the APNs token instead; refuse it here too,
+  // so a wiring mistake in the hook can't put an undeliverable row on the server.
+  if (looksLikeApnsToken(token)) return { state: "not-configured", token: null };
   // A registration already running will read the freshest token itself; joining it also keeps
   // the echo of its own fetch from racing it to SecureStore.
   if (inFlight) return inFlight;

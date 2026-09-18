@@ -462,6 +462,18 @@ export interface AvailabilitySlot {
   status: "open" | "booked" | "blocked" | string;
 }
 
+/** Where a session could be moved to (GET /treatment-session/:id/reschedule-slots). */
+export interface RescheduleOptions {
+  sessionId: string;
+  /** ISO `YYYY-MM-DD` of the session's current day. */
+  currentDate: string;
+  /** IST minutes past midnight of the current slot, or null if the server didn't say. */
+  currentStartMinute: number | null;
+  currentDurationMinutes: number | null;
+  /** Candidate days — only the next 3, a server-side limit. */
+  days: AvailabilityDay[];
+}
+
 export interface AvailabilityDay {
   /** ISO `YYYY-MM-DD`, normalised from the backend's `DD-MM-YYYY` display form. */
   date: string;

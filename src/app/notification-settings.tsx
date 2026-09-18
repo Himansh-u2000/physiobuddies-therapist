@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, Pressable, ScrollView, Linking, AppState } from "react-native";
+import { View, Text, Pressable, ScrollView, Linking, AppState, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -49,18 +49,21 @@ const PUSH_STATE_COPY: Record<
   denied: {
     tone: "warn",
     title: "Notifications are blocked",
-    body: "Android is blocking notifications for Physiobuddies. Turn them on in system settings to get session and payout alerts.",
+    body: "Your phone is blocking notifications for Physiobuddies. Turn them on in system settings to get session and payout alerts.",
     action: "settings",
   },
   "not-configured": {
     tone: "warn",
     title: "Push isn't available in this build",
-    body: "This build has no Firebase configuration, so it can't register for push. In-app notifications below still work.",
+    body:
+      Platform.OS === "ios"
+        ? "This build can't register for push — it has no Firebase configuration, or no push entitlement (simulator builds never do). In-app notifications below still work."
+        : "This build has no Firebase configuration, so it can't register for push. In-app notifications below still work.",
   },
   "unsupported-platform": {
     tone: "info",
-    title: "Push isn't available on iOS yet",
-    body: "iOS push is still being set up. You'll keep getting in-app and email notifications.",
+    title: "Push isn't available here",
+    body: "This platform can't receive push notifications. You'll keep getting in-app and email notifications.",
   },
   failed: {
     tone: "warn",

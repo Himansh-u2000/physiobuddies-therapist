@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
 import { API_BASE_URL } from "@/constants/config";
 import { getTokens, saveTokens, clearTokens, isExpired } from "@/lib/storage/secure";
-import { jwtExpiryMs } from "@/lib/auth/jwt";
+import { isJwtExpired, jwtExpiryMs } from "@/lib/auth/jwt";
 import { isRetryable, normalizeError } from "@/lib/api/errors";
 import { logRequest, logResponse, logFailure } from "@/lib/api/netlog";
 import type { AuthTokens } from "@/types";
@@ -107,6 +107,14 @@ export function setSessionDeadHandler(fn: SessionDeadHandler | null): void {
 async function refreshAccessToken(): Promise<string | null> {
   const tokens = await getTokens();
   if (!tokens?.refreshToken) return null;
+  // Its own `exp` has passed: the server can only reject it, and a flaky connection would
+  // otherwise classify that rejection as retryable and keep a dead session alive. End it here
+  // instead of spending a request to be told.
+  if (isJwtExpired(tokens.refreshToken)) {
+    await clearTokens();
+    sessionDeadHandler?.();
+    return null;
+  }
   // Logged by hand because this call deliberately bypasses the interceptors — and it is the
   // request most worth seeing: a silently failing refresh makes every *other* request 401,
   // which reads as "the whole app is broken" rather than "the session died".

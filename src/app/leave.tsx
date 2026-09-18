@@ -3,7 +3,6 @@ import { View, Text, Pressable, ScrollView, ActivityIndicator } from "react-nati
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { DateTimePicker } from "@expo/ui/community/datetime-picker";
 import {
   CalendarOff,
   CalendarX2,
@@ -11,7 +10,7 @@ import {
   Info,
   TriangleAlert,
 } from "lucide-react-native";
-import { Button, Chip, EmptyState, ErrorState, Skeleton, TextArea } from "@/components/ui";
+import { Button, Chip, EmptyState, ErrorState, Skeleton, TextArea, CalendarPicker } from "@/components/ui";
 import { availabilityApi } from "@/lib/api/services";
 import { useAppStore } from "@/lib/stores/app.store";
 import { COLORS } from "@/constants/config";
@@ -130,10 +129,10 @@ export default function LeaveScreen() {
   };
 
   const activeIso = field === "start" ? start : end;
-  const pickerValue = new Date(`${activeIso}T00:00:00`);
   // The end date can never precede the start; the start can never be in the past (the backend
-  // rejects a leave period that has already ended).
-  const pickerMin = field === "start" ? today : new Date(`${start}T00:00:00`);
+  // rejects a leave period that has already ended). ISO strings, not Dates — `CalendarPicker`
+  // memoises on them, which is what keeps the native calendar from rebuilding every render.
+  const pickerMin = field === "start" ? toIsoDate(today) : start;
 
   return (
     <View className="flex-1 bg-bg">
@@ -228,14 +227,15 @@ export default function LeaveScreen() {
             <Text className="text-[12px] font-bold text-fg mb-1">
               Choose the {field === "start" ? "start" : "end"} date
             </Text>
-            <DateTimePicker
-              value={pickerValue}
-              mode="date"
-              minimumDate={pickerMin}
-              presentation="inline"
-              onValueChange={(_, date) =>
-                field === "start" ? setStartDate(toIsoDate(date)) : setEnd(toIsoDate(date))
-              }
+            {/*
+              Keyed on the field so switching Start/End mounts a fresh calendar on that field's own
+              month, instead of reusing native state built for the other one.
+            */}
+            <CalendarPicker
+              key={field}
+              value={activeIso}
+              minDate={pickerMin}
+              onChange={(iso) => (field === "start" ? setStartDate(iso) : setEnd(iso))}
             />
           </View>
 

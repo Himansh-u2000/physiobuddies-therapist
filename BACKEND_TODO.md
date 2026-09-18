@@ -540,6 +540,30 @@ token, which is exactly why this was invisible in the data and only showed up as
 
 ---
 
+## 3b. Reschedule — two limits worth knowing (found 2026-09-17, app now uses these endpoints)
+
+`GET /treatment-session/:id/reschedule-slots` + `POST /treatment-session/:id/reschedule-slot` are
+wired into the therapist app's session details screen. Two things constrain it:
+
+**Only the next 3 days can be offered.** The slots endpoint calls
+`therapistService.getTherapistAvailability(therapistId)` with its default `daysCount = 3` and
+exposes no way to widen it, so a visit can never be moved further than the day after tomorrow. The
+app says so in the empty state rather than looking broken, but a therapist rescheduling a visit a
+week out has no path. A `days` query parameter (capped, say, at 30) would fix it.
+
+**`isRescheduled` / `rescheduleCount` are never updated.** `rescheduleSlot` writes a
+`sessionRescheduleLog` row and updates the reservation, but the `TreatmentSession` fields that the
+booking detail exposes stay `false` / `0` — so no client can show "rescheduled once" without
+reading the audit log. Either increment them in the same transaction, or drop them from the
+response so nobody trusts them.
+
+Not a defect, for the record: the body convention is consistent with the slot-block endpoints —
+`date` is the calendar day at UTC midnight and `startMinute` is the IST wall-clock minute. Verified
+live: a probe with a blocked slot returned `SLOT_UNAVAILABLE` echoing `date: 2026-09-18,
+startMinute: 360`, i.e. read exactly as sent.
+
+---
+
 ## 4. Still missing / incomplete
 
 ### 4.1 Idempotency

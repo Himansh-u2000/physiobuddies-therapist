@@ -2,7 +2,9 @@ import * as Notifications from "expo-notifications";
 import { useEffect, useRef, useCallback } from "react";
 import { useRouter, useRootNavigationState } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { Platform } from "react-native";
 import { useAuthStore } from "@/lib/stores/auth.store";
+import { onIosFcmTokenRefresh } from "@/lib/notifications/iosFcm";
 import { toAppHref } from "@/lib/notifications/links";
 import { registerDeviceToken, syncRotatedToken } from "@/lib/notifications/push";
 
@@ -99,10 +101,15 @@ export function useNotifications() {
    * every other request in the app. See the header comment in `lib/notifications/push.ts`.
    */
   useEffect(() => {
-    const sub = Notifications.addPushTokenListener((token) => {
+    const register = (token: string) => {
       if (!useAuthStore.getState().isAuthenticated) return;
-      void syncRotatedToken(String(token.data)).catch(() => {});
-    });
+      void syncRotatedToken(token).catch(() => {});
+    };
+    // iOS: Firebase's rotation event carries the FCM token the backend needs. expo-notifications'
+    // event on iOS carries the APNs token, which firebase-admin can't address, so it isn't
+    // subscribed there at all.
+    if (Platform.OS === "ios") return onIosFcmTokenRefresh(register);
+    const sub = Notifications.addPushTokenListener((token) => register(String(token.data)));
     return () => sub.remove();
   }, []);
 

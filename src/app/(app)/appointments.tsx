@@ -3,6 +3,7 @@ import { View, Text, Pressable, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
+import { LinearGradient } from "expo-linear-gradient";
 import { Bell, Calendar, TriangleAlert } from "lucide-react-native";
 import { AppointmentCard } from "@/components/appointments/AppointmentCard";
 import { Skeleton, EmptyState, ErrorState, FLOATING_TAB_BAR_INSET } from "@/components/ui";
@@ -115,28 +116,42 @@ export default function AppointmentsScreen() {
   );
 
   return (
-    <View className="flex-1 bg-bg">
-      <View
-        className="bg-white px-5 pb-3 border-b"
+    // White page, light-blue cards — see AppointmentCard's "Surfaces" note.
+    <View className="flex-1 bg-white">
+      {/*
+        The brand navy, not white. With a white page and light-blue cards, a white header made the
+        top of the screen read as empty space rather than as a bar — and it is the same gradient the
+        session-detail and dashboard headers already use, so the app stays of a piece. Every control
+        inside is re-toned for a dark ground: white ink, translucent-white surfaces.
+      */}
+      <LinearGradient
+        colors={["#003554", "#004060"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        className="px-5 pb-3 rounded-b-[22px]"
         style={{
           paddingTop: (isOnline ? insets.top : 0) + 14,
-          borderBottomColor: "rgba(207,217,223,0.6)",
           zIndex: 10,
+          shadowColor: COLORS.nav,
+          shadowOpacity: 0.18,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 6,
         }}
       >
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center" style={{ gap: 12 }}>
             <View
-              className="w-10 h-10 rounded-[16px] items-center justify-center"
-              style={{ backgroundColor: COLORS.accent, shadowColor: COLORS.accent, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 }}
+              className="w-10 h-10 rounded-[16px] items-center justify-center border"
+              style={{ backgroundColor: "rgba(255,255,255,0.14)", borderColor: "rgba(255,255,255,0.22)" }}
             >
               <Text className="text-white font-extrabold text-[16px]">P</Text>
             </View>
             <View>
-              <Text className="text-[18px] font-extrabold text-fg" style={{ letterSpacing: -0.3 }}>
+              <Text className="text-[18px] font-extrabold text-white" style={{ letterSpacing: -0.3 }}>
                 Appointments
               </Text>
-              <Text className="text-[11px] font-semibold text-muted mt-0.5">Your schedule</Text>
+              <Text className="text-[11px] font-semibold text-white/70 mt-0.5">Your schedule</Text>
             </View>
           </View>
           <Pressable
@@ -145,11 +160,15 @@ export default function AppointmentsScreen() {
             accessibilityRole="button"
             accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
             className="w-10 h-10 rounded-[16px] border items-center justify-center active:opacity-70"
-            style={{ backgroundColor: COLORS.bg, borderColor: "rgba(207,217,223,0.9)" }}
+            style={{ backgroundColor: "rgba(255,255,255,0.14)", borderColor: "rgba(255,255,255,0.22)" }}
           >
-            <Bell size={19} color={COLORS.fg} />
+            <Bell size={19} color="#fff" />
             {unread > 0 && (
-              <View className="absolute -top-1 -right-1 h-[17px] min-w-[17px] px-[4px] rounded-full bg-danger border-2 border-white items-center justify-center">
+              // The badge keeps a navy ring, not a white one — it sits on the gradient now.
+              <View
+                className="absolute -top-1 -right-1 h-[17px] min-w-[17px] px-[4px] rounded-full bg-danger border-2 items-center justify-center"
+                style={{ borderColor: COLORS.nav }}
+              >
                 <Text className="text-white text-[9px] font-bold">{unread > 99 ? "99+" : unread}</Text>
               </View>
             )}
@@ -159,7 +178,7 @@ export default function AppointmentsScreen() {
         {/* Segmented tabs */}
         <View
           className="flex-row mt-4 p-1 rounded-[16px]"
-          style={{ gap: 6, backgroundColor: "rgba(0,64,96,0.06)" }}
+          style={{ gap: 6, backgroundColor: "rgba(255,255,255,0.12)" }}
           accessibilityRole="tablist"
         >
           {FILTERS.map((f) => {
@@ -173,21 +192,25 @@ export default function AppointmentsScreen() {
                 className="flex-1 py-2 px-2 rounded-[12px] flex-row items-center justify-center active:opacity-80"
                 style={{
                   gap: 6,
-                  backgroundColor: selected ? COLORS.nav : "transparent",
-                  shadowColor: COLORS.nav,
-                  shadowOpacity: selected ? 0.2 : 0,
-                  shadowRadius: 4,
-                  elevation: selected ? 2 : 0,
+                  // Selected inverts to white-on-navy, which on a dark track is the strongest
+                  // available contrast and needs no shadow to separate it.
+                  backgroundColor: selected ? "#ffffff" : "transparent",
                 }}
               >
-                <Text className={`text-[12px] ${selected ? "text-white font-bold" : "text-muted font-semibold"}`}>
+                <Text
+                  className={`text-[12px] ${selected ? "font-bold" : "font-semibold text-white/75"}`}
+                  style={selected ? { color: COLORS.nav } : undefined}
+                >
                   {f.label}
                 </Text>
                 <View
                   className="rounded-full px-1.5"
-                  style={{ backgroundColor: selected ? "rgba(255,255,255,0.2)" : "rgba(0,64,96,0.1)" }}
+                  style={{ backgroundColor: selected ? "rgba(0,53,84,0.1)" : "rgba(255,255,255,0.18)" }}
                 >
-                  <Text className={`text-[10px] font-bold ${selected ? "text-white" : "text-muted"}`}>
+                  <Text
+                    className={`text-[10px] font-bold ${selected ? "" : "text-white"}`}
+                    style={selected ? { color: COLORS.nav } : undefined}
+                  >
                     {counts[f.id]}
                   </Text>
                 </View>
@@ -195,7 +218,7 @@ export default function AppointmentsScreen() {
             );
           })}
         </View>
-      </View>
+      </LinearGradient>
 
       <FlashList
         data={rows}

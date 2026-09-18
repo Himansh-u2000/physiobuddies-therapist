@@ -184,3 +184,23 @@ export function htmlToMarkdown(html: string): string {
 
   return blocks.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
 }
+
+/**
+ * Whether a WebView navigation may proceed: only the editor's own document may load.
+ *
+ * ## Why this is not simply `() => false` — that broke the editor on iOS
+ *
+ * The WebView loads `source={{ html }}`, and the two platforms do that differently. Android uses
+ * `loadDataWithBaseURL`, which never passes through the navigation callback. iOS uses
+ * `loadHTMLString:baseURL:` with a base of `about:blank`, and WKWebView routes that load through
+ * `decidePolicyForNavigationAction` → `onShouldStartLoadWithRequest` like any other navigation. So a
+ * blanket `false` cancelled the editor's own page on iOS: the box stayed empty and there was nothing
+ * to type into, while Android — which never asked — worked, hiding the bug.
+ *
+ * `about:blank` is the document itself (and `about:srcdoc` its equivalent for frames). Everything
+ * else is still refused: the content is a local string with no links, so any other navigation — a
+ * pasted URL that becomes a link, say — must not replace the editor.
+ */
+export function allowEditorNavigation(url: string): boolean {
+  return url === "about:blank" || url === "about:srcdoc";
+}

@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, ChevronRight, Phone, Navigation, CheckCircle2, CalendarClock, MapPinHouse, KeyRound, ArrowRight, Stethoscope } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Phone, Navigation, CheckCircle2, CalendarClock, MapPinHouse, KeyRound, ArrowRight, Stethoscope, CalendarSync } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Avatar, Badge, Button, PaymentBadge, Skeleton, StatusBadge } from "@/components/ui";
 import { appointmentApi } from "@/lib/api/services";
@@ -12,6 +13,8 @@ import { callPatient as dialPatient } from "@/lib/services/callService";
 import { COLORS, OTP_CONFIG } from "@/constants/config";
 import { getSessionTypeLabel } from "@/lib/utils/format";
 import { GlassSurface } from "@/components/ui/Glass";
+import { RescheduleSheet } from "@/components/session/RescheduleSheet";
+import { canReschedule } from "@/lib/utils/reschedule";
 
 export default function AppointmentDetailScreen() {
   const router = useRouter();
@@ -20,6 +23,7 @@ export default function AppointmentDetailScreen() {
   const showToast = useAppStore((s) => s.showToast);
   const sessionIsActive = useSessionStore((s) => s.isActive);
   const activeAppointmentId = useSessionStore((s) => s.appointmentId);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const { data: appointment, isLoading, isError, refetch } = useQuery({
     queryKey: ["appointment", id],
     queryFn: () => appointmentApi.getById(id),
@@ -96,6 +100,10 @@ export default function AppointmentDetailScreen() {
    * 2. Clamped to 0–5. `workflowStepFor` returns 5 for a completed plan, which the "Step N of 4"
    *    badge printed verbatim as "Step 5 of 4".
    */
+  // Only when the server would accept it: the current session is pending/confirmed and not
+  // already under way on this device. See `lib/utils/reschedule.ts`.
+  const reschedulable = canReschedule(appointment, sessionActiveHere);
+
   const rawStep = sessionActiveHere ? Math.max(appointment.workflowStep, 3) : appointment.workflowStep;
   const currentStep = Math.min(Math.max(rawStep, 0), 5);
 
@@ -183,6 +191,19 @@ export default function AppointmentDetailScreen() {
                 <Navigation size={15} color={COLORS.accent} />
                 <Text className="text-accent font-bold text-[12px]">Directions</Text>
               </Button>
+              {reschedulable && (
+                <Button
+                  variant="secondary"
+                  size="small"
+                  fullWidth={false}
+                  style={{ flex: 1 }}
+                  onPress={() => setRescheduleOpen(true)}
+                  accessibilityLabel={`Reschedule the visit with ${appointment.patientName}`}
+                >
+                  <CalendarSync size={15} color={COLORS.accent} />
+                  <Text className="text-accent font-bold text-[12px]">Reschedule</Text>
+                </Button>
+              )}
             </View>
           </GlassSurface>
 
@@ -301,6 +322,16 @@ export default function AppointmentDetailScreen() {
             </>
           )}
         </View>
+      )}
+
+      {reschedulable && appointment.currentSessionId && (
+        <RescheduleSheet
+          visible={rescheduleOpen}
+          onClose={() => setRescheduleOpen(false)}
+          sessionId={appointment.currentSessionId}
+          appointmentId={appointment.id}
+          patientName={appointment.patientName}
+        />
       )}
     </View>
   );

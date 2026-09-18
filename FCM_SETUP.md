@@ -177,23 +177,71 @@ downloaded JSON to whoever configures the API's firebase-admin credentials.
 
 ## iOS
 
-Still deferred, and there is a second reason beyond the Apple Developer account.
-`getDevicePushTokenAsync()` returns a raw **APNs** token on iOS, which an FCM sender cannot
-address — bridging it needs the Firebase iOS SDK in the app *and* the APNs key uploaded to
-Firebase. Until both exist, `registerDeviceToken()` skips iOS deliberately and reports
-`unsupported-platform`, rather than filling the server's token table with values it can never
-deliver to.
+**The app side is built (2026-09-17). What's left is account setup only you can do — and it can
+never be tested on the current iOS build.**
 
-## Known server-side risk
+### Why the existing iOS build can't receive push, whatever the code does
 
-The backend's device-token endpoint describes itself as storing an "FCM **web-push** token", and
-its `platform` field is `enum: ["web"]` — it 400s on `"android"`. That is only a labelling
-problem for registration (the app omits the field), but it hints the sender may build a
-**web-push-shaped** message, putting the title and body inside `webpush.notification`. A native
-Android client receiving that gets a data-only message and displays nothing.
+The only iOS build so far is the EAS `ios-simulator` profile. Simulator builds are **unsigned**, so
+they carry no `aps-environment` entitlement, and iOS refuses to issue a push token without one. The
+notification settings screen reports this as "Push isn't available in this build". Testing push
+needs a **signed device build** (EAS `development` / `preview` with `distribution: internal`, or
+TestFlight) on a real iPhone.
 
-The app mitigates the foreground case — `useNotifications.ts` re-presents a data-only push as a
-local notification — but a message arriving while the app is killed cannot be rescued client-side.
-If step 4 above delivers silence rather than a tray notification, that is the cause. Filed in
-`BACKEND_TODO.md`; the fix is for the sender to include a common `notification` block (or an
-`android` block) alongside the `webpush` one.
+### How iOS registers
+
+`getDevicePushTokenAsync()` returns a raw **APNs** token on iOS, which the backend's firebase-admin
+sender cannot address. So on iOS the app asks the Firebase iOS SDK for an **FCM** token instead,
+via `@react-native-firebase/messaging` (`src/lib/notifications/iosFcm.ts`), and registers that.
+The backend needs no change: its sender already builds a common `notification` block, which FCM
+delivers to iOS. An APNs-shaped token is refused on every path, so a mistake can't put an
+undeliverable row on the server.
+
+RN Firebase is linked on **iOS only**. On Android it is excluded via
+`package.json` → `expo.autolinking.android.exclude`: its Android side declares a second
+`MESSAGING_EVENT` service and notification meta-data that clash with expo-notifications and fail the
+manifest merge. Verified: `npx expo prebuild -p android` leaves `android/` byte-identical.
+
+> Don't "simplify" that to a `react-native.config.js` with `platforms: { android: null }`. It looks
+> right and does nothing — `expo-modules-autolinking`'s `deepObjectMerge` drops a `null` override
+> when the package declares its own `platforms.android` object, which both RNFB packages do.
+> Check with `npx expo-modules-autolinking react-native-config --platform android`.
+
+### Steps
+
+1. **Apple Developer Program** membership (needed for any signed device build).
+2. **APNs key** — developer.apple.com → Certificates, IDs & Profiles → Keys → create a key with
+   *Apple Push Notifications service (APNs)* → download the `.p8` (one download only), note the Key
+   ID and your Team ID.
+3. **Upload it to Firebase** — console.firebase.google.com → project `physiobuddies-d6a31` →
+   Project settings → Cloud Messaging → *Apple app configuration* → upload the `.p8` with Key ID and
+   Team ID. One auth key covers both sandbox and production.
+4. **Register the iOS app in Firebase** — same project → Add app → iOS → bundle ID
+   `com.physiobuddies.therapist` → download **`GoogleService-Info.plist`** and put it in
+   `physiobuddies-therapist/` next to `google-services.json`. For EAS, upload it as a file secret
+   and point `GOOGLE_SERVICES_PLIST` at it instead of committing it.
+5. **Build for a real device** — `npx eas build -p ios --profile development` (or `preview`).
+   `app.config.js` detects the plist and switches Firebase on; without it the build still succeeds
+   and push reports "not configured".
+6. **Check** — sign in on the iPhone, allow notifications, open Profile → Notification settings:
+   it should say *Push notifications are on*. Then trigger a notification server-side.
+
+### iOS build flags (already in `app.config.js`)
+
+RN Firebase's documented CocoaPods route, chosen over its dynamic/SPM default because this app's
+other pods (SQLCipher, Google Maps) are known to break under dynamic frameworks:
+
+- `expo-build-properties` → `ios.useFrameworks: "static"`
+- `ios.forceStaticLinking: ["RNFBApp", "RNFBMessaging"]` — required with Expo's precompiled React
+  Native; add any RNFB module you install later
+- `$RNFirebaseDisableSPM = true` in the Podfile (`plugins/withFirebaseIos.js`)
+
+**None of this has been compiled yet** — there is no Mac here, and this app has never built for a
+real iPhone. Expect the first device build to surface something iOS-specific.
+
+## Server-side risk — resolved
+
+The sender previously looked web-push-only. As of 2026-09-17 `firebase.service.ts` → `sendMulticast`
+builds a top-level `notification: { title, body }` (plus `webpush` only for the link), which FCM
+delivers natively to both Android and iOS. The foreground re-presentation in `useNotifications.ts`
+stays as a harmless safety net.

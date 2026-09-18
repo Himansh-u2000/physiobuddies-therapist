@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { View, Text } from "react-native";
-import { DateTimePicker } from "@expo/ui/community/datetime-picker";
 import { CalendarCheck } from "lucide-react-native";
-import { BottomSheet, Button, Chip } from "@/components/ui";
+import { BottomSheet, Button, CalendarPicker, Chip } from "@/components/ui";
 import { toIsoDate } from "@/lib/utils/format";
 
 /**
@@ -32,13 +31,17 @@ const QUICK_PICKS = [
 ];
 
 export function DatePickerSheet({ visible, initialDate, onClose, onSelect }: DatePickerSheetProps) {
-  const today = new Date();
-  const [customDate, setCustomDate] = useState<Date>(() =>
-    initialDate ? new Date(`${initialDate}T00:00:00`) : addDays(today, 3),
-  );
+  // Midnight, once. This was `new Date()` on every render — a minimum date that changed by a few
+  // milliseconds each time, which made the native Android calendar rebuild on every render and fire
+  // its change event again: the same loop the Time off screen had.
+  const today = useMemo(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }, []);
+  const [customIso, setCustomIso] = useState<string>(() => initialDate ?? toIsoDate(addDays(today, 3)));
 
-  const choose = (date: Date) => {
-    onSelect(toIsoDate(date));
+  const choose = (iso: string) => {
+    onSelect(iso);
     onClose();
   };
 
@@ -49,7 +52,7 @@ export function DatePickerSheet({ visible, initialDate, onClose, onSelect }: Dat
 
       <View className="flex-row flex-wrap mt-1" style={{ gap: 8 }}>
         {QUICK_PICKS.map((q) => (
-          <Chip key={q.label} variant="info" onPress={() => choose(addDays(today, q.days))}>
+          <Chip key={q.label} variant="info" onPress={() => choose(toIsoDate(addDays(today, q.days)))}>
             {q.label}
           </Chip>
         ))}
@@ -58,15 +61,9 @@ export function DatePickerSheet({ visible, initialDate, onClose, onSelect }: Dat
       <View className="h-px bg-border my-2" />
       <Text className="text-[12px] font-bold text-fg mb-1">Custom date</Text>
 
-      <DateTimePicker
-        value={customDate}
-        mode="date"
-        minimumDate={today}
-        presentation="inline"
-        onValueChange={(_, date) => setCustomDate(date)}
-      />
+      <CalendarPicker value={customIso} minDate={toIsoDate(today)} onChange={setCustomIso} />
 
-      <Button onPress={() => choose(customDate)}>
+      <Button onPress={() => choose(customIso)}>
         <CalendarCheck size={16} color="#fff" />
         <Text className="text-white font-bold text-[14px]">Use this date</Text>
       </Button>

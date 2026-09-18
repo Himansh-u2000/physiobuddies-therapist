@@ -3,6 +3,7 @@ import * as secure from "@/lib/storage/secure";
 import { authApi } from "@/lib/api/services";
 import ToastMessage from "react-native-toast-message";
 import { useAuthStore } from "@/lib/stores/auth.store";
+import { signToken, therapistToken } from "@/lib/testing/signToken";
 import { getActiveDatabase } from "@/lib/db/provider";
 import { clearLocalCache } from "@/lib/db/repositories";
 
@@ -55,9 +56,10 @@ jest.mock("react-native-toast-message", () => ({
 const mocked = secure as jest.Mocked<typeof secure>;
 const toastShow = ToastMessage.show as jest.Mock;
 
+/** Real-shaped: `hydrate` reads the signed `role` and `exp` claims out of these. */
 const TOKENS: AuthTokens = {
-  accessToken: "access",
-  refreshToken: "refresh",
+  accessToken: therapistToken(),
+  refreshToken: therapistToken({ exp: Math.floor(Date.now() / 1000) + 604800 }),
   expiresAt: Date.now() + 900_000,
 };
 const THERAPIST = { id: "t_1", name: "Test Therapist" } as unknown as Therapist;
@@ -326,5 +328,54 @@ describe("local cache teardown", () => {
     await useAuthStore.getState().logout();
 
     expect(mockClear).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A stored session is re-validated offline, before the app renders — see `hydrate`.
+ */
+describe("hydrate guards", () => {
+  const future = Math.floor(Date.now() / 1000) + 3600;
+  const past = Math.floor(Date.now() / 1000) - 60;
+
+  const storedTokens = (role: string, refreshExp: number): AuthTokens => ({
+    accessToken: signToken({ id: "u", role, exp: future }),
+    refreshToken: signToken({ id: "u", role, exp: refreshExp }),
+    expiresAt: Date.now() + 900_000,
+  });
+
+  beforeEach(() => {
+    mocked.getTherapistProfile.mockResolvedValue(THERAPIST);
+    mocked.getBiometricEnabled.mockResolvedValue(false);
+  });
+
+  it("keeps a valid therapist session", async () => {
+    mocked.getTokens.mockResolvedValue(storedTokens("therapist", future));
+
+    await useAuthStore.getState().hydrate();
+
+    expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    expect(mocked.clearAllSecureData).not.toHaveBeenCalled();
+  });
+
+  it("signs out when the refresh token has expired — no request needed", async () => {
+    // Behind a biometric lock the app makes no request at all, so waiting for a 401 could leave a
+    // dead session sitting there indefinitely.
+    mocked.getTokens.mockResolvedValue(storedTokens("therapist", past));
+
+    await useAuthStore.getState().hydrate();
+
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    expect(useAuthStore.getState().isLocked).toBe(false);
+    expect(mocked.clearAllSecureData).toHaveBeenCalled();
+  });
+
+  it("signs out a patient session stored by an older build", async () => {
+    mocked.getTokens.mockResolvedValue(storedTokens("patient", future));
+
+    await useAuthStore.getState().hydrate();
+
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    expect(mocked.clearAllSecureData).toHaveBeenCalled();
   });
 });

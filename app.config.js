@@ -42,12 +42,53 @@ const path = require("path");
  * review build signs with the DEBUG keystore, whose SHA-1 differs from the EAS one; both need
  * listing or the map renders blank on one of them.
  */
+/**
+ * ## iOS push — GoogleService-Info.plist, same conditional shape
+ *
+ * iOS needs an FCM token for the firebase-admin sender, which only the Firebase iOS SDK can mint
+ * (`src/lib/notifications/iosFcm.ts`). RNFirebase's setup throws without a plist, so Firebase is
+ * configured only once `GoogleService-Info.plist` exists (or `GOOGLE_SERVICES_PLIST` points at the
+ * EAS file secret). Without it the iOS build still succeeds and the settings screen reports
+ * "not configured".
+ *
+ * The build flags below apply regardless, because the RNFirebase pods are linked on every iOS build.
+ * They follow RNFirebase's documented CocoaPods route: static frameworks, every RNFB pod force-linked
+ * statically (required with Expo's precompiled React Native), and SPM disabled (see the plugin).
+ * Static rather than their dynamic/SPM default because this project carries other pods — SQLCipher,
+ * Google Maps — that dynamic frameworks are known to break. `expo-build-properties` is given no
+ * `android` block, so Android builds are unchanged.
+ */
+const withFirebaseIos = require("./plugins/withFirebaseIos");
+
+const RNFB_IOS_PODS = ["RNFBApp", "RNFBMessaging"];
+
 module.exports = ({ config }) => {
   const fromEnv = process.env.GOOGLE_SERVICES_JSON;
   const candidate = fromEnv || path.join(__dirname, "google-services.json");
   const googleServicesFile = fs.existsSync(candidate) ? candidate : undefined;
 
   const mapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || undefined;
+
+  const plistCandidate =
+    process.env.GOOGLE_SERVICES_PLIST || path.join(__dirname, "GoogleService-Info.plist");
+  const iosGoogleServicesFile = fs.existsSync(plistCandidate) ? plistCandidate : undefined;
+
+  const withIos = {
+    ...config,
+    ios: {
+      ...config.ios,
+      ...(iosGoogleServicesFile ? { googleServicesFile: iosGoogleServicesFile } : {}),
+    },
+    plugins: [
+      ...(config.plugins ?? []),
+      [
+        "expo-build-properties",
+        { ios: { useFrameworks: "static", forceStaticLinking: RNFB_IOS_PODS } },
+      ],
+    ],
+  };
+
+  config = withFirebaseIos(withIos, { configured: Boolean(iosGoogleServicesFile) });
 
   return {
     ...config,

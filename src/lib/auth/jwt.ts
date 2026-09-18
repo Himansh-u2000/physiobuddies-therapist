@@ -60,3 +60,33 @@ export function jwtExpiryMs(token: string, fallbackMs = 15 * 60 * 1000): number 
   const exp = payload && typeof payload.exp === "number" ? payload.exp : null;
   return exp ? exp * 1000 : Date.now() + fallbackMs;
 }
+
+/**
+ * The `role` claim the backend signs into every token (`{ id, role, iat, exp }`).
+ *
+ * `null` when the token is unreadable — callers treat that as "not a therapist", so a malformed
+ * token can never pass the gate below.
+ */
+export function jwtRole(token: string): string | null {
+  const payload = decodeJwt<{ role?: unknown }>(token);
+  return typeof payload?.role === "string" ? payload.role.toLowerCase() : null;
+}
+
+/** The only role this app is for. `/auth/login` is shared with patients and admins. */
+export const THERAPIST_ROLE = "therapist";
+
+export function isTherapistToken(token: string): boolean {
+  return jwtRole(token) === THERAPIST_ROLE;
+}
+
+/**
+ * Whether a token's own `exp` has passed. Used on the REFRESH token at startup.
+ *
+ * Fails closed: a token with no readable `exp` counts as expired, because an unreadable credential
+ * is not one to keep a session alive on.
+ */
+export function isJwtExpired(token: string, now = Date.now()): boolean {
+  const payload = decodeJwt<{ exp?: number }>(token);
+  if (!payload || typeof payload.exp !== "number") return true;
+  return now >= payload.exp * 1000;
+}

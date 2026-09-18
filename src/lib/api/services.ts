@@ -4,6 +4,7 @@ import { isResponseContractError } from "@/lib/api/errors";
 // live in their own module so `mappers.ts` can use them without closing an import cycle.
 import { absoluteFileUrl, privateFileUrl } from "@/lib/api/urls";
 import { affectedSlotCount } from "@/lib/utils/slotState";
+import { rescheduleBody } from "@/lib/utils/reschedule";
 import type {
  Therapist,
  DashboardStats,
@@ -21,6 +22,7 @@ import type {
  ClinicalAssessmentRecord,
  LoginSession,
  ScheduleOverride,
+ RescheduleOptions,
  Treatment,
  Payout,
  WalletInfo,
@@ -39,6 +41,7 @@ import {
  type SubscriptionPlan,
 } from "@/lib/subscription/plans";
 import { getTokens, saveTokens } from "@/lib/storage/secure";
+import { isTherapistToken } from "@/lib/auth/jwt";
 import {
  mapUserToTherapist,
  mapBookings,
@@ -65,6 +68,8 @@ import {
  mapFaqs,
  mapScheduleOverrides,
  mapWeeklySchedule,
+ mapRescheduleOptions,
+ type BackendRescheduleOptions,
  normalizeGender,
  type BackendUser,
  type BackendTherapistPublic,
@@ -127,6 +132,16 @@ export const authApi = {
    password,
   });
   const tokens = toAuthTokens(data);
+  // `POST /auth/login` is shared by every role — a patient's credentials authenticate here just as
+  // well as a therapist's, and the app would then sit on a token that 403s against every
+  // therapist-only endpoint. Checked against the token's own signed `role` claim rather than
+  // anything in the profile body, and BEFORE `getMyProfile`, so a patient never reaches a
+  // therapist endpoint at all. Nothing is persisted: the caller only stores what this returns.
+  if (!isTherapistToken(tokens.accessToken)) {
+    throw new Error(
+      "This is the Physiobuddies therapist app. Sign in with the patient app instead."
+    );
+  }
   const therapist = await authApi.getMyProfile();
   return { tokens, therapist };
  },
@@ -662,6 +677,32 @@ export const contentApi = {
 };
 
 export const appointmentApi = {
+ /**
+  * Slots a session could move to. Takes the SESSION id (`appointment.currentSessionId`), not the
+  * plan id. See `lib/utils/reschedule.ts` for the rules.
+  */
+ async getRescheduleOptions(sessionId: string): Promise<RescheduleOptions> {
+  const { data } = await client.get<BackendRescheduleOptions>(
+   `/treatment-session/${sessionId}/reschedule-slots`
+  );
+  return mapRescheduleOptions(data);
+ },
+
+ /**
+  * Move a session to another slot (202). The server re-checks the slot, so a slot taken since the
+  * list was fetched fails with its own message (`SLOT_ALREADY_HELD`, `SLOT_LEAD_TIME_TOO_SHORT`),
+  * which callers show as-is. The patient is notified server-side; no money moves.
+  */
+ async rescheduleSession(
+  sessionId: string,
+  input: { isoDate: string; startMinute: number; durationMinutes?: number; reason?: string }
+ ): Promise<void> {
+  await client.post(
+   `/treatment-session/${sessionId}/reschedule-slot`,
+   rescheduleBody(input)
+  );
+ },
+
  async list(): Promise<Appointment[]> {
   const { data } = await client.get<BackendBooking[]>(
    "/therapist/sessions/my-bookings"

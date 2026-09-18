@@ -1,4 +1,5 @@
-import { decodeJwt, jwtExpiryMs } from "@/lib/auth/jwt";
+import { signToken } from "@/lib/testing/signToken";
+import { decodeJwt, jwtExpiryMs, jwtRole, isTherapistToken, isJwtExpired } from "@/lib/auth/jwt";
 
 /**
  * The backend returns no `expiresAt` (auth.service.ts `generateTokens` sends only
@@ -111,5 +112,48 @@ describe("jwtExpiryMs", () => {
     const exp = Math.floor(Date.now() / 1000) + 15 * 60;
     const drift = Math.abs(jwtExpiryMs(makeToken({ exp })) - (Date.now() + 15 * 60 * 1000));
     expect(drift).toBeLessThan(1000);
+  });
+});
+
+/**
+ * `POST /auth/login` is shared by every role: a seed patient authenticates with HTTP 200 and a
+ * `{ id, role: "patient", iat, exp }` token (verified live 2026-09-17). The app is therapists-only,
+ * so the signed role claim — not anything in a profile body — is the gate.
+ */
+describe("role and expiry claims", () => {
+  const therapist = signToken({ id: "t1", role: "therapist", iat: 1789666954, exp: 1789667854 });
+  const patient = signToken({ id: "p1", role: "patient", iat: 1789666954, exp: 1789667854 });
+
+  it("reads the role", () => {
+    expect(jwtRole(therapist)).toBe("therapist");
+    expect(jwtRole(patient)).toBe("patient");
+  });
+
+  it("admits only therapists", () => {
+    expect(isTherapistToken(therapist)).toBe(true);
+    expect(isTherapistToken(patient)).toBe(false);
+    expect(isTherapistToken(signToken({ id: "a1", role: "admin" }))).toBe(false);
+  });
+
+  it("refuses a token whose role cannot be read, rather than assuming therapist", () => {
+    expect(isTherapistToken("not-a-jwt")).toBe(false);
+    expect(isTherapistToken(signToken({ id: "x" }))).toBe(false);
+  });
+
+  it("is case-insensitive about the claim", () => {
+    expect(isTherapistToken(signToken({ role: "Therapist" }))).toBe(true);
+  });
+
+  describe("isJwtExpired", () => {
+    const exp = 1789667854;
+    it("compares against the exp claim in seconds", () => {
+      expect(isJwtExpired(therapist, exp * 1000 - 1)).toBe(false);
+      expect(isJwtExpired(therapist, exp * 1000)).toBe(true);
+    });
+
+    it("fails closed when there is no readable exp", () => {
+      expect(isJwtExpired(signToken({ id: "x" }))).toBe(true);
+      expect(isJwtExpired("garbage")).toBe(true);
+    });
   });
 });

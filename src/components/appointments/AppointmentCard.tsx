@@ -1,4 +1,5 @@
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, StyleSheet } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { Building2, CalendarDays, Check, Clock3, House, Play, Video } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
 import { Avatar } from "@/components/ui/Avatar";
@@ -15,7 +16,24 @@ import type { Appointment, AppointmentStatus } from "@/types";
  * slightly faded) so the eye lands on work that is still ahead.
  *
  * Tapping anywhere else on the card opens the appointment's details.
+ *
+ * ## Surfaces
+ *
+ * The list screen is white and the card carries the app's light-blue surface (`COLORS.bg`) — the
+ * reverse of the original, so cards read as objects on a page rather than holes in a tinted one.
+ * The nesting alternates on purpose: blue card → white slot band → blue chips. Each layer contrasts
+ * with the one it sits on; keeping the old white-on-white or blue-on-blue pairings would make the
+ * slot band and chips disappear.
+ *
+ * Depth is kept quiet: a barely-there diagonal gradient across the same hue, a navy-tinted shadow
+ * rather than black, and a 1px hairline so the edge stays crisp on a white page even where the
+ * shadow is too faint to see (bright sunlight, low-end screens).
  */
+
+/** Card surface: the brand light blue, with a subtle top-left → bottom-right falloff. */
+const CARD_GRADIENT = ["#f1f9fe", "#e3f2fc"] as const;
+const CARD_BORDER = "rgba(0,64,96,0.09)";
+const DIVIDER = "rgba(0,64,96,0.08)";
 
 const MODE: Record<Appointment["type"], { label: string; icon: LucideIcon }> = {
   home: { label: "Home Visit", icon: House },
@@ -25,12 +43,12 @@ const MODE: Record<Appointment["type"], { label: string; icon: LucideIcon }> = {
 
 type Tone = "success" | "warning" | "info" | "danger" | "neutral";
 
-const TONE: Record<Tone, { bg: string; border: string; fg: string; dot: string }> = {
-  success: { bg: "rgba(35,145,73,0.08)", border: "rgba(35,145,73,0.25)", fg: COLORS.successDark, dot: COLORS.success },
-  warning: { bg: "rgba(209,154,18,0.1)", border: "rgba(209,154,18,0.3)", fg: "#9a7108", dot: COLORS.warning },
-  info: { bg: "rgba(0,134,168,0.08)", border: "rgba(0,134,168,0.25)", fg: COLORS.info, dot: COLORS.info },
-  danger: { bg: "rgba(207,66,56,0.08)", border: "rgba(207,66,56,0.25)", fg: COLORS.danger, dot: COLORS.danger },
-  neutral: { bg: "rgba(94,107,119,0.08)", border: "rgba(94,107,119,0.2)", fg: COLORS.muted, dot: COLORS.muted },
+const TONE: Record<Tone, { border: string; fg: string; dot: string }> = {
+  success: { border: "rgba(35,145,73,0.25)", fg: COLORS.successDark, dot: COLORS.success },
+  warning: { border: "rgba(209,154,18,0.3)", fg: "#9a7108", dot: COLORS.warning },
+  info: { border: "rgba(0,134,168,0.25)", fg: COLORS.info, dot: COLORS.info },
+  danger: { border: "rgba(207,66,56,0.25)", fg: COLORS.danger, dot: COLORS.danger },
+  neutral: { border: "rgba(94,107,119,0.2)", fg: COLORS.muted, dot: COLORS.muted },
 };
 
 /**
@@ -112,28 +130,42 @@ export function AppointmentCard({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${appointment.patientName}, ${fullDate(appointment)}, ${slotRange(appointment)}, ${mode.label}, ${status.label}`}
-      className="bg-white rounded-[24px] p-4 border active:opacity-95"
+      className="rounded-[24px] p-4 active:opacity-95"
       style={{
-        borderColor: "rgba(207,217,223,0.7)",
+        // A solid fill under the gradient: iOS needs one to draw the shadow efficiently (without it
+        // the shadow is traced around every child), and Android needs one for `elevation` at all.
+        backgroundColor: COLORS.bg,
+        borderWidth: 1,
+        borderColor: CARD_BORDER,
         shadowColor: COLORS.nav,
-        shadowOpacity: 0.06,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 2,
+        shadowOpacity: settled ? 0.05 : 0.1,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: settled ? 2 : 4,
         opacity: settled ? 0.92 : 1,
       }}
     >
+      {/* Behind the content, clipped to the card's corners. Not `overflow: hidden` on the card
+          itself — that would clip the iOS shadow too. */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={CARD_GRADIENT}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[StyleSheet.absoluteFill, { borderRadius: 23 }]}
+      />
+
       {/* When + status */}
       <View
         className="flex-row items-center justify-between pb-3"
-        style={{ borderBottomWidth: 1, borderBottomColor: "rgba(207,217,223,0.5)" }}
+        style={{ borderBottomWidth: 1, borderBottomColor: DIVIDER }}
       >
         <View className="flex-row items-center flex-1" style={{ gap: 8 }}>
           <View
             className="w-8 h-8 rounded-[12px] items-center justify-center border"
             style={{
-              backgroundColor: settled ? "rgba(94,107,119,0.07)" : COLORS.primarySoft,
-              borderColor: settled ? "rgba(94,107,119,0.15)" : "rgba(0,64,96,0.1)",
+              backgroundColor: "#ffffff",
+              borderColor: settled ? "rgba(94,107,119,0.15)" : "rgba(0,64,96,0.12)",
             }}
           >
             <CalendarDays size={15} color={iconColor} />
@@ -150,7 +182,9 @@ export function AppointmentCard({
 
         <View
           className="flex-row items-center rounded-full px-2.5 py-1 border ml-2"
-          style={{ gap: 5, backgroundColor: tone.bg, borderColor: tone.border }}
+          // A solid white base under the tint: a translucent pill over the blue card mixes into a
+          // muddy colour, and the status is the one thing on the card that must read instantly.
+          style={{ gap: 5, backgroundColor: "#ffffff", borderColor: tone.border }}
         >
           {status.check ? (
             <Check size={12} color={COLORS.accent} strokeWidth={3} />
@@ -179,12 +213,21 @@ export function AppointmentCard({
       {/* The slot */}
       <View
         className="rounded-[16px] p-3 border flex-row items-center justify-between"
-        style={{ backgroundColor: COLORS.bg, borderColor: "rgba(207,217,223,0.5)", gap: 8 }}
+        style={{
+          backgroundColor: "#ffffff",
+          borderColor: "rgba(0,64,96,0.06)",
+          gap: 8,
+          shadowColor: COLORS.nav,
+          shadowOpacity: 0.04,
+          shadowRadius: 4,
+          shadowOffset: { width: 0, height: 1 },
+          elevation: 1,
+        }}
       >
         <View className="flex-row items-center flex-1" style={{ gap: 10 }}>
           <View
-            className="w-8 h-8 rounded-[12px] bg-white items-center justify-center border"
-            style={{ borderColor: "rgba(207,217,223,0.7)" }}
+            className="w-8 h-8 rounded-[12px] items-center justify-center border"
+            style={{ backgroundColor: COLORS.bg, borderColor: "rgba(0,64,96,0.08)" }}
           >
             <Clock3 size={15} color={iconColor} />
           </View>
@@ -202,8 +245,8 @@ export function AppointmentCard({
           </View>
         </View>
         <View
-          className="flex-row items-center rounded-[12px] bg-white border px-2.5 py-1.5"
-          style={{ gap: 5, borderColor: "rgba(207,217,223,0.8)" }}
+          className="flex-row items-center rounded-[12px] border px-2.5 py-1.5"
+          style={{ gap: 5, backgroundColor: COLORS.bg, borderColor: "rgba(0,64,96,0.08)" }}
         >
           <ModeIcon size={13} color={iconColor} />
           <Text className="text-[12px] font-bold" style={{ color: settled ? COLORS.muted : COLORS.fg }}>

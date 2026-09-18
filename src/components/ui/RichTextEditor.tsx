@@ -3,7 +3,7 @@ import { View, Text, Pressable } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { Bold, Italic, Heading2, List, ListOrdered, Quote, Undo2, Redo2 } from "lucide-react-native";
 import { COLORS } from "@/constants/config";
-import { markdownToHtml, htmlToMarkdown } from "@/lib/utils/richText";
+import { allowEditorNavigation, markdownToHtml, htmlToMarkdown } from "@/lib/utils/richText";
 
 /**
  * WYSIWYG rich-text editor for patient-education articles.
@@ -257,8 +257,9 @@ export function RichTextEditor({
             originWhitelist={["*"]}
             source={{ html }}
             onMessage={handleMessage}
-            // The document is a local string with no links; nothing should ever navigate.
-            onShouldStartLoadWithRequest={() => false}
+            // Only the editor's own document may load — see `allowEditorNavigation`; a blanket
+            // `false` here left the editor blank on iOS.
+            onShouldStartLoadWithRequest={(request) => allowEditorNavigation(request.url)}
             // The native ScrollView owns scrolling — two nested scrollers fight each other and
             // the inner one wins, trapping the page.
             scrollEnabled={false}

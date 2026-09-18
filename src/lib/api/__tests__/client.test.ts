@@ -7,6 +7,7 @@
  * plain functions, and calling them is exactly what axios itself would do.
  */
 
+import { therapistToken } from "@/lib/testing/signToken";
 import * as secure from "@/lib/storage/secure";
 import { setSessionDeadHandler } from "@/lib/api/client";
 
@@ -62,7 +63,9 @@ beforeEach(() => {
   setSessionDeadHandler(null);
   mocked.getTokens.mockResolvedValue({
     accessToken: "access",
-    refreshToken: "refresh",
+    // Real-shaped and unexpired: `refreshAccessToken` now ends the session up front when the
+    // refresh token's own `exp` has passed, rather than spending a request to be told.
+    refreshToken: therapistToken({ exp: Math.floor(Date.now() / 1000) + 604800 }),
     expiresAt: Date.now() + 900_000,
   });
 });

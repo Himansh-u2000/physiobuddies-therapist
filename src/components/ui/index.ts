@@ -14,6 +14,7 @@ export { EmptyState } from "./EmptyState";
 export { ErrorState } from "./ErrorState";
 export { ToastContainer } from "./Toast";
 export { BottomSheet, useBottomSheet } from "./BottomSheet";
+export { CalendarPicker } from "./CalendarPicker";
 export { MarkdownText } from "./MarkdownText";
 export { RichTextEditor } from "./RichTextEditor";
 export { GlassSurface, GlassLayer, GLASS_ENABLED, FLOATING_TAB_BAR_INSET } from "./Glass";

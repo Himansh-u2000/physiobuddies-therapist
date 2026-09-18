@@ -14,6 +14,7 @@ import {
 import { authApi } from "@/lib/api/services";
 import { unregisterDeviceToken } from "@/lib/notifications/push";
 import { clearNetLog } from "@/lib/api/netlog";
+import { isJwtExpired, isTherapistToken } from "@/lib/auth/jwt";
 import { getActiveDatabase } from "@/lib/db/provider";
 import { clearLocalCache } from "@/lib/db/repositories";
 import { useAppStore } from "@/lib/stores/app.store";
@@ -69,6 +70,33 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const therapist = await getTherapistProfile();
     const biometricEnabled = await getBiometricEnabled();
     const phone = await getPhone();
+
+    /**
+     * Two reasons to end a stored session before the app ever renders, both decided offline:
+     *
+     * 1. **The refresh token has expired.** Nothing can revive the session, so waiting for a
+     *    request to fail would leave the therapist in a signed-in-looking app that 401s — and
+     *    behind a biometric lock, which makes no request at all, they could sit there indefinitely.
+     * 2. **It isn't a therapist's token.** Belt-and-braces for a session stored by a build before
+     *    the login gate existed.
+     *
+     * Both clear local state the same way a rejected refresh does.
+     */
+    if (tokens && (isJwtExpired(tokens.refreshToken) || !isTherapistToken(tokens.accessToken))) {
+      await clearAllSecureData();
+      await clearCachedData();
+      set({
+        tokens: null,
+        therapist: null,
+        biometricEnabled: false,
+        phone: null,
+        isAuthenticated: false,
+        isLocked: false,
+        isHydrated: true,
+      });
+      return;
+    }
+
     set({
       tokens,
       therapist,

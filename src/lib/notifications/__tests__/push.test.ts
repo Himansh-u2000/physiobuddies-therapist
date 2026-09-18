@@ -17,6 +17,15 @@ import {
   unregisterDeviceToken,
 } from "@/lib/notifications/push";
 import { STORAGE_KEYS } from "@/constants/config";
+import * as iosFcm from "@/lib/notifications/iosFcm";
+
+// The real module lazily requires @react-native-firebase, which is not linked under Jest. The shape
+// guard is kept real: it is the safety net these tests exist to pin.
+jest.mock("@/lib/notifications/iosFcm", () => ({
+  getIosFcmToken: jest.fn(),
+  isConfigurationError: jest.fn(() => false),
+  looksLikeApnsToken: jest.requireActual("@/lib/notifications/iosFcm").looksLikeApnsToken,
+}));
 
 jest.mock("@/lib/api/services", () => ({
   notificationApi: {
@@ -30,7 +39,12 @@ const mockSecureStore = SecureStore as jest.Mocked<typeof SecureStore>;
 const mockApi = notificationApi as jest.Mocked<typeof notificationApi>;
 
 /** jest-expo reports `ios` by default; these paths are Android's. */
-function setPlatform(os: "android" | "ios") {
+const mockIos = iosFcm as jest.Mocked<typeof iosFcm>;
+/** A realistic FCM token (contains ':'), and a 64-hex APNs device token. */
+const IOS_FCM = "dQw4w9WgXcQ:APA91bHun4MxP5egoKMwt2KZFBaFUH-1RYqx";
+const APNS = "a".repeat(64);
+
+function setPlatform(os: "android" | "ios" | "web") {
   Object.defineProperty(Platform, "OS", { value: os, configurable: true });
 }
 
@@ -121,11 +135,79 @@ describe("registerDeviceToken", () => {
     expect(mockSecureStore.setItemAsync).not.toHaveBeenCalled();
   });
 
-  it("skips iOS, where the device token is APNs and not addressable by an FCM sender", async () => {
+  it("never uses expo's device token on iOS — that is the APNs token", async () => {
     setPlatform("ios");
+    mockIos.getIosFcmToken.mockResolvedValue(IOS_FCM);
 
-    expect(await registerDeviceToken()).toEqual({ state: "unsupported-platform", token: null });
+    await registerDeviceToken();
+
     expect(mockNotifications.getDevicePushTokenAsync).not.toHaveBeenCalled();
+  });
+
+  it("reports a platform with no push path at all as unsupported", async () => {
+    setPlatform("web");
+    expect(await registerDeviceToken()).toEqual({ state: "unsupported-platform", token: null });
+  });
+});
+
+/**
+ * iOS registers the FCM token the Firebase iOS SDK mints — never the APNs token. firebase-admin can
+ * only address FCM tokens, so an APNs row on the server is one every send fans out to and none
+ * reaches.
+ */
+describe("registerDeviceToken on iOS", () => {
+  beforeEach(() => setPlatform("ios"));
+
+  it("registers the Firebase FCM token and remembers it", async () => {
+    mockIos.getIosFcmToken.mockResolvedValue(IOS_FCM);
+
+    expect(await registerDeviceToken()).toEqual({ state: "registered", token: IOS_FCM });
+    expect(mockApi.registerPushToken).toHaveBeenCalledWith(IOS_FCM);
+    expect(mockSecureStore.setItemAsync).toHaveBeenCalledWith(STORAGE_KEYS.pushToken, IOS_FCM);
+  });
+
+  it("skips Android-only channel setup", async () => {
+    mockIos.getIosFcmToken.mockResolvedValue(IOS_FCM);
+    await registerDeviceToken();
+    expect(mockNotifications.setNotificationChannelAsync).not.toHaveBeenCalled();
+  });
+
+  it("makes no network call when the token is unchanged", async () => {
+    mockIos.getIosFcmToken.mockResolvedValue(IOS_FCM);
+    mockSecureStore.getItemAsync.mockResolvedValue(IOS_FCM);
+
+    expect(await registerDeviceToken()).toEqual({ state: "registered", token: IOS_FCM });
+    expect(mockApi.registerPushToken).not.toHaveBeenCalled();
+  });
+
+  it("reports a denied permission without asking Firebase", async () => {
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ status: "denied" } as never);
+    mockNotifications.requestPermissionsAsync.mockResolvedValue({ status: "denied" } as never);
+
+    expect(await registerDeviceToken()).toEqual({ state: "denied", token: null });
+    expect(mockIos.getIosFcmToken).not.toHaveBeenCalled();
+  });
+
+  it("reports a build gap (no plist / no push entitlement) as not-configured, not failed", async () => {
+    mockIos.getIosFcmToken.mockRejectedValue(new Error("no aps-environment entitlement"));
+    mockIos.isConfigurationError.mockReturnValue(true);
+
+    expect(await registerDeviceToken()).toEqual({ state: "not-configured", token: null });
+    expect(mockApi.registerPushToken).not.toHaveBeenCalled();
+  });
+
+  it("reports anything else as failed, so the retry button is offered", async () => {
+    mockIos.getIosFcmToken.mockRejectedValue(new Error("network"));
+    mockIos.isConfigurationError.mockReturnValue(false);
+
+    expect(await registerDeviceToken()).toEqual({ state: "failed", token: null });
+  });
+
+  it("refuses an APNs-shaped token even if Firebase somehow returned one", async () => {
+    mockIos.getIosFcmToken.mockResolvedValue(APNS);
+
+    expect(await registerDeviceToken()).toEqual({ state: "not-configured", token: null });
+    expect(mockApi.registerPushToken).not.toHaveBeenCalled();
   });
 });
 
@@ -203,5 +285,19 @@ describe("unregisterDeviceToken", () => {
     await unregisterDeviceToken();
 
     expect(mockApi.unregisterPushToken).not.toHaveBeenCalled();
+  });
+});
+
+describe("syncRotatedToken on iOS", () => {
+  beforeEach(() => setPlatform("ios"));
+
+  it("registers a rotated FCM token from Firebase's onTokenRefresh", async () => {
+    expect(await syncRotatedToken(IOS_FCM)).toEqual({ state: "registered", token: IOS_FCM });
+    expect(mockApi.registerPushToken).toHaveBeenCalledWith(IOS_FCM);
+  });
+
+  it("refuses the APNs token expo-notifications' rotation event carries on iOS", async () => {
+    expect(await syncRotatedToken(APNS)).toEqual({ state: "not-configured", token: null });
+    expect(mockApi.registerPushToken).not.toHaveBeenCalled();
   });
 });
